@@ -39,6 +39,15 @@ else
     echo "    'greeter' system user already exists"
 fi
 
+if ! rpm -q greetd >/dev/null 2>&1; then
+    echo "    installing greetd"
+    sudo dnf install -y greetd
+else
+    echo "    greetd already installed"
+fi
+
+sudo mkdir -p /etc/greetd
+
 if ! cmp -s "$HERE/greetd/config.toml" /etc/greetd/config.toml 2>/dev/null; then
     if [ -f /etc/greetd/config.toml ]; then
         sudo cp /etc/greetd/config.toml /etc/greetd/config.toml.bak
