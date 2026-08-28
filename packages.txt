@@ -1,11 +1,13 @@
 # Packages required by ~/.config/hypr, ~/.config/waybar, ~/.config/kitty
-# Last updated 2026-08-19. Fedora (dnf) package names. All entries below are installed.
+# Last updated 2026-08-28. Fedora (dnf) package names. All entries below are installed.
 
 ## Core
 hyprland
 kitty
 waybar
 firefox
+neovim
+git
 nautilus                 # $fileManager in hyprland.lua/programs.lua (SUPER+E, SUPER+SHIFT+F)
 hyprpaper                # autostart.lua: wallpaper daemon
 hyprlauncher              # $menu in programs.lua
