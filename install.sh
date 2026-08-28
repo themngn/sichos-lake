@@ -15,8 +15,25 @@
 # Safe to re-run: each step checks current state before changing anything.
 # System-level steps (packages, greeter user, theme files, greetd config)
 # run via sudo and will prompt for your password in this terminal.
+#
+# Flags:
+#   --vm   force software rendering (WLR_RENDERER=pixman, LIBGL_ALWAYS_SOFTWARE=1)
+#          in env.lua. Needed on VMware/vmwgfx and similar, where accelerated
+#          buffer handling breaks wlroots clients (wl_surface.attach errors).
+#   --alt  swap the Hyprland main modifier from SUPER to ALT in keybindings.lua
+#          (useful when the host OS/hypervisor eats the Super key).
 
 set -euo pipefail
+
+VM=0
+ALT=0
+for arg in "$@"; do
+    case "$arg" in
+        --vm) VM=1 ;;
+        --alt) ALT=1 ;;
+        *) echo "unknown flag: $arg" >&2; exit 1 ;;
+    esac
+done
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -86,6 +103,22 @@ for f in "$HERE"/hypr/*; do
 done
 echo "    installed to ~/.config/hypr (Hyprland reloads config automatically on save)"
 
+if [ "$VM" -eq 1 ]; then
+    ENV_LUA="$HOME/.config/hypr/env.lua"
+    if ! grep -q "WLR_RENDERER" "$ENV_LUA"; then
+        sed -i '/hl\.env("HYPRCURSOR_SIZE"/a hl.env("WLR_RENDERER", "pixman")\nhl.env("LIBGL_ALWAYS_SOFTWARE", "1")' "$ENV_LUA"
+        echo "    --vm: added software-rendering env vars to env.lua"
+    else
+        echo "    --vm: software-rendering env vars already present"
+    fi
+fi
+
+if [ "$ALT" -eq 1 ]; then
+    KEYBINDS_LUA="$HOME/.config/hypr/keybindings.lua"
+    sed -i 's/local mainMod = "SUPER"/local mainMod = "ALT"/' "$KEYBINDS_LUA"
+    echo "    --alt: main modifier set to ALT in keybindings.lua"
+fi
+
 echo "==> quickshell config"
 
 while IFS= read -r -d '' f; do
@@ -142,6 +175,17 @@ else
     echo "    config already up to date"
 fi
 
+# Installing the package alone doesn't make greetd the active display
+# manager or boot into a graphical session — both have to be set
+# explicitly, or a fresh machine just sits at multi-user.target forever.
+sudo systemctl enable greetd
+if [ "$(systemctl get-default)" != "graphical.target" ]; then
+    echo "    setting default boot target to graphical.target"
+    sudo systemctl set-default graphical.target
+else
+    echo "    default boot target already graphical.target"
+fi
+
 echo "==> wallpaper"
 
 mkdir -p "$HOME/Pictures"
@@ -164,13 +208,13 @@ else
     echo "    installed (hyprpaper not running under this session — will show on next login)"
 fi
 
-cat <<'EOF'
+cat <<EOF
 
 ==> Done.
 
 Nothing here restarted greetd, quickshell, or rebooted for you:
-  - reboot (or `sudo systemctl restart greetd`) to pick up the greetd/
-    Plymouth changes
-  - Hyprland and quickshell config changes are already live
+  - reboot (or \`sudo systemctl restart greetd\`) to pick up the greetd/
+    Plymouth changes$([ "$VM" -eq 1 ] && echo "/env.lua render overrides (env vars are only read at Hyprland startup, and initial_session only fires once per boot, so a reboot is the reliable way)")
+  - Hyprland and quickshell config changes are already live$([ "$ALT" -eq 1 ] && echo " (except the --alt modifier swap, which needs the reboot above too)")
   - restart kitty for its config change to take effect
 EOF
