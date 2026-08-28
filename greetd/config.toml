@@ -1,0 +1,9 @@
+[terminal]
+vt = 1
+
+[default_session]
+command = "agreety -c start-hyprland"
+
+[initial_session]
+command = "start-hyprland"
+user = "mono"

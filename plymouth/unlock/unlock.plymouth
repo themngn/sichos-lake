@@ -1,0 +1,11 @@
+[Plymouth Theme]
+Name=unlock
+Description=Boot/unlock splash screen.
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/unlock
+ScriptFile=/usr/share/plymouth/themes/unlock/unlock.script
+ConsoleLogBackgroundColor=0x000000
+MonospaceFont=Cantarell 11
+Font=Cantarell 11
