@@ -15,6 +15,17 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 QS_DIR="$HOME/.config/quickshell/modules"
 
+echo "==> Hyprland"
+
+if ! rpm -q hyprland >/dev/null 2>&1; then
+    echo "    enabling COPR lionheartp/Hyprland"
+    sudo dnf copr enable -y lionheartp/Hyprland
+    echo "    installing hyprland"
+    sudo dnf install -y hyprland
+else
+    echo "    hyprland already installed"
+fi
+
 echo "==> Plymouth 'unlock' theme"
 
 if ! rpm -q plymouth-plugin-script >/dev/null 2>&1; then
