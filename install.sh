@@ -202,7 +202,7 @@ if pgrep -x hyprpaper >/dev/null 2>&1 && [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}"
     nohup hyprpaper >/tmp/hyprpaper.log 2>&1 &
     disown
     sleep 1
-    hyprctl hyprpaper wallpaper "eDP-1,$HOME/Pictures/default.png" >/dev/null 2>&1 || true
+    hyprctl hyprpaper wallpaper ",$HOME/Pictures/default.png" >/dev/null 2>&1 || true
     echo "    installed and reloaded live"
 else
     echo "    installed (hyprpaper not running under this session — will show on next login)"

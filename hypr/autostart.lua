@@ -27,5 +27,5 @@ hl.on("hyprland.start", function ()
   hl.exec_cmd("nm-applet")
   -- hyprpaper (this build) does not read hyprpaper.conf; the wallpaper must
   -- be set over its IPC socket after it starts up.
-  hl.exec_cmd("quickshell & (hyprpaper & sleep 1; hyprctl hyprpaper wallpaper 'eDP-1,/home/mono/Pictures/default.png') & firefox")
+  hl.exec_cmd("quickshell & (hyprpaper & sleep 1; hyprctl hyprpaper wallpaper ',/home/mono/Pictures/default.png') & firefox")
 end)
