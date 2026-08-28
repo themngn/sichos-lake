@@ -255,7 +255,7 @@ PanelWindow {
                     visible: launcher.mode !== "root"
                     anchors.verticalCenter: parent.verticalCenter
                     text: "<"
-                    color: Theme.textMuted
+                    color: Theme.accent
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontSize + 3
                     MouseArea { anchors.fill: parent; onClicked: launcher.goBack() }
@@ -263,7 +263,7 @@ PanelWindow {
 
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: launcher.title
+                    text: "[ " + launcher.title + " ]"
                     color: Theme.textMuted
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontSize + 2
@@ -278,10 +278,25 @@ PanelWindow {
                 border.color: Qt.rgba(0.757, 0.008, 0.980, 0.5)
                 border.width: 1
 
+                Text {
+                    id: prompt
+                    anchors.left: parent.left
+                    anchors.leftMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "❯"
+                    color: Theme.accent
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontSize + 5
+                }
+
                 TextInput {
                     id: input
-                    anchors.fill: parent
-                    anchors.margins: 8
+                    anchors.left: prompt.right
+                    anchors.leftMargin: 8
+                    anchors.right: parent.right
+                    anchors.rightMargin: 8
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
                     verticalAlignment: TextInput.AlignVCenter
                     clip: true
                     color: Theme.text
@@ -326,7 +341,7 @@ PanelWindow {
             ListView {
                 id: list
                 width: parent.width
-                height: parent.height - 85
+                height: parent.height - 115
                 clip: true
                 model: launcher.filtered
 
@@ -349,7 +364,16 @@ PanelWindow {
                     width: list.width
                     height: 40
                     radius: 0
-                    color: row.index === launcher.selectedIndex ? Qt.rgba(0.757, 0.008, 0.980, 0.25) : "transparent"
+                    color: row.index === launcher.selectedIndex ? Qt.rgba(0.757, 0.008, 0.980, 0.16) : "transparent"
+
+                    Rectangle {
+                        visible: row.index === launcher.selectedIndex
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        width: 3
+                        color: Theme.accent
+                    }
 
                     Row {
                         anchors {
@@ -360,6 +384,15 @@ PanelWindow {
                             verticalCenter: parent.verticalCenter
                         }
                         spacing: 10
+
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 12
+                            text: row.index === launcher.selectedIndex ? "❯" : ""
+                            color: Theme.accent
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSize + 3
+                        }
 
                         Image {
                             visible: row.modelData.type === "app"
@@ -388,7 +421,7 @@ PanelWindow {
                             verticalCenter: parent.verticalCenter
                         }
                         text: ">"
-                        color: Theme.textMuted
+                        color: row.index === launcher.selectedIndex ? Theme.accent : Theme.textMuted
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontSize + 3
                     }
@@ -423,6 +456,15 @@ PanelWindow {
                         onClicked: launcher.activate(row.modelData)
                     }
                 }
+            }
+
+            Text {
+                width: parent.width
+                height: 20
+                text: "↑↓ move  ❯ select  esc back"
+                color: Theme.textDim
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSize - 2
             }
         }
     }
