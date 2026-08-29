@@ -132,6 +132,12 @@ echo "==> kitty config"
 install_file "$HERE/kitty/kitty.conf" "$HOME/.config/kitty/kitty.conf"
 echo "    installed to ~/.config/kitty"
 
+echo "==> fastfetch config (SichOS branding)"
+
+install_file "$HERE/fastfetch/config.jsonc" "$HOME/.config/fastfetch/config.jsonc"
+install_file "$HERE/fastfetch/logo.txt" "$HOME/.config/fastfetch/logo.txt"
+echo "    installed to ~/.config/fastfetch"
+
 echo "==> Plymouth 'unlock' theme"
 
 if ! rpm -q plymouth-plugin-script >/dev/null 2>&1; then

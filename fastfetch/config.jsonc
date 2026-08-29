@@ -1,0 +1,29 @@
+{
+    "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
+    "logo": {
+        "type": "file",
+        "source": "~/.config/fastfetch/logo.txt"
+    },
+    "modules": [
+        "title",
+        "separator",
+        {
+            "type": "os",
+            "format": "SichOS"
+        },
+        "host",
+        "kernel",
+        "uptime",
+        "packages",
+        "shell",
+        "wm",
+        "terminal",
+        "break",
+        "cpu",
+        "gpu",
+        "memory",
+        "disk",
+        "break",
+        "colors"
+    ]
+}
