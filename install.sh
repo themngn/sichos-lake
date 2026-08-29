@@ -2,11 +2,18 @@
 # Installs everything in this directory onto the current machine:
 #   - base packages this desktop needs (packages.txt), Hyprland + quickshell
 #     from the lionheartp/Hyprland COPR
+#   - RPM Fusion (free + nonfree) and, by default, Flatpak + the Flathub remote
 #   - the JetBrainsMono Nerd Font (not packaged by Fedora; fetched from
 #     upstream nerd-fonts releases)
 #   - the Hyprland Lua config (~/.config/hypr)
 #   - the full quickshell config (~/.config/quickshell)
+#   - HyprQuickFrame (github.com/Ronin-CK/HyprQuickFrame), a quickshell-based
+#     screenshot overlay, cloned to ~/.config/quickshell/HyprQuickFrame and
+#     bound to Print/SHIFT+Print/CTRL+Print in keybindings.lua, plus satty
+#     (mineiro/satty COPR) for its "Edit" annotation action
 #   - the kitty config (~/.config/kitty)
+#   - qt6ct with a dark color scheme, so Qt6 apps (Telegram) pick up dark
+#     window chrome/dialogs via QT_QPA_PLATFORMTHEME=qt6ct (set in env.lua)
 #   - the "unlock" Plymouth theme (black bg, purple lock/entry, SignOS logo)
 #   - the greetd autologin config (initial_session as mono + a real greeter
 #     fallback, plus the missing "greeter" system user)
@@ -22,6 +29,28 @@
 #          buffer handling breaks wlroots clients (wl_surface.attach errors).
 #   --alt  swap the Hyprland main modifier from SUPER to ALT in keybindings.lua
 #          (useful when the host OS/hypervisor eats the Super key).
+#
+# wlctl, pavucontrol dark theme, fastfetch branding, Plymouth theme, greetd
+# autologin, and the wallpaper are all core parts of this setup and always
+# run — they are not configurable. Telegram is a genuinely optional extra
+# app: it's opt-in via SKIP_TELEGRAM=0 (default is skipped). Flatpak +
+# Flathub defaults to ON instead (SKIP_FLATPAK=1 to skip it).
+# ./sichos-setup.sh sets both of these for you interactively.
+#
+# Git identity and SSH key setup are opt-IN (the opposite default, since
+# running install.sh bare shouldn't silently touch your git config or mint a
+# new SSH key): set GIT_NAME/GIT_EMAIL to configure `git config --global`,
+# and SSH_KEY_MODE to one of skip (default) / existing / generate /
+# generate-gh (generate + `gh ssh-key add`). SKIP_SSHD=0 installs and
+# enables openssh-server (opening it in firewalld if active) — default
+# skipped, since a keypair or authorized_keys are pointless for incoming
+# access without it. SSHD_PASSWORD_AUTH=1 allows password login when sshd
+# is enabled (default 0/key-only). GH_IMPORT_USER (blank = skip) pulls a GitHub
+# username's public keys into ~/.ssh/authorized_keys via
+# github.com/<user>.keys, independent of SSH_KEY_MODE — that's this
+# machine's identity going out, this is who's allowed to log in. SICHOS_HOSTNAME
+# overrides the default fedora->SichOS rename with a custom hostname.
+# ./sichos-setup.sh sets all of these for you interactively.
 
 set -euo pipefail
 
@@ -52,11 +81,58 @@ install_file() {
 echo "==> hostname"
 
 CURRENT_HOSTNAME="$(hostname)"
-if [ "$CURRENT_HOSTNAME" = "fedora" ]; then
-    echo "    renaming default hostname 'fedora' -> 'SichOS'"
-    sudo hostnamectl set-hostname SichOS
+TARGET_HOSTNAME="${SICHOS_HOSTNAME:-}"
+if [ -z "$TARGET_HOSTNAME" ] && [ "$CURRENT_HOSTNAME" = "fedora" ]; then
+    TARGET_HOSTNAME="SichOS"
+fi
+if [ -n "$TARGET_HOSTNAME" ] && [ "$TARGET_HOSTNAME" != "$CURRENT_HOSTNAME" ]; then
+    echo "    renaming hostname '$CURRENT_HOSTNAME' -> '$TARGET_HOSTNAME'"
+    sudo hostnamectl set-hostname "$TARGET_HOSTNAME"
 else
-    echo "    hostname already customized ($CURRENT_HOSTNAME), leaving as is"
+    echo "    hostname already set ($CURRENT_HOSTNAME), leaving as is"
+fi
+
+echo "==> RPM Fusion (free + nonfree)"
+
+if ! rpm -q rpmfusion-free-release >/dev/null 2>&1; then
+    echo "    enabling rpmfusion-free"
+    sudo dnf install -y "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm"
+else
+    echo "    rpmfusion-free already enabled"
+fi
+if ! rpm -q rpmfusion-nonfree-release >/dev/null 2>&1; then
+    echo "    enabling rpmfusion-nonfree"
+    sudo dnf install -y "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm"
+else
+    echo "    rpmfusion-nonfree already enabled"
+fi
+
+echo "==> Flatpak + Flathub"
+
+if [ "${SKIP_FLATPAK:-0}" = "1" ]; then
+    echo "    skipped"
+else
+    if ! rpm -q flatpak >/dev/null 2>&1; then
+        echo "    installing flatpak"
+        sudo dnf install -y flatpak
+    else
+        echo "    flatpak already installed"
+    fi
+    if flatpak remote-list 2>/dev/null | grep -q '^flathub'; then
+        echo "    flathub remote already added"
+    else
+        sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+        echo "    added flathub remote"
+    fi
+
+    for app in ${FLATHUB_APPS:-}; do
+        if flatpak info "$app" >/dev/null 2>&1; then
+            echo "    $app already installed"
+        else
+            echo "    installing $app"
+            flatpak install -y --noninteractive flathub "$app"
+        fi
+    done
 fi
 
 echo "==> Hyprland + quickshell packages"
@@ -137,10 +213,88 @@ while IFS= read -r -d '' f; do
 done < <(find "$HERE/quickshell" -type f -print0)
 echo "    installed to ~/.config/quickshell (hot-reloads automatically)"
 
+echo "==> HyprQuickFrame (screenshot overlay, github.com/Ronin-CK/HyprQuickFrame)"
+
+# A sibling of our own config under ~/.config/quickshell rather than part of
+# it — the "quickshell config" step above only touches files that exist in
+# this repo's quickshell/ directory, so it never conflicts with this clone.
+# Invoked via `quickshell -p <path>` (not `-c <name>`): our own top-level
+# ~/.config/quickshell/shell.qml gets registered as quickshell's "default"
+# config, which per quickshell's own docs disables scanning any
+# subdirectories for named configs — `-c HyprQuickFrame` would never
+# resolve while that file exists. `-p` loads the given path directly instead
+# (see the comment in keybindings.lua where it's actually invoked).
+HQF_DIR="$HOME/.config/quickshell/HyprQuickFrame"
+if [ -d "$HQF_DIR/.git" ]; then
+    echo "    updating existing clone"
+    git -C "$HQF_DIR" pull --ff-only
+else
+    echo "    cloning to $HQF_DIR"
+    git clone --depth 1 https://github.com/Ronin-CK/HyprQuickFrame "$HQF_DIR"
+fi
+
+# ~/.config/hyprquickframe/theme.toml is checked before the repo's own copy
+# (see HyprQuickFrame's README) — same defaults, animations turned off.
+install_file "$HERE/hyprquickframe/theme.toml" "$HOME/.config/hyprquickframe/theme.toml"
+echo "    theme installed to ~/.config/hyprquickframe (animations disabled)"
+
+echo "==> satty (HyprQuickFrame's annotationTool)"
+
+# Not in Fedora or RPM Fusion; not available at all until this COPR is enabled.
+if ! rpm -q satty >/dev/null 2>&1; then
+    sudo dnf copr enable -y mineiro/satty
+    sudo dnf install -y satty
+else
+    echo "    already installed"
+fi
+
 echo "==> kitty config"
 
 install_file "$HERE/kitty/kitty.conf" "$HOME/.config/kitty/kitty.conf"
 echo "    installed to ~/.config/kitty"
+
+echo "==> pavucontrol-dark GTK4 theme"
+
+# A *named* theme under ~/.local/share/themes, not ~/.config/gtk-4.0/gtk.css:
+# the latter is a global user stylesheet applied to every GTK4 app, including
+# libadwaita ones like Nautilus, which already do their own correct dark
+# styling via the color-scheme portal — a global override collided with that
+# and broke Nautilus. A named theme only applies to processes explicitly
+# launched with GTK_THEME=pavucontrol-dark (Volume.qml, for pavucontrol only).
+install_file "$HERE/themes/pavucontrol-dark/gtk-4.0/gtk.css" \
+    "$HOME/.local/share/themes/pavucontrol-dark/gtk-4.0/gtk.css"
+echo "    installed to ~/.local/share/themes/pavucontrol-dark"
+
+echo "==> qt6ct (Qt app dark theme)"
+
+# env.lua already sets QT_QPA_PLATFORMTHEME=qt6ct globally, but qt6ct itself
+# wasn't installed until Qt apps actually existed in this setup (Telegram is
+# the first). The runtime plugin (libqt6ct.so) reads exactly these two keys
+# — confirmed via `strings` on the plugin binary — so a hand-written config
+# is enough; no need to run the qt6ct GUI once to seed one.
+if ! rpm -q qt6ct >/dev/null 2>&1; then
+    echo "    installing qt6ct"
+    sudo dnf install -y qt6ct
+else
+    echo "    qt6ct already installed"
+fi
+install_file "$HERE/qt6ct/qt6ct.conf" "$HOME/.config/qt6ct/qt6ct.conf"
+echo "    installed to ~/.config/qt6ct (dark palette: darker.conf)"
+
+echo "==> wlctl (wifi TUI, used by quickshell/scripts/wlctl-toggle.sh)"
+
+if command -v wlctl >/dev/null 2>&1; then
+    echo "    already installed"
+else
+    if ! command -v cargo >/dev/null 2>&1; then
+        echo "    installing cargo (build dependency, not packaged on crates.io as a binary)"
+        sudo dnf install -y cargo
+    fi
+    echo "    building via 'cargo install wlctl' (https://github.com/aashish-thapa/wlctl)"
+    cargo install wlctl
+    sudo install -Dm755 "$HOME/.cargo/bin/wlctl" /usr/local/bin/wlctl
+    echo "    installed to /usr/local/bin/wlctl"
+fi
 
 echo "==> fastfetch config (SichOS branding)"
 
@@ -222,6 +376,138 @@ if pgrep -x hyprpaper >/dev/null 2>&1 && [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}"
     echo "    installed and reloaded live"
 else
     echo "    installed (hyprpaper not running under this session — will show on next login)"
+fi
+
+echo "==> Telegram"
+
+if [ "${SKIP_TELEGRAM:-1}" = "1" ]; then
+    echo "    skipped"
+elif rpm -q telegram-desktop >/dev/null 2>&1; then
+    echo "    already installed"
+else
+    sudo dnf install -y telegram-desktop
+fi
+
+if [ -z "${GIT_NAME:-}" ] && [ -z "${GIT_EMAIL:-}" ]; then
+    echo "==> git identity (skipped)"
+else
+    echo "==> git identity"
+    if [ -n "${GIT_NAME:-}" ]; then
+        git config --global user.name "$GIT_NAME"
+        echo "    user.name = $GIT_NAME"
+    fi
+    if [ -n "${GIT_EMAIL:-}" ]; then
+        git config --global user.email "$GIT_EMAIL"
+        echo "    user.email = $GIT_EMAIL"
+    fi
+fi
+
+SSH_KEY_MODE="${SSH_KEY_MODE:-skip}"
+if [ "$SSH_KEY_MODE" = "skip" ]; then
+    echo "==> SSH key (skipped)"
+else
+    echo "==> SSH key"
+    SSH_KEY="$HOME/.ssh/id_ed25519"
+
+    if [ -f "$SSH_KEY" ]; then
+        echo "    using existing $SSH_KEY"
+    else
+        mkdir -p "$HOME/.ssh"
+        chmod 700 "$HOME/.ssh"
+        # No passphrase: this runs as part of an unattended-ish setup flow.
+        # Add one later with 'ssh-keygen -p' if you want one.
+        ssh-keygen -t ed25519 -C "${GIT_EMAIL:-$USER@$(hostname)}" -f "$SSH_KEY" -N ""
+        echo "    generated $SSH_KEY"
+    fi
+
+    if [ "$SSH_KEY_MODE" = "generate-gh" ]; then
+        if ! command -v gh >/dev/null 2>&1; then
+            echo "    installing GitHub CLI (gh)"
+            sudo dnf install -y 'dnf-command(config-manager)'
+            sudo dnf config-manager addrepo --from-repofile=https://cli.github.com/packages/rpm/gh-cli.repo 2>/dev/null \
+                || sudo dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+            sudo dnf install -y gh
+        fi
+        if ! gh auth status >/dev/null 2>&1; then
+            echo "    not logged in to gh — starting login flow"
+            gh auth login
+        fi
+        KEY_FINGERPRINT="$(ssh-keygen -lf "$SSH_KEY.pub" | awk '{print $2}')"
+        if gh ssh-key list 2>/dev/null | grep -qF "$KEY_FINGERPRINT"; then
+            echo "    key already registered on GitHub"
+        else
+            gh ssh-key add "$SSH_KEY.pub" --title "$(hostname)-$(date +%Y%m%d)"
+            echo "    uploaded $SSH_KEY.pub to GitHub"
+        fi
+    fi
+fi
+
+# Also independent of SSH_KEY_MODE and opt-in (default skip): a local
+# keypair or authorized_keys are pointless for incoming access if sshd
+# isn't actually installed and running.
+if [ "${SKIP_SSHD:-1}" = "1" ]; then
+    echo "==> SSH server (skipped)"
+else
+    echo "==> SSH server"
+    if ! rpm -q openssh-server >/dev/null 2>&1; then
+        echo "    installing openssh-server"
+        sudo dnf install -y openssh-server
+    else
+        echo "    openssh-server already installed"
+    fi
+    sudo systemctl enable --now sshd
+    echo "    sshd enabled and running"
+
+    if systemctl is-active --quiet firewalld; then
+        if sudo firewall-cmd --query-service=ssh >/dev/null 2>&1; then
+            echo "    firewall already allows ssh"
+        else
+            sudo firewall-cmd --permanent --add-service=ssh
+            sudo firewall-cmd --reload
+            echo "    opened ssh in firewalld"
+        fi
+    fi
+
+    # A drop-in under sshd_config.d/ (included by Fedora's default
+    # sshd_config) rather than editing sshd_config directly — idempotent to
+    # re-run and won't fight a future openssh-server update that ships a
+    # new default sshd_config.
+    SSHD_PASSWORD_AUTH="${SSHD_PASSWORD_AUTH:-0}"
+    PW_SETTING=$([ "$SSHD_PASSWORD_AUTH" = "1" ] && echo yes || echo no)
+    sudo mkdir -p /etc/ssh/sshd_config.d
+    printf 'PasswordAuthentication %s\n' "$PW_SETTING" | sudo tee /etc/ssh/sshd_config.d/99-sichos.conf >/dev/null
+    sudo sshd -t
+    sudo systemctl reload sshd
+    echo "    password login: $PW_SETTING"
+fi
+
+# Independent of SSH_KEY_MODE above: that's this machine's own identity going
+# OUT to GitHub; this pulls a GitHub user's public keys IN, via GitHub's
+# public (unauthenticated) https://github.com/<user>.keys endpoint, so that
+# account can log into this machine over SSH.
+GH_IMPORT_USER="${GH_IMPORT_USER:-}"
+if [ -z "$GH_IMPORT_USER" ]; then
+    echo "==> authorize GitHub user's keys (skipped)"
+else
+    echo "==> authorize GitHub user's keys ($GH_IMPORT_USER)"
+    mkdir -p "$HOME/.ssh"
+    chmod 700 "$HOME/.ssh"
+    touch "$HOME/.ssh/authorized_keys"
+    chmod 600 "$HOME/.ssh/authorized_keys"
+
+    IMPORTED_KEYS="$(curl -fsSL "https://github.com/$GH_IMPORT_USER.keys")" || IMPORTED_KEYS=""
+    if [ -z "$IMPORTED_KEYS" ]; then
+        echo "    no public keys found for '$GH_IMPORT_USER' (typo, or account has none)"
+    else
+        ADDED=0
+        while IFS= read -r key; do
+            [ -z "$key" ] && continue
+            grep -qF "$key" "$HOME/.ssh/authorized_keys" && continue
+            echo "$key" >> "$HOME/.ssh/authorized_keys"
+            ADDED=$((ADDED + 1))
+        done <<< "$IMPORTED_KEYS"
+        echo "    added $ADDED new key(s) to ~/.ssh/authorized_keys"
+    fi
 fi
 
 cat <<EOF

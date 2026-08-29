@@ -16,8 +16,13 @@ Pill {
 
     onClicked: (mouse) => {
         if (!sink || !sink.audio) return
-        if (mouse.button === Qt.LeftButton) sink.audio.muted = !sink.audio.muted
-        else if (mouse.button === Qt.RightButton) Quickshell.execDetached(["pavucontrol"])
+        // pavucontrol-dark (~/.local/share/themes) is scoped to just this
+        // process: pavucontrol is plain GTK4 with no libadwaita, so it
+        // doesn't pick up dark mode from either the adw-gtk3-dark GTK3 theme
+        // (env.lua) or the color-scheme portal (which GTK4 only honors
+        // through libadwaita) — it needs its own named theme instead.
+        if (mouse.button === Qt.LeftButton) Quickshell.execDetached(["env", "GTK_THEME=pavucontrol-dark", "pavucontrol"])
+        else if (mouse.button === Qt.RightButton) sink.audio.muted = !sink.audio.muted
     }
     // Touchpads deliver a smooth-scroll gesture as many small angleDelta
     // events rather than one ±120 "notch", and often end the gesture with a

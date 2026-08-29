@@ -60,3 +60,25 @@ hl.window_rule({
     -- in this file) is what actually resizes the window.
     size   = "monitor_w*0.8 monitor_h*0.8",
 })
+
+-- Float and center pavucontrol (opened by right-clicking the volume module
+-- in the quickshell bar), same size/position treatment as wlctl above.
+hl.window_rule({
+    name  = "float-center-pavucontrol",
+    match = { class = "org.pulseaudio.pavucontrol" },
+
+    float  = true,
+    center = true,
+    size   = "monitor_w*0.8 monitor_h*0.8",
+})
+
+-- Float and center the fastfetch "Info" kitty window (launcher root menu),
+-- same treatment as wlctl above.
+hl.window_rule({
+    name  = "float-center-info",
+    match = { class = "sichos-info" },
+
+    float  = true,
+    center = true,
+    size   = "monitor_w*0.8 monitor_h*0.8",
+})

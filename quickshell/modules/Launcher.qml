@@ -65,11 +65,15 @@ PanelWindow {
         ]
     }
 
+    // Icons are Nerd Font glyphs (Font Awesome set), not .desktop icons —
+    // these aren't real installed apps, so there's nothing for
+    // Quickshell.iconPath to resolve.
     readonly property var rootItems: [
-        { type: "folder", id: "apps", name: "Apps" },
-        { type: "folder", id: "toggles", name: "Toggles" },
-        { type: "folder", id: "power", name: "Power" },
-        { type: "folder", id: "hidden", name: "Hidden" }
+        { type: "folder", id: "apps", name: "Apps", icon: "" },
+        { type: "folder", id: "toggles", name: "Toggles", icon: "" },
+        { type: "folder", id: "power", name: "Power", icon: "" },
+        { type: "folder", id: "hidden", name: "Hidden", icon: "" },
+        { type: "info", id: "info", name: "Info", icon: "" }
     ]
 
     // Everything selectable, flattened — search always looks through
@@ -167,6 +171,15 @@ PanelWindow {
             else if (item.id === "bluetooth") Bluetooth.defaultAdapter.enabled = !Bluetooth.defaultAdapter.enabled
             return
         }
+        if (item.type === "info") {
+            launcher.close()
+            // --hold: fastfetch prints once and exits immediately, which
+            // would otherwise close the window right away. --class +
+            // window_rules.lua's float-center-info rule float/center/size
+            // it the same way wlctl's window is (see NetworkIndicator.qml).
+            Quickshell.execDetached(["kitty", "--hold", "--class", "sichos-info", "-e", "fastfetch"])
+            return
+        }
         if (item.type === "power") {
             const commands = {
                 logout: ["sh", "-c", "hyprctl dispatch exit"],
@@ -220,7 +233,10 @@ PanelWindow {
         function close() { launcher.close() }
     }
 
-    onVisibleChanged: if (launcher.visible) input.forceActiveFocus()
+    onVisibleChanged: if (launcher.visible) {
+        input.forceActiveFocus()
+        AppIndex.refresh()
+    }
 
     MouseArea {
         anchors.fill: parent
@@ -402,6 +418,17 @@ PanelWindow {
                             height: 25
                             sourceSize: Qt.size(25, 25)
                             fillMode: Image.PreserveAspectFit
+                        }
+
+                        Text {
+                            visible: row.modelData.type !== "app" && !!row.modelData.icon
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 32
+                            horizontalAlignment: Text.AlignHCenter
+                            text: row.modelData.icon || ""
+                            color: Theme.text
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSize + 16
                         }
 
                         Text {

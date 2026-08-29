@@ -12,12 +12,15 @@ nautilus                 # $fileManager in hyprland.lua/programs.lua (SUPER+E, S
 hyprpaper                # autostart.lua: wallpaper daemon
 hyprlauncher              # $menu in programs.lua
 fastfetch                # ~/.config/fastfetch: SichOS branding (logo.txt + config.jsonc)
+gum                      # sichos-setup.sh: interactive installer TUI
 
 ## Session / input
 wireplumber              # provides wpctl, used in volume/mute keybinds
 brightnessctl
 playerctl
 NetworkManager
+NetworkManager-wifi      # wifi device plugin — without it NM treats wlan devices as
+                          # generic (unmanaged) instead of wifi; needed by wlctl
 power-profiles-daemon    # waybar power-profiles-daemon module
 pavucontrol               # waybar pulseaudio module on-click
 
@@ -25,6 +28,10 @@ pavucontrol               # waybar pulseaudio module on-click
 grim
 slurp
 jq
+tree
+ImageMagick               # HyprQuickFrame (github.com/Ronin-CK/HyprQuickFrame) dependency
+wl-clipboard              # HyprQuickFrame dependency
+libnotify                 # HyprQuickFrame dependency (capture notifications)
 
 ## Dark theme
 adw-gtk3-theme            # adw-gtk3-dark: GTK_THEME (env.lua) + gsettings gtk-theme (autostart.lua)
@@ -35,17 +42,7 @@ xdg-desktop-portal-hyprland
 hyprpolkitagent           # autostart.lua: polkit auth agent — without it, polkit-gated actions
                           # (e.g. mounting a LUKS drive from Nautilus) fail with "Not authorized"
 
-## Still missing — referenced by config but not installed
-network-manager-applet   # autostart.lua: nm-applet
-# sudo dnf install -y network-manager-applet
-
 ## Optional / not needed
-# qt6ct — env.lua sets QT_QPA_PLATFORMTHEME=qt6ct for Qt app dark theming, but qt6ct
-# itself isn't installed, so Qt apps currently fall back to their default (light) style.
-# No Qt apps in the current config, so this is low priority.
-#   sudo dnf install -y qt6ct
-# then run `qt6ct` once and pick a dark color scheme under Appearance.
-#
 # hyprshutdown — referenced in keybindings.lua (SUPER+M) behind a `command -v` check,
 # so its absence is harmless (falls back to hyprctl dispatch exit).
 

@@ -23,6 +23,18 @@ hl.bind(mainMod .. " + SPACE", hl.dsp.exec_cmd("hyprctl switchxkblayout current 
 hl.bind(mainMod .. " + CTRL + SHIFT + R", hl.dsp.exec_cmd("pkill quickshell; quickshell & disown")) -- reload quickshell bar
 hl.bind("CTRL + " .. mainMod .. " + I", hl.dsp.exec_cmd("hyprctl dispatch idleinhibit toggle")) -- toggle idle inhibitor
 
+-- Screenshots (HyprQuickFrame: https://github.com/Ronin-CK/HyprQuickFrame)
+-- -p (explicit path), not -c (named config): our own quickshell config
+-- already has a top-level ~/.config/quickshell/shell.qml, and quickshell's
+-- own docs say a top-level shell.qml gets registered as the "default"
+-- config and disables scanning ANY subdirectories for named configs — -c
+-- HyprQuickFrame would never resolve while that file exists. -p bypasses
+-- that lookup entirely and just loads the given path directly.
+local hqfPath = "$HOME/.config/quickshell/HyprQuickFrame"
+hl.bind("Print",         hl.dsp.exec_cmd("quickshell -p " .. hqfPath .. " -n")) -- decides region/window/save/copy on the fly
+hl.bind("SHIFT + Print", hl.dsp.exec_cmd("env HQF_MODE=window quickshell -p " .. hqfPath .. " -n"))
+hl.bind("CTRL + Print",  hl.dsp.exec_cmd("env HQF_ACTION=temp quickshell -p " .. hqfPath .. " -n")) -- clipboard-only
+
 -- Move focus with mainMod + arrow keys
 hl.bind(mainMod .. " + left",  hl.dsp.focus({ direction = "left" }))
 hl.bind(mainMod .. " + right", hl.dsp.focus({ direction = "right" }))
