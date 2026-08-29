@@ -57,19 +57,24 @@ PanelWindow {
     }
 
     // Right section
+    // Each Pill already carries 8px horizontalPadding on both sides, so two
+    // adjacent pills stack 16px of padding between their icons before any
+    // Row spacing is added. Tray's own icons (inside one Pill) sit exactly
+    // 8px apart with no padding doubling — matching that here means
+    // cancelling the doubled padding with negative spacing (8 - 8 - 8 = -8).
     Row {
         anchors {
             right: parent.right
             rightMargin: 8
             verticalCenter: parent.verticalCenter
         }
-        spacing: 4
+        spacing: -8
 
         Tray {}
+        Language {}
         NetworkIndicator {}
         Volume {}
         Backlight {}
-        Language {}
         PowerProfile {}
         Battery {}
     }

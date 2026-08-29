@@ -50,14 +50,6 @@ Pill {
 
         Text {
             anchors.verticalCenter: parent.verticalCenter
-            text: root.percent + "%"
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
-            color: Theme.text
-        }
-
-        Text {
-            anchors.verticalCenter: parent.verticalCenter
             text: root.icon()
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize * 1.5

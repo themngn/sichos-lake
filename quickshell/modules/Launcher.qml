@@ -250,7 +250,7 @@ PanelWindow {
         anchors.centerIn: parent
         color: Theme.background
         border.color: Theme.accent
-        border.width: 1
+        border.width: 4
         radius: 0
 
         // Swallows clicks so they don't fall through to the outer

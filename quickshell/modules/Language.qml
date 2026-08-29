@@ -6,10 +6,13 @@ import Quickshell.Io
 Pill {
     id: root
     property string layoutName: "??"
+    // "us,ua" -> ["us", "ua"], plus which index is currently active — both
+    // needed by LanguagePopup to render the full list with the active one
+    // highlighted, rather than just the single active_keymap name.
+    property var layoutCodes: []
+    property int activeIndex: -1
 
     visible: layoutName !== "??"
-
-    tooltipText: root.layoutName
 
     Process {
         id: proc
@@ -20,12 +23,23 @@ Pill {
                     const data = JSON.parse(text)
                     const kbs = data.keyboards || []
                     const kb = kbs.find((k) => k.main) || kbs[0]
-                    if (kb) root.layoutName = kb.active_keymap
+                    if (kb) {
+                        root.layoutName = kb.active_keymap
+                        root.layoutCodes = (kb.layout || "").split(",").filter(c => c.length > 0)
+                        root.activeIndex = kb.active_layout_index
+                    }
                 } catch (e) {
                     // ignore malformed output
                 }
             }
         }
+    }
+
+    LanguagePopup {
+        anchorItem: root
+        visible: root.hovered
+        codes: root.layoutCodes
+        activeIndex: root.activeIndex
     }
 
     function refresh() { proc.running = true }

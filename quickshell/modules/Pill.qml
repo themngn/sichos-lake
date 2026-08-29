@@ -13,6 +13,10 @@ Item {
     default property alias content: layout.data
     property real horizontalPadding: 8
     property string tooltipText: ""
+    // For modules that need a richer hover popup than tooltipText's plain
+    // label (e.g. Language's layout list) — build your own PopupWindow and
+    // bind its visibility to this instead of adding another tooltip mode here.
+    readonly property alias hovered: mouseArea.containsMouse
 
     signal clicked(var mouse)
     signal wheel(var event)

@@ -42,32 +42,51 @@ Pill {
         }
     }
 
+    // Per-icon correction: these Nerd Font glyphs don't share a consistent
+    // bounding box within their advance cell. Measured directly from the
+    // font's glyf table (ink height in font units, 1000/em): mute/zero 508,
+    // high 584, medium 714, low 928 — scaled here so all four render at the
+    // same effective visual height instead of Nerd Font's inconsistent one.
+    function iconScale() {
+        const ic = root.icon()
+        if (ic === "󰕿") return 0.547
+        if (ic === "󰖀") return 0.712
+        if (ic === "󰕾") return 0.870
+        return 1.0
+    }
+
     function icon() {
         if (!sink || !sink.audio) return ""
-        if (sink.audio.muted) return ""
+        if (sink.audio.muted) return "󰝟"
         const v = sink.audio.volume
-        if (v < 0.01) return ""
-        if (v < 0.5) return ""
-        return ""
+        if (v < 0.01) return "󰝟"
+        if (v < 0.34) return "󰕿"
+        if (v < 0.67) return "󰖀"
+        return "󰕾"
     }
 
     Row {
         spacing: 4
 
-        Text {
+        Item {
             anchors.verticalCenter: parent.verticalCenter
-            text: (root.sink && root.sink.audio ? Math.round(root.sink.audio.volume * 100) : 0) + "%"
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize
-            color: root.sink && root.sink.audio && root.sink.audio.muted ? Theme.textDim : Theme.text
-        }
+            width: Theme.fontSize * 1.5
+            height: Theme.fontSize * 1.5
 
-        Text {
-            anchors.verticalCenter: parent.verticalCenter
-            text: root.icon()
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize * 1.5
-            color: root.sink && root.sink.audio && root.sink.audio.muted ? Theme.textDim : Theme.text
+            Text {
+                // Left-aligned, not centered: see VolumeOSD.qml — these
+                // icons vary in width, and centering would shift the
+                // speaker-cone part of the glyph side to side as it changes.
+                anchors {
+                    left: parent.left
+                    leftMargin: 4
+                    verticalCenter: parent.verticalCenter
+                }
+                text: root.icon()
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSize * 1.5 * root.iconScale()
+                color: root.sink && root.sink.audio && root.sink.audio.muted ? Theme.textDim : Theme.text
+            }
         }
     }
 }
