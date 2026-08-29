@@ -49,6 +49,16 @@ install_file() {
     cp "$src" "$dest"
 }
 
+echo "==> hostname"
+
+CURRENT_HOSTNAME="$(hostname)"
+if [ "$CURRENT_HOSTNAME" = "fedora" ]; then
+    echo "    renaming default hostname 'fedora' -> 'SichOS'"
+    sudo hostnamectl set-hostname SichOS
+else
+    echo "    hostname already customized ($CURRENT_HOSTNAME), leaving as is"
+fi
+
 echo "==> Hyprland + quickshell packages"
 
 if ! rpm -q hyprland >/dev/null 2>&1 || ! rpm -q quickshell >/dev/null 2>&1; then
@@ -223,4 +233,6 @@ Nothing here restarted greetd, quickshell, or rebooted for you:
     Plymouth changes$([ "$VM" -eq 1 ] && echo "/env.lua render overrides (env vars are only read at Hyprland startup, and initial_session only fires once per boot, so a reboot is the reliable way)")
   - Hyprland and quickshell config changes are already live$([ "$ALT" -eq 1 ] && echo " (except the --alt modifier swap, which needs the reboot above too)")
   - restart kitty for its config change to take effect
+  - the hostname change (if applied) is live system-wide already; open a new
+    terminal to see it reflected in your shell prompt and fastfetch
 EOF
