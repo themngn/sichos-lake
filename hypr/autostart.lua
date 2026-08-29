@@ -15,6 +15,11 @@ hl.on("hyprland.start", function ()
   -- GTK4/libadwaita apps like Nautilus, and to waybar) are started directly here
   -- instead of relying on systemd to launch them.
   hl.exec_cmd("/usr/libexec/xdg-desktop-portal-hyprland & /usr/libexec/xdg-desktop-portal-gtk & (sleep 1; /usr/libexec/xdg-desktop-portal --replace) &")
+  -- No polkit authentication agent runs by default here either (same
+  -- graphical-session.target gap) — without one, polkit-gated actions like
+  -- mounting a LUKS drive from Nautilus fail outright with "Not authorized"
+  -- instead of prompting, since there's nothing to grant/ask.
+  hl.exec_cmd("/usr/libexec/hyprpolkitagent")
   -- pam_gnome_keyring (session hook in /etc/pam.d/login) already started the
   -- keyring daemon and exported SSH_AUTH_SOCK/GNOME_KEYRING_CONTROL into this
   -- shell's environment; push them into systemd --user and D-Bus activation
