@@ -48,6 +48,15 @@ PanelWindow {
         { type: "power", id: "shutdown", name: "Shutdown", danger: true }
     ]
 
+    // Hyprland reloads its config live on save already (see install.sh) —
+    // this is for forcing it manually. Quickshell has no equivalent "reload
+    // config" IPC call, so "reload" for it means killing and respawning the
+    // process, same as the SUPER+CTRL+SHIFT+R keybinding in keybindings.lua.
+    readonly property var reloadItems: [
+        { type: "reload", id: "hyprland", name: "Reload Hyprland", danger: false },
+        { type: "reload", id: "quickshell", name: "Reload Quickshell", danger: false }
+    ]
+
     readonly property var appItems: AppIndex.apps
         .filter(a => !HiddenApps.isHidden(a.name))
         .map(a => ({ type: "app", name: a.name, exec: a.exec, icon: a.icon, terminal: a.terminal }))
@@ -55,6 +64,19 @@ PanelWindow {
     readonly property var hiddenItems: AppIndex.apps
         .filter(a => HiddenApps.isHidden(a.name))
         .map(a => ({ type: "app", name: a.name, exec: a.exec, icon: a.icon, terminal: a.terminal }))
+
+    // Deliberately a curated allowlist, not every installed app — autostart
+    // only makes sense for apps with a real "start minimized/to tray" flag
+    // (checked against each app's own --help/docs; see autostart-launch.py).
+    // Spotify/Bitwarden/Proton Pass were considered and left out: none of
+    // them has a working CLI flag for it on Linux (Spotify dropped tray
+    // support entirely; the other two only expose it as a GUI setting).
+    readonly property var autostartCandidates: ["Telegram", "Element", "Vesktop", "Discord", "Steam"]
+
+    readonly property var autostartItems: launcher.appItems
+        .filter(a => launcher.autostartCandidates.includes(a.name))
+        .map(a => ({ type: "autostart-app", name: a.name, exec: a.exec, icon: a.icon,
+                     terminal: a.terminal, active: AutostartApps.isEnabled(a.name) }))
 
     readonly property var appMenuItems: {
         if (!launcher.contextApp) return []
@@ -73,6 +95,8 @@ PanelWindow {
         { type: "folder", id: "toggles", name: "Toggles", icon: "" },
         { type: "folder", id: "power", name: "Power", icon: "" },
         { type: "folder", id: "hidden", name: "Hidden", icon: "" },
+        { type: "folder", id: "autostart", name: "Autostart", icon: "" },
+        { type: "folder", id: "reload", name: "Reload", icon: "" },
         { type: "info", id: "info", name: "Info", icon: "" }
     ]
 
@@ -87,6 +111,8 @@ PanelWindow {
         if (launcher.mode === "toggles") return launcher.toggleItems
         if (launcher.mode === "power") return launcher.powerItems
         if (launcher.mode === "hidden") return launcher.hiddenItems
+        if (launcher.mode === "autostart") return launcher.autostartItems
+        if (launcher.mode === "reload") return launcher.reloadItems
         if (launcher.mode === "appmenu") return launcher.appMenuItems
         return launcher.rootItems
     }
@@ -104,6 +130,8 @@ PanelWindow {
         : launcher.mode === "toggles" ? "Toggles"
         : launcher.mode === "power" ? "Power"
         : launcher.mode === "hidden" ? "Hidden"
+        : launcher.mode === "autostart" ? "Autostart"
+        : launcher.mode === "reload" ? "Reload"
         : "Menu"
 
     // SUPER+Q: straight into Apps.
@@ -171,6 +199,10 @@ PanelWindow {
             else if (item.id === "bluetooth") Bluetooth.defaultAdapter.enabled = !Bluetooth.defaultAdapter.enabled
             return
         }
+        if (item.type === "autostart-app") {
+            AutostartApps.toggle(item.name)
+            return
+        }
         if (item.type === "info") {
             launcher.close()
             // --hold: fastfetch prints once and exits immediately, which
@@ -188,6 +220,20 @@ PanelWindow {
                 shutdown: ["systemctl", "poweroff"]
             }
             launcher.close()
+            Quickshell.execDetached(commands[item.id])
+            return
+        }
+        if (item.type === "reload") {
+            launcher.close()
+            const commands = {
+                // A plain hyprctl subcommand, not hl.dsp.exec_cmd/dispatch —
+                // see window_rules.lua's Firefox PiP rule notes on why
+                // dispatcher args need Lua-shaped syntax on this build;
+                // `hyprctl reload` itself isn't a dispatcher call at all.
+                hyprland: ["hyprctl", "reload"],
+                // Same command as keybindings.lua's SUPER+CTRL+SHIFT+R.
+                quickshell: ["sh", "-c", "pkill quickshell; quickshell & disown"]
+            }
             Quickshell.execDetached(commands[item.id])
             return
         }
@@ -377,6 +423,9 @@ PanelWindow {
                     id: row
                     required property var modelData
                     required property int index
+                    // "toggle" (idle/wifi/bluetooth) and "autostart-app" both
+                    // render as an On/Off pill instead of the ">" submenu arrow.
+                    readonly property bool isToggleLike: row.modelData.type === "toggle" || row.modelData.type === "autostart-app"
                     width: list.width
                     height: 40
                     radius: 0
@@ -411,9 +460,10 @@ PanelWindow {
                         }
 
                         Image {
-                            visible: row.modelData.type === "app"
+                            readonly property bool hasRealIcon: row.modelData.type === "app" || row.modelData.type === "autostart-app"
+                            visible: hasRealIcon
                             anchors.verticalCenter: parent.verticalCenter
-                            source: row.modelData.type === "app" && row.modelData.icon ? Quickshell.iconPath(row.modelData.icon, true) : ""
+                            source: hasRealIcon && row.modelData.icon ? Quickshell.iconPath(row.modelData.icon, true) : ""
                             width: 25
                             height: 25
                             sourceSize: Qt.size(25, 25)
@@ -421,7 +471,7 @@ PanelWindow {
                         }
 
                         Text {
-                            visible: row.modelData.type !== "app" && !!row.modelData.icon
+                            visible: row.modelData.type !== "app" && row.modelData.type !== "autostart-app" && !!row.modelData.icon
                             anchors.verticalCenter: parent.verticalCenter
                             width: 32
                             horizontalAlignment: Text.AlignHCenter
@@ -441,7 +491,7 @@ PanelWindow {
                     }
 
                     Text {
-                        visible: row.modelData.type !== "toggle" && row.modelData.type !== "action"
+                        visible: !row.isToggleLike && row.modelData.type !== "action"
                         anchors {
                             right: parent.right
                             rightMargin: 8
@@ -454,7 +504,7 @@ PanelWindow {
                     }
 
                     Rectangle {
-                        visible: row.modelData.type === "toggle"
+                        visible: row.isToggleLike
                         anchors {
                             right: parent.right
                             rightMargin: 8
@@ -463,14 +513,14 @@ PanelWindow {
                         width: 50
                         height: 22
                         radius: 0
-                        color: row.modelData.type === "toggle" && row.modelData.active ? Theme.success : Qt.rgba(1, 1, 1, 0.1)
+                        color: row.isToggleLike && row.modelData.active ? Theme.success : Qt.rgba(1, 1, 1, 0.1)
                         border.color: Qt.rgba(1, 1, 1, 0.15)
                         border.width: 1
 
                         Text {
                             anchors.centerIn: parent
-                            text: row.modelData.type === "toggle" && row.modelData.active ? "On" : "Off"
-                            color: row.modelData.type === "toggle" && row.modelData.active ? "#1c1c1c" : Theme.textMuted
+                            text: row.isToggleLike && row.modelData.active ? "On" : "Off"
+                            color: row.isToggleLike && row.modelData.active ? "#1c1c1c" : Theme.textMuted
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontSize - 1
                         }

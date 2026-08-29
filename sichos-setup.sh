@@ -93,7 +93,7 @@ read_key() {
 
 # ---------- state ----------
 
-STEPS=("Welcome" "Hostname" "Repositories" "Option Packages" "Git" "SSH" "Debug" "Finalize")
+STEPS=("Welcome" "Hostname" "Repositories" "Option Packages" "Browser" "Git" "SSH" "Debug" "Finalize")
 current_step=0
 content_cursor=0
 
@@ -106,17 +106,146 @@ declare -A ITEM_TARGET=(
     ["Telegram"]="SKIP_TELEGRAM"
     ["Element (Matrix client)"]="FLATPAK:im.riot.Riot"
     ["Vesktop (Discord client)"]="FLATPAK:dev.vencord.Vesktop"
+    ["Signal Desktop"]="FLATPAK:org.signal.Signal"
+    ["Discord"]="SKIP_DISCORD"
+    ["Zoom"]="FLATPAK:us.zoom.Zoom"
+    ["Steam"]="SKIP_STEAM"
+    ["Heroic Games Launcher"]="FLATPAK:com.heroicgameslauncher.hgl"
+    ["Lutris"]="SKIP_LUTRIS"
+    ["Prism Launcher"]="FLATPAK:org.prismlauncher.PrismLauncher"
+    ["Spotify"]="FLATPAK:com.spotify.Client"
+    ["OBS Studio"]="FLATPAK:com.obsproject.Studio"
+    ["LibreOffice"]="SKIP_LIBREOFFICE"
+    ["Obsidian"]="FLATPAK:md.obsidian.Obsidian"
+    ["AppFlowy"]="FLATPAK:io.appflowy.AppFlowy"
+    ["Joplin"]="FLATPAK:net.cozic.joplin_desktop"
+    ["VS Code"]="FLATPAK:com.visualstudio.code"
+    ["VSCodium"]="FLATPAK:com.vscodium.codium"
+    ["Bitwarden"]="FLATPAK:com.bitwarden.desktop"
+    ["Proton Pass"]="FLATPAK:me.proton.Pass"
 )
 declare -A ITEM_DESC=(
     ["Telegram"]="Telegram Desktop messaging app"
     ["Element (Matrix client)"]="Matrix chat client"
     ["Vesktop (Discord client)"]="Discord client with Vencord mods built in"
+    ["Signal Desktop"]="Private messenger"
+    ["Discord"]="Voice/video chat and messaging"
+    ["Zoom"]="Video conferencing"
+    ["Steam"]="Valve's game store and launcher"
+    ["Heroic Games Launcher"]="Play Epic, GOG, and Amazon games"
+    ["Lutris"]="Open-source game launcher for managing games from any source"
+    ["Prism Launcher"]="Minecraft launcher for managing multiple instances/mod loaders"
+    ["Spotify"]="Music streaming"
+    ["OBS Studio"]="Screen recording and streaming"
+    ["LibreOffice"]="Office suite (documents, spreadsheets, slides)"
+    ["Obsidian"]="Markdown notes app"
+    ["AppFlowy"]="Open-source Notion alternative"
+    ["Joplin"]="Open-source note-taking and to-do app"
+    ["VS Code"]="Code editor"
+    ["VSCodium"]="VS Code build without Microsoft telemetry/branding"
+    ["Bitwarden"]="Password manager"
+    ["Proton Pass"]="Proton's password manager"
+)
+# Groups items for display AND for a per-group "select all" row. Doesn't
+# change the install logic, which still just reads SELECTED per label.
+declare -A ITEM_GROUP=(
+    ["Telegram"]="Messengers"
+    ["Element (Matrix client)"]="Messengers"
+    ["Vesktop (Discord client)"]="Messengers"
+    ["Signal Desktop"]="Messengers"
+    ["Discord"]="Messengers"
+    ["Zoom"]="Messengers"
+    ["Steam"]="Gaming"
+    ["Heroic Games Launcher"]="Gaming"
+    ["Lutris"]="Gaming"
+    ["Prism Launcher"]="Gaming"
+    ["Spotify"]="Media"
+    ["OBS Studio"]="Media"
+    ["LibreOffice"]="Productivity"
+    ["Obsidian"]="Productivity"
+    ["AppFlowy"]="Productivity"
+    ["Joplin"]="Productivity"
+    ["VS Code"]="Development"
+    ["VSCodium"]="Development"
+    ["Bitwarden"]="Security"
+    ["Proton Pass"]="Security"
 )
 COMPONENT_ORDER=(
     "Telegram"
     "Element (Matrix client)"
     "Vesktop (Discord client)"
+    "Signal Desktop"
+    "Discord"
+    "Zoom"
+    "Steam"
+    "Heroic Games Launcher"
+    "Lutris"
+    "Prism Launcher"
+    "Spotify"
+    "OBS Studio"
+    "LibreOffice"
+    "Obsidian"
+    "AppFlowy"
+    "Joplin"
+    "VS Code"
+    "VSCodium"
+    "Bitwarden"
+    "Proton Pass"
 )
+# "Select all" per group is a toggle, not a one-way action: pressing it
+# snapshots each item's current on/off state in the group, then checks
+# everything; pressing it again (a mistaken press, or just changing your
+# mind) restores that exact snapshot rather than unchecking everything.
+declare -A GROUP_ALL_ACTIVE=()
+declare -A GROUP_SNAPSHOT=()
+select_all_group() {
+    local group="$1" label target
+    if [ "${GROUP_ALL_ACTIVE[$group]:-0}" = "1" ]; then
+        local i=0 vals
+        IFS=' ' read -ra vals <<< "${GROUP_SNAPSHOT[$group]}"
+        for label in "${COMPONENT_ORDER[@]}"; do
+            [ "${ITEM_GROUP[$label]}" = "$group" ] || continue
+            SELECTED["$label"]="${vals[$i]}"
+            i=$((i+1))
+        done
+        GROUP_ALL_ACTIVE["$group"]=0
+    else
+        local snap=""
+        for label in "${COMPONENT_ORDER[@]}"; do
+            [ "${ITEM_GROUP[$label]}" = "$group" ] || continue
+            snap+="${SELECTED[$label]} "
+        done
+        GROUP_SNAPSHOT["$group"]="${snap% }"
+        for label in "${COMPONENT_ORDER[@]}"; do
+            [ "${ITEM_GROUP[$label]}" = "$group" ] || continue
+            target="${ITEM_TARGET[$label]}"
+            case "$target" in
+                # Leave a still-unavailable Flatpak item as-is — same rule
+                # manually toggling one already follows.
+                FLATPAK:*) flathub_enabled || continue ;;
+            esac
+            SELECTED["$label"]=1
+        done
+        GROUP_ALL_ACTIVE["$group"]=1
+    fi
+}
+# Builds the OPTION_ROWS array: one "GROUP:<name>" entry before each
+# group's items, then one "ITEM:<label>" per COMPONENT_ORDER entry — the
+# single source of truth content_row_count/render_content/
+# activate_content_row all use so their row numbering can't drift apart.
+OPTION_ROWS=()
+build_option_rows() {
+    OPTION_ROWS=()
+    local label group prev_group=""
+    for label in "${COMPONENT_ORDER[@]}"; do
+        group="${ITEM_GROUP[$label]}"
+        if [ "$group" != "$prev_group" ]; then
+            OPTION_ROWS+=("GROUP:$group")
+            prev_group="$group"
+        fi
+        OPTION_ROWS+=("ITEM:$label")
+    done
+}
 declare -A SELECTED
 for label in "${COMPONENT_ORDER[@]}"; do
     SELECTED["$label"]=0  # all optional extras default off
@@ -154,6 +283,85 @@ REPO_ORDER=(
 for label in "${REPO_ORDER[@]}"; do
     SELECTED["$label"]=1  # on by default
 done
+
+# One flat, checkbox-style list — no separate "which to install" vs.
+# "which is default" sections. Press 'd' on a row to make it the default
+# (also checking it, since an uninstalled browser can't be the default);
+# unchecking the current default falls back to another checked browser,
+# or "" (none) if that was the last one — you can uncheck everything,
+# including Firefox.
+declare -A BROWSER_TARGET=(
+    ["Firefox"]="SKIP_FIREFOX"
+    ["Chromium"]="FLATPAK:org.chromium.Chromium"
+    ["LibreWolf"]="FLATPAK:io.gitlab.librewolf-community"
+    ["Google Chrome"]="FLATPAK:com.google.Chrome"
+    ["Ungoogled Chromium"]="FLATPAK:io.github.ungoogled_software.ungoogled_chromium"
+    ["Waterfox"]="FLATPAK:net.waterfox.waterfox"
+)
+declare -A BROWSER_DESC=(
+    ["Firefox"]="Mozilla's web browser"
+    ["Chromium"]="Open-source web browser (the project Google Chrome is built on)"
+    ["LibreWolf"]="Privacy-focused Firefox fork"
+    ["Google Chrome"]="Google's web browser"
+    ["Ungoogled Chromium"]="Chromium with Google integration and tracking removed"
+    ["Waterfox"]="Independent, privacy-focused Firefox fork"
+)
+# Maps a BROWSER_ORDER label to its DEFAULT_BROWSER key.
+declare -A BROWSER_KEY=(
+    ["Firefox"]="firefox"
+    ["Chromium"]="chromium"
+    ["LibreWolf"]="librewolf"
+    ["Google Chrome"]="chrome"
+    ["Ungoogled Chromium"]="ungoogled-chromium"
+    ["Waterfox"]="waterfox"
+)
+declare -A DEFAULT_BROWSER_LABEL=(
+    [firefox]="Firefox"
+    [chromium]="Chromium"
+    [librewolf]="LibreWolf"
+    [chrome]="Google Chrome"
+    [ungoogled-chromium]="Ungoogled Chromium"
+    [waterfox]="Waterfox"
+)
+BROWSER_ORDER=(
+    "Firefox"
+    "LibreWolf"
+    "Waterfox"
+    "Google Chrome"
+    "Chromium"
+    "Ungoogled Chromium"
+)
+for label in "${BROWSER_ORDER[@]}"; do
+    SELECTED["$label"]=0
+done
+SELECTED["Firefox"]=1  # installed + default out of the box
+DEFAULT_BROWSER=firefox
+
+# Sets $1 (a BROWSER_ORDER label) as the default, checking it first if
+# it isn't already (a Flatpak-gated one still needs Flathub on to count).
+set_default_browser() {
+    local label="$1" target="${BROWSER_TARGET[$1]}"
+    case "$target" in
+        FLATPAK:*) flathub_enabled || return ;;
+    esac
+    SELECTED["$label"]=1
+    DEFAULT_BROWSER="${BROWSER_KEY[$label]}"
+}
+# Called after unchecking $1 (a BROWSER_ORDER label) that might have been
+# the default — falls back to another checked browser, or "" (no default)
+# if that was the last one.
+reset_default_if_unchecked() {
+    local label="$1" c
+    [ "$DEFAULT_BROWSER" = "${BROWSER_KEY[$label]}" ] || return
+    for c in "${BROWSER_ORDER[@]}"; do
+        [ "$c" = "$label" ] && continue
+        if [ "${SELECTED[$c]}" = "1" ]; then
+            DEFAULT_BROWSER="${BROWSER_KEY[$c]}"
+            return
+        fi
+    done
+    DEFAULT_BROWSER=""
+}
 
 flathub_enabled() { [ "${SELECTED[$FLATHUB_LABEL]}" = "1" ]; }
 
@@ -198,7 +406,8 @@ content_row_count() {
         Welcome)            echo 0 ;;
         Hostname)           echo 1 ;;
         Repositories)       echo "${#REPO_ORDER[@]}" ;;
-        "Option Packages")  echo "${#COMPONENT_ORDER[@]}" ;;
+        "Option Packages")  build_option_rows; echo "${#OPTION_ROWS[@]}" ;;
+        Browser)            echo "${#BROWSER_ORDER[@]}" ;;
         Git)                echo 2 ;;
         SSH)                echo "$((${#SSH_OPTIONS[@]} + 3))" ;;
         Debug)              echo "${#DEBUG_ORDER[@]}" ;;
@@ -286,6 +495,11 @@ render_content() {
             cup $((row0+2)) "$col"; printf "Pick which optional pieces to install, set your git"
             cup $((row0+3)) "$col"; printf "identity, and set up an SSH key for GitHub."
             cup $((row0+5)) "$col"; printf "%sNothing is applied until you select Install on Finalize.%s" "$DIM" "$RESET"
+            cup $((row0+7)) "$col"; printf "%sControls:%s" "$BOLD" "$RESET"
+            cup $((row0+8)) "$col"; printf "%sTab / Shift+Tab%s  switch steps" "$ACCENT" "$RESET"
+            cup $((row0+9)) "$col"; printf "%s↑ / ↓%s            move within a step" "$ACCENT" "$RESET"
+            cup $((row0+10)) "$col"; printf "%sEnter / Space%s    select, toggle, or edit" "$ACCENT" "$RESET"
+            cup $((row0+11)) "$col"; printf "%sCtrl+C%s           quit without changing anything" "$ACCENT" "$RESET"
             ;;
         Hostname)
             render_row "$row0" 1 "Hostname: $HOSTNAME_VALUE"
@@ -302,12 +516,32 @@ render_content() {
             done
             ;;
         "Option Packages")
-            # Flat list, not grouped by install source — the source (and,
-            # when relevant, why an item can't be toggled yet) is named
-            # inline in its description instead, e.g. "[Flatpak] ...".
-            local i label mark target is_flatpak source_tag desc_text prefix r=$row0
-            for i in "${!COMPONENT_ORDER[@]}"; do
-                label="${COMPONENT_ORDER[$i]}"
+            # One flat COMPONENT_ORDER list for select/install logic;
+            # OPTION_ROWS (built fresh each render by build_option_rows)
+            # interleaves a "select all" row before each group's items —
+            # that's the only reason this loop is driven by OPTION_ROWS's
+            # index (idx) rather than COMPONENT_ORDER's. Install source
+            # (and, when relevant, why an item can't be toggled yet) is
+            # named inline in the description instead, e.g. "[Flatpak] ...".
+            build_option_rows
+            local idx row_desc label mark target is_flatpak source_tag desc_text prefix r=$row0 group
+            for idx in "${!OPTION_ROWS[@]}"; do
+                row_desc="${OPTION_ROWS[$idx]}"
+                if [ "${row_desc:0:6}" = "GROUP:" ]; then
+                    group="${row_desc#GROUP:}"
+                    mark="[ ]"
+                    [ "${GROUP_ALL_ACTIVE[$group]:-0}" = "1" ] && mark="[x]"
+                    cup "$r" "$col"
+                    clear_line_end
+                    if [ "$content_cursor" -eq "$idx" ]; then
+                        printf "%s%s> ── %s %s (select all) ──%s" "$BOLD" "$ACCENT" "$mark" "$group" "$RESET"
+                    else
+                        printf "%s  ── %s %s ──%s" "$DIM" "$mark" "$group" "$RESET"
+                    fi
+                    r=$((r+1))
+                    continue
+                fi
+                label="${row_desc#ITEM:}"
                 target="${ITEM_TARGET[$label]}"
                 is_flatpak=0
                 case "$target" in
@@ -320,11 +554,11 @@ render_content() {
 
                 if [ "$is_flatpak" = "1" ] && ! flathub_enabled; then
                     prefix="  "
-                    [ "$content_cursor" -eq "$i" ] && prefix="> "
+                    [ "$content_cursor" -eq "$idx" ] && prefix="> "
                     cup "$r" "$col"
                     printf "%s%s%s %s%s" "$DIM" "$prefix" "$mark" "$label" "$RESET"
                 else
-                    render_row "$r" "$([ "$content_cursor" -eq "$i" ] && echo 1 || echo 0)" "$mark $label"
+                    render_row "$r" "$([ "$content_cursor" -eq "$idx" ] && echo 1 || echo 0)" "$mark $label"
                 fi
 
                 desc_text="$source_tag ${ITEM_DESC[$label]}"
@@ -333,6 +567,38 @@ render_content() {
                 printf "%s%s%s" "$DIM" "$desc_text" "$RESET"
                 r=$((r+2))
             done
+            ;;
+        Browser)
+            local i label mark is_flatpak desc_text prefix r=$row0
+            for i in "${!BROWSER_ORDER[@]}"; do
+                label="${BROWSER_ORDER[$i]}"
+                is_flatpak=0
+                case "${BROWSER_TARGET[$label]}" in
+                    FLATPAK:*) is_flatpak=1 ;;
+                esac
+
+                mark="[ ]"
+                [ "${SELECTED[$label]}" = "1" ] && mark="[x]"
+                [ "${BROWSER_KEY[$label]}" = "$DEFAULT_BROWSER" ] && label+=" (default)"
+
+                if [ "$is_flatpak" = "1" ] && ! flathub_enabled; then
+                    prefix="  "
+                    [ "$content_cursor" -eq "$i" ] && prefix="> "
+                    cup "$r" "$col"
+                    printf "%s%s%s %s%s" "$DIM" "$prefix" "$mark" "$label" "$RESET"
+                else
+                    render_row "$r" "$([ "$content_cursor" -eq "$i" ] && echo 1 || echo 0)" "$mark $label"
+                fi
+
+                desc_text="${BROWSER_DESC[${BROWSER_ORDER[$i]}]}"
+                [ "$is_flatpak" = "1" ] && ! flathub_enabled && desc_text+=" (needs Flatpak + Flathub)"
+                cup $((r+1)) $((col + 4))
+                printf "%s%s%s" "$DIM" "$desc_text" "$RESET"
+                r=$((r+2))
+            done
+            r=$((r+1))
+            cup "$r" "$col"
+            printf "%sd: make the highlighted browser the default (SUPER+SHIFT+Return, autostart)%s" "$DIM" "$RESET"
             ;;
         Git)
             render_row "$row0" "$([ "$content_cursor" -eq 0 ] && echo 1 || echo 0)" "Full name: ${GIT_NAME:-(skip)}"
@@ -411,6 +677,14 @@ render_content() {
                 cup "$r" $((col+2)); printf "%s %s" "$mark" "$label"; r=$((r+1))
             done
             r=$((r+1))
+            cup "$r" "$col"; printf "%sBrowser:%s" "$BOLD" "$RESET"; r=$((r+1))
+            for label in "${BROWSER_ORDER[@]}"; do
+                mark="[ ]"
+                [ "${SELECTED[$label]}" = "1" ] && mark="[x]"
+                cup "$r" $((col+2)); printf "%s %s" "$mark" "$label"; r=$((r+1))
+            done
+            cup "$r" $((col+2)); printf "Default: %s" "${DEFAULT_BROWSER_LABEL[$DEFAULT_BROWSER]}"; r=$((r+1))
+            r=$((r+1))
             cup "$r" "$col"; printf "Hostname: %s" "$HOSTNAME_VALUE"; r=$((r+2))
             if [ -z "$GIT_NAME" ] && [ -z "$GIT_EMAIL" ]; then
                 cup "$r" "$col"; printf "Git identity: (skipped)"; r=$((r+1))
@@ -487,15 +761,41 @@ activate_content_row() {
                         FLATPAK:*) SELECTED["$c"]=0 ;;
                     esac
                 done
+                for c in "${BROWSER_ORDER[@]}"; do
+                    case "${BROWSER_TARGET[$c]}" in
+                        FLATPAK:*)
+                            SELECTED["$c"]=0
+                            reset_default_if_unchecked "$c"
+                            ;;
+                    esac
+                done
             fi
             ;;
         "Option Packages")
-            local label="${COMPONENT_ORDER[$content_cursor]}"
+            build_option_rows
+            local row_desc="${OPTION_ROWS[$content_cursor]}"
+            if [ "${row_desc:0:6}" = "GROUP:" ]; then
+                select_all_group "${row_desc#GROUP:}"
+                return
+            fi
+            local label="${row_desc#ITEM:}"
             local target="${ITEM_TARGET[$label]}"
             case "$target" in
                 FLATPAK:*) flathub_enabled || return ;;
             esac
             if [ "${SELECTED[$label]}" = "1" ]; then SELECTED["$label"]=0; else SELECTED["$label"]=1; fi
+            ;;
+        Browser)
+            local label="${BROWSER_ORDER[$content_cursor]}"
+            case "${BROWSER_TARGET[$label]}" in
+                FLATPAK:*) flathub_enabled || return ;;
+            esac
+            if [ "${SELECTED[$label]}" = "1" ]; then
+                SELECTED["$label"]=0
+                reset_default_if_unchecked "$label"
+            else
+                SELECTED["$label"]=1
+            fi
             ;;
         Git)
             if [ "$content_cursor" -eq 0 ]; then
@@ -547,6 +847,11 @@ while [ "$INSTALL_CONFIRMED" -eq 0 ]; do
         UP)   [ "$n" -gt 0 ] && content_cursor=$(( (content_cursor - 1 + n) % n )) ;;
         DOWN) [ "$n" -gt 0 ] && content_cursor=$(( (content_cursor + 1) % n )) ;;
         ENTER|SPACE) [ "$n" -gt 0 ] && activate_content_row ;;
+        CHAR:d|CHAR:D)
+            if [ "${STEPS[$current_step]}" = "Browser" ] && [ "$n" -gt 0 ]; then
+                set_default_browser "${BROWSER_ORDER[$content_cursor]}"
+            fi
+            ;;
         *) : ;;
     esac
 done
@@ -556,8 +861,8 @@ done
 ENV_ARGS=()
 FLAGS=()
 FLATHUB_APPS=()
-for label in "${REPO_ORDER[@]}" "${COMPONENT_ORDER[@]}" "${DEBUG_ORDER[@]}"; do
-    target="${REPO_TARGET[$label]:-${ITEM_TARGET[$label]:-${DEBUG_TARGET[$label]}}}"
+for label in "${REPO_ORDER[@]}" "${COMPONENT_ORDER[@]}" "${DEBUG_ORDER[@]}" "${BROWSER_ORDER[@]}"; do
+    target="${REPO_TARGET[$label]:-${ITEM_TARGET[$label]:-${DEBUG_TARGET[$label]:-${BROWSER_TARGET[$label]}}}}"
     case "$target" in
         FLAG:*)
             [ "${SELECTED[$label]}" = "1" ] && FLAGS+=("${target#FLAG:}")

@@ -82,3 +82,22 @@ hl.window_rule({
     center = true,
     size   = "monitor_w*0.8 monitor_h*0.8",
 })
+
+-- Float, pin (stays visible across every workspace), and corner-position
+-- Firefox's video Picture-in-Picture popup, top-right with a small margin.
+hl.window_rule({
+    name  = "float-pin-firefox-pip",
+    -- This Fedora build's Firefox reports class "org.mozilla.firefox", not
+    -- the plain "firefox" other distros/flatpaks use — confirmed via
+    -- `hyprctl clients -j` (matching on the older name silently never fired).
+    -- Plain "-" here, not Lua-pattern-escaped "%-": this match string goes
+    -- to Hyprland's own regex matcher, where "-" is a literal character
+    -- outside brackets — the "%-" was being read as a literal percent sign
+    -- instead, so the title never matched at all.
+    match = { class = "org.mozilla.firefox", title = "^Picture-in-Picture$" },
+
+    float = true,
+    pin   = true,
+    size  = "500 281",          -- 400x225 + 25%, still ~16:9
+    move  = "monitor_w-540 40", -- 500 + 40 margin from the right; 40 down from the top
+})

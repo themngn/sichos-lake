@@ -5,7 +5,6 @@
 hyprland
 kitty
 waybar
-firefox
 neovim
 git
 nautilus                 # $fileManager in hyprland.lua/programs.lua (SUPER+E, SUPER+SHIFT+F)
@@ -13,6 +12,9 @@ hyprpaper                # autostart.lua: wallpaper daemon
 hyprlauncher              # $menu in programs.lua
 fastfetch                # ~/.config/fastfetch: SichOS branding (logo.txt + config.jsonc)
 gum                      # sichos-setup.sh: interactive installer TUI
+gnome-software            # GUI app store — installs/updates both dnf packages (via
+                          # PackageKit) and Flatpak apps
+vlc                       # media player
 
 ## Session / input
 wireplumber              # provides wpctl, used in volume/mute keybinds
@@ -23,6 +25,13 @@ NetworkManager-wifi      # wifi device plugin — without it NM treats wlan devi
                           # generic (unmanaged) instead of wifi; needed by wlctl
 power-profiles-daemon    # waybar power-profiles-daemon module
 pavucontrol               # waybar pulseaudio module on-click
+gnome-keyring             # secrets/SSH-agent service — greetd's pam_gnome_keyring.so
+                          # auto_start needs this package installed to have anything to
+                          # start; without it there's no org.freedesktop.secrets D-Bus
+                          # service, and Electron apps (Element, Vesktop) show a blocking
+                          # "System unsupported" keyring dialog on every launch. Also
+                          # started directly in autostart.lua since PAM alone isn't
+                          # reliable in this setup (see the xdg-portal/polkit note above).
 
 ## Screenshots / misc CLI
 grim
@@ -45,6 +54,10 @@ hyprpolkitagent           # autostart.lua: polkit auth agent — without it, pol
 ## Optional / not needed
 # hyprshutdown — referenced in keybindings.lua (SUPER+M) behind a `command -v` check,
 # so its absence is harmless (falls back to hyprctl dispatch exit).
+# firefox — installed conditionally via install.sh's "==> Firefox" section
+# (SKIP_FIREFOX, default installed) instead of unconditionally here, since
+# sichos-setup.sh's Browser step lets you skip it in favor of another
+# browser (Chrome, Chromium, LibreWolf, Ungoogled Chromium, Waterfox).
 
 ## Installed manually (not via dnf)
 # JetBrainsMono Nerd Font — downloaded from

@@ -1,0 +1,22 @@
+# SichOS override of Fedora's flatpak-exported desktop entry (normally at
+# /var/lib/flatpak/exports/share/applications/im.riot.Riot.desktop) — adds
+# --password-store=gnome-libsecret to Exec=. Without it, Chromium's
+# desktop-environment sniffing doesn't recognize XDG_CURRENT_DESKTOP=Hyprland
+# and never auto-selects a keyring backend, so every launch (manual click or
+# autostart) shows a blocking "No encryption support" dialog — even with a
+# real keyring unlocked (hypr/autostart.lua) and this app's flatpak
+# org.freedesktop.secrets talk-name override (install.sh) both in place; all
+# three pieces are needed together. Deployed by install.sh to
+# ~/.local/share/applications, which XDG data dir precedence puts ahead of
+# the flatpak export dir.
+[Desktop Entry]
+Type=Application
+Name=Element
+Comment=A Matrix-based instant messaging client
+Icon=im.riot.Riot
+Exec=/usr/bin/flatpak run --branch=stable --arch=x86_64 --command=/app/bin/element --file-forwarding im.riot.Riot --password-store=gnome-libsecret @@u %U @@
+Categories=Network;InstantMessaging;Chat;VideoConference;
+MimeType=x-scheme-handler/element;x-scheme-handler/io.element.desktop;
+StartupWMClass=element
+Keywords=Matrix;matrix.org;chat;irc;communications;talk;riot;vector;
+X-Flatpak=im.riot.Riot

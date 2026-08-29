@@ -3,6 +3,11 @@
 #   - base packages this desktop needs (packages.txt), Hyprland + quickshell
 #     from the lionheartp/Hyprland COPR
 #   - RPM Fusion (free + nonfree) and, by default, Flatpak + the Flathub remote
+#     (Element/Vesktop, if selected, also get an org.freedesktop.secrets
+#     flatpak override and a desktop-entry override — see hypr/autostart.lua
+#     for why: without them, an autologin setup like this one's greetd
+#     config can never unlock a real keyring, and these Electron apps show
+#     a blocking dialog on every launch)
 #   - the JetBrainsMono Nerd Font (not packaged by Fedora; fetched from
 #     upstream nerd-fonts releases)
 #   - the Hyprland Lua config (~/.config/hypr)
@@ -36,6 +41,13 @@
 # app: it's opt-in via SKIP_TELEGRAM=0 (default is skipped). Flatpak +
 # Flathub defaults to ON instead (SKIP_FLATPAK=1 to skip it).
 # ./sichos-setup.sh sets both of these for you interactively.
+#
+# Firefox installs and is the default browser unless SKIP_FIREFOX=1 /
+# DEFAULT_BROWSER names another one (chrome, chromium, librewolf,
+# ungoogled-chromium, waterfox — see BROWSER_FLATPAK_ID below). Non-Firefox
+# choices are Flatpak apps, so they also need to be in FLATHUB_APPS —
+# sichos-setup.sh's Browser step keeps both in sync; set them by hand
+# together if scripting install.sh directly.
 #
 # Git identity and SSH key setup are opt-IN (the opposite default, since
 # running install.sh bare shouldn't silently touch your git config or mint a
@@ -133,6 +145,44 @@ else
             flatpak install -y --noninteractive flathub "$app"
         fi
     done
+
+    # Element and Vesktop are both Electron apps that need a couple of
+    # keyring-related fixes applied on top of a plain flatpak install (see
+    # hypr/autostart.lua for the rest of the picture) — otherwise they show
+    # a blocking "No encryption support"/"System unsupported" dialog on
+    # every launch. Checked by current install state rather than
+    # $FLATHUB_APPS so re-running install.sh keeps this in sync even on a
+    # run where the user didn't re-select these apps.
+    for app in im.riot.Riot dev.vencord.Vesktop; do
+        if flatpak info "$app" >/dev/null 2>&1; then
+            # Neither ships org.freedesktop.secrets talk permission by
+            # default, so safeStorage can never reach the keyring even
+            # once one is unlocked and running.
+            flatpak override --user --talk-name=org.freedesktop.secrets "$app"
+            # ...and even with the keyring reachable, Chromium's
+            # desktop-environment sniffing doesn't recognize
+            # XDG_CURRENT_DESKTOP=Hyprland and won't auto-select the
+            # libsecret backend on its own — this override adds
+            # --password-store=gnome-libsecret to Exec= (not
+            # --password-store=basic, the actual weak/unencrypted
+            # fallback) so it applies to every launch, manual or
+            # autostart. See desktop-overrides/$app.desktop.
+            install_file "$HERE/desktop-overrides/$app.desktop" \
+                "$HOME/.local/share/applications/$app.desktop"
+            NEED_DESKTOP_DB_UPDATE=1
+        fi
+    done
+    if [ "${NEED_DESKTOP_DB_UPDATE:-0}" = "1" ]; then
+        # Without this, ~/.local/share/applications/mimeinfo.cache never
+        # gets created/refreshed, so the x-scheme-handler/element and
+        # x-scheme-handler/io.element.desktop entries above are invisible
+        # to the xdg-desktop-portal OpenURI chooser (used when e.g. a
+        # browser hands off an OAuth login callback link to Element) even
+        # though `xdg-mime query default` finds them fine — that command
+        # reads .desktop files directly, but the portal's own app-chooser
+        # goes through this cache and shows "No Apps available" without it.
+        update-desktop-database "$HOME/.local/share/applications"
+    fi
 fi
 
 echo "==> Hyprland + quickshell packages"
@@ -203,6 +253,55 @@ if [ "$ALT" -eq 1 ]; then
     KEYBINDS_LUA="$HOME/.config/hypr/keybindings.lua"
     sed -i 's/local mainMod = "SUPER"/local mainMod = "ALT"/' "$KEYBINDS_LUA"
     echo "    --alt: main modifier set to ALT in keybindings.lua"
+fi
+
+echo "==> Firefox"
+
+if [ "${SKIP_FIREFOX:-0}" = "1" ]; then
+    echo "    skipped"
+elif rpm -q firefox >/dev/null 2>&1; then
+    echo "    already installed"
+else
+    sudo dnf install -y firefox
+fi
+
+echo "==> Default browser"
+
+# Flatpak app IDs for every non-Firefox choice sichos-setup.sh's Browser
+# step can produce as DEFAULT_BROWSER; matches BROWSER_KEY there.
+declare -A BROWSER_FLATPAK_ID=(
+    [chromium]="org.chromium.Chromium"
+    [librewolf]="io.gitlab.librewolf-community"
+    [chrome]="com.google.Chrome"
+    [ungoogled-chromium]="io.github.ungoogled_software.ungoogled_chromium"
+    [waterfox]="net.waterfox.waterfox"
+)
+
+# Patches the just-deployed (fresh, unmodified) copies under ~/.config/hypr
+# rather than the repo's own files — same approach as the --vm/--alt
+# patches above. DEFAULT_BROWSER="" (every browser unchecked) leaves
+# Firefox's programs.lua/autostart.lua entries and whatever system default
+# was already set alone, rather than forcing anything.
+DEFAULT_BROWSER="${DEFAULT_BROWSER:-firefox}"
+if [ -z "$DEFAULT_BROWSER" ]; then
+    echo "    none selected — leaving Firefox's config in place"
+elif [ "$DEFAULT_BROWSER" = "firefox" ]; then
+    if command -v xdg-settings >/dev/null 2>&1; then
+        xdg-settings set default-web-browser org.mozilla.firefox.desktop 2>/dev/null || true
+    fi
+    echo "    Firefox (default)"
+elif [ -n "${BROWSER_FLATPAK_ID[$DEFAULT_BROWSER]:-}" ]; then
+    APP_ID="${BROWSER_FLATPAK_ID[$DEFAULT_BROWSER]}"
+    sed -i "s|M.browser     = \"firefox\"|M.browser     = \"flatpak run $APP_ID\"|" \
+        "$HOME/.config/hypr/programs.lua"
+    sed -i "s|& firefox\"|\\& flatpak run $APP_ID\"|" \
+        "$HOME/.config/hypr/autostart.lua"
+    if command -v xdg-settings >/dev/null 2>&1; then
+        xdg-settings set default-web-browser "$APP_ID.desktop" 2>/dev/null || true
+    fi
+    echo "    set to $DEFAULT_BROWSER"
+else
+    echo "    unrecognized DEFAULT_BROWSER=$DEFAULT_BROWSER, leaving Firefox as default"
 fi
 
 echo "==> quickshell config"
@@ -386,6 +485,52 @@ elif rpm -q telegram-desktop >/dev/null 2>&1; then
     echo "    already installed"
 else
     sudo dnf install -y telegram-desktop
+fi
+
+echo "==> Discord"
+
+# From rpmfusion-nonfree-updates (enabled unconditionally above) — not in
+# Fedora's own repos.
+if [ "${SKIP_DISCORD:-1}" = "1" ]; then
+    echo "    skipped"
+elif rpm -q discord >/dev/null 2>&1; then
+    echo "    already installed"
+else
+    sudo dnf install -y discord
+fi
+
+echo "==> Steam"
+
+# From rpmfusion-nonfree (enabled unconditionally above), not Flathub —
+# native Steam wants direct access to the host's GPU drivers/Vulkan ICDs,
+# udev rules (controllers), and 32-bit compat libs, which is more friction
+# to get right in a Flatpak sandbox than just installing it normally.
+if [ "${SKIP_STEAM:-1}" = "1" ]; then
+    echo "    skipped"
+elif rpm -q steam >/dev/null 2>&1; then
+    echo "    already installed"
+else
+    sudo dnf install -y steam
+fi
+
+echo "==> Lutris"
+
+if [ "${SKIP_LUTRIS:-1}" = "1" ]; then
+    echo "    skipped"
+elif rpm -q lutris >/dev/null 2>&1; then
+    echo "    already installed"
+else
+    sudo dnf install -y lutris
+fi
+
+echo "==> LibreOffice"
+
+if [ "${SKIP_LIBREOFFICE:-1}" = "1" ]; then
+    echo "    skipped"
+elif rpm -q libreoffice >/dev/null 2>&1; then
+    echo "    already installed"
+else
+    sudo dnf install -y libreoffice
 fi
 
 if [ -z "${GIT_NAME:-}" ] && [ -z "${GIT_EMAIL:-}" ]; then

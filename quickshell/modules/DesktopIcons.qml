@@ -25,6 +25,15 @@ for f in /usr/share/applications/*.desktop /usr/local/share/applications/*.deskt
   icon="$(awk -F= '/^Icon=/{print $2; exit}' "$f")"
   wmclass="$(awk -F= '/^StartupWMClass=/{print $2; exit}' "$f")"
   printf '%s\x1f%s\x1f%s\n' "$base" "$wmclass" "$icon"
+  # Steam generates a per-game .desktop file (Icon=steam_icon_<appid>) with
+  # no StartupWMClass at all, but the game's actual runtime window class is
+  # always steam_app_<appid> — derive that mapping directly from the icon
+  # name instead of leaving it to fall through to a generic exe icon.
+  case "$icon" in
+    steam_icon_*)
+      printf '%s\x1f%s\x1f%s\n' "$base" "steam_app_\${icon#steam_icon_}" "$icon"
+      ;;
+  esac
 done
 `
 

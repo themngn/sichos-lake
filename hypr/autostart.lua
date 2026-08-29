@@ -20,16 +20,52 @@ hl.on("hyprland.start", function ()
   -- mounting a LUKS drive from Nautilus fail outright with "Not authorized"
   -- instead of prompting, since there's nothing to grant/ask.
   hl.exec_cmd("/usr/libexec/hyprpolkitagent")
-  -- pam_gnome_keyring (session hook in /etc/pam.d/login) already started the
-  -- keyring daemon and exported SSH_AUTH_SOCK/GNOME_KEYRING_CONTROL into this
-  -- shell's environment; push them into systemd --user and D-Bus activation
-  -- environment too, since D-Bus-activated apps (e.g. some GTK/Flatpak apps)
-  -- won't otherwise see them.
-  hl.exec_cmd("systemctl --user import-environment SSH_AUTH_SOCK GNOME_KEYRING_CONTROL; dbus-update-activation-environment --systemd SSH_AUTH_SOCK GNOME_KEYRING_CONTROL")
+  -- greetd's PAM stack has `pam_gnome_keyring.so auto_start` configured,
+  -- but that's a no-op unless the gnome-keyring package (providing
+  -- gnome-keyring-daemon) is actually installed — see packages.txt. Even
+  -- installed, PAM's own auto-unlock never fires here: greetd's
+  -- `initial_session` autologins straight into Hyprland with no password
+  -- prompt at all (see /etc/greetd/config.toml), so the PAM auth stage
+  -- that would normally capture a password and unlock the keyring never
+  -- runs. So this starts+unlocks it directly instead, the same way PAM
+  -- would: `--login` reading an empty passphrase from stdin (a blank
+  -- line, NOT zero bytes — actual EOF with no bytes is read as
+  -- "cancelled", not "empty password"). This must be the FIRST thing to
+  -- touch org.freedesktop.secrets each boot: it's a D-Bus-activatable
+  -- service (/usr/share/dbus-1/services/org.freedesktop.secrets.service),
+  -- so anything that queries it first (`busctl`, a secrets client) spawns
+  -- a bare `--components=secrets`-only instance via that service file,
+  -- which starts locked with no login/unlock step — confirmed by testing
+  -- both orders directly. `--login` also sets up SSH_AUTH_SOCK, pushed
+  -- into systemd --user's environment too since systemd/D-Bus-activated
+  -- apps won't otherwise see it.
+  --
+  -- An empty-passphrase keyring is still a real, separate encrypted
+  -- secret store — not the same thing as weakening an app's own
+  -- encryption (see the desktop-entry override note below) — it's just
+  -- unlocked with a known blank passphrase instead of prompting nobody.
+  -- Without ANY unlocked keyring, Electron apps' safeStorage can't find
+  -- a supported backend and throws up a blocking "System unsupported" /
+  -- "No encryption support" dialog on every launch (seen with Element).
+  -- The keyring file and its "default" collection alias
+  -- (~/.local/share/keyrings/{login.keyring,default}) are created once
+  -- and persist; this only needs to unlock them each boot.
+  hl.exec_cmd("printf '\\n' | gnome-keyring-daemon --login --components=pkcs11,secrets,ssh >/dev/null 2>&1; systemctl --user import-environment SSH_AUTH_SOCK")
+  -- Even with a real keyring unlocked, Chromium's desktop-environment
+  -- sniffing doesn't recognize XDG_CURRENT_DESKTOP=Hyprland and won't
+  -- auto-select the libsecret backend — Element/Vesktop's desktop-entry
+  -- overrides in ~/.local/share/applications/ pass
+  -- --password-store=gnome-libsecret explicitly to work around that (not
+  -- --password-store=basic, which is the actual weak/unencrypted fallback).
   hl.exec_cmd("gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'")
   hl.exec_cmd("gsettings set org.gnome.desktop.interface gtk-theme 'adw-gtk3-dark'")
   hl.exec_cmd(programs.terminal)
   -- hyprpaper (this build) does not read hyprpaper.conf; the wallpaper must
   -- be set over its IPC socket after it starts up.
   hl.exec_cmd("quickshell & (hyprpaper & sleep 1; hyprctl hyprpaper wallpaper ',/home/mono/Pictures/default.png') & firefox")
+  -- Apps toggled on in the launcher's Autostart folder (SUPER+SHIFT+Q ->
+  -- Autostart) are launched with their own native "start minimized to
+  -- tray" flag instead of appearing in front of you — see
+  -- quickshell/scripts/autostart-launch.py.
+  hl.exec_cmd("python3 \"$HOME/.config/quickshell/scripts/autostart-launch.py\"")
 end)
