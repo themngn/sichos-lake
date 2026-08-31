@@ -62,7 +62,7 @@ hl.on("hyprland.start", function ()
   hl.exec_cmd(programs.terminal)
   -- hyprpaper (this build) does not read hyprpaper.conf; the wallpaper must
   -- be set over its IPC socket after it starts up.
-  hl.exec_cmd("quickshell & (hyprpaper & sleep 1; hyprctl hyprpaper wallpaper ',/home/mono/Pictures/default.png') & firefox")
+  hl.exec_cmd("quickshell & (hyprpaper & sleep 1; hyprctl hyprpaper wallpaper ',/home/mono/Pictures/wallpaper.jpg') & firefox")
   -- Apps toggled on in the launcher's Autostart folder (SUPER+SHIFT+Q ->
   -- Autostart) are launched with their own native "start minimized to
   -- tray" flag instead of appearing in front of you — see

@@ -22,7 +22,7 @@
 #   - the "unlock" Plymouth theme (black bg, purple lock/entry, SignOS logo)
 #   - the greetd autologin config (initial_session as mono + a real greeter
 #     fallback, plus the missing "greeter" system user)
-#   - the SignOS desktop wallpaper (same logo, centered on black)
+#   - the desktop wallpaper (wallpaper/wallpaper.jpg)
 #
 # Safe to re-run: each step checks current state before changing anything.
 # System-level steps (packages, greeter user, theme files, greetd config)
@@ -458,12 +458,11 @@ fi
 echo "==> wallpaper"
 
 mkdir -p "$HOME/Pictures"
-if [ -f "$HOME/Pictures/default.png" ] && ! cmp -s "$HERE/wallpaper/wallpaper-signos.png" "$HOME/Pictures/default.png"; then
-    cp "$HOME/Pictures/default.png" "$HOME/Pictures/default.png.bak"
-    echo "    backed up existing wallpaper to Pictures/default.png.bak"
+if [ -f "$HOME/Pictures/wallpaper.jpg" ] && ! cmp -s "$HERE/wallpaper/wallpaper.jpg" "$HOME/Pictures/wallpaper.jpg"; then
+    cp "$HOME/Pictures/wallpaper.jpg" "$HOME/Pictures/wallpaper.jpg.bak"
+    echo "    backed up existing wallpaper to Pictures/wallpaper.jpg.bak"
 fi
-cp "$HERE/wallpaper/wallpaper-signos.png" "$HOME/Pictures/wallpaper-signos.png"
-cp "$HERE/wallpaper/wallpaper-signos.png" "$HOME/Pictures/default.png"
+cp "$HERE/wallpaper/wallpaper.jpg" "$HOME/Pictures/wallpaper.jpg"
 
 if pgrep -x hyprpaper >/dev/null 2>&1 && [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
     pkill hyprpaper
@@ -471,7 +470,7 @@ if pgrep -x hyprpaper >/dev/null 2>&1 && [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}"
     nohup hyprpaper >/tmp/hyprpaper.log 2>&1 &
     disown
     sleep 1
-    hyprctl hyprpaper wallpaper ",$HOME/Pictures/default.png" >/dev/null 2>&1 || true
+    hyprctl hyprpaper wallpaper ",$HOME/Pictures/wallpaper.jpg,cover" >/dev/null 2>&1 || true
     echo "    installed and reloaded live"
 else
     echo "    installed (hyprpaper not running under this session — will show on next login)"
