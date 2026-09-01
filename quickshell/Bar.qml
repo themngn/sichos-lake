@@ -51,7 +51,13 @@ PanelWindow {
     }
 
     readonly property color opaqueBackground: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, 0.8)
-    color: bar.activeWorkspaceHasWindows ? bar.opaqueBackground : "transparent"
+    readonly property color fullyOpaqueBackground: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, 1.0)
+    // TransparencyToggle overrides the dynamic behavior above with a
+    // constant solid backdrop, matching kitty's background_opacity going to
+    // 1.0 at the same time (see ShellState.transparencyOpaque).
+    color: ShellState.transparencyOpaque
+        ? bar.fullyOpaqueBackground
+        : (bar.activeWorkspaceHasWindows ? bar.opaqueBackground : "transparent")
     Behavior on color {
         ColorAnimation { duration: 200; easing.type: Easing.OutQuad }
     }
@@ -64,9 +70,9 @@ PanelWindow {
     // One Component per right-section widget, picked by id at runtime so
     // BarSettings' order/enabled state (edited from the launcher's
     // Settings > Bar Widgets folder) can reshuffle and show/hide them
-    // without Bar.qml hardcoding a fixed declaration order. Night Light and
-    // Stay Awake below aren't part of this — they're a fixed pair, not
-    // covered by BarSettings.
+    // without Bar.qml hardcoding a fixed declaration order. Night Light,
+    // Stay Awake, and the transparency toggle below aren't part of this —
+    // they're a fixed trio, not covered by BarSettings.
     Component { id: trayComp; Tray {} }
     Component { id: aiModelUsageComp; AiModelUsage { screenName: bar.screen.name } }
     Component { id: notificationCenterComp; NotificationCenter {} }
@@ -108,9 +114,9 @@ PanelWindow {
         Submap {}
     }
 
-    // Center section — the clock owns true screen-center; the sunset/idle
-    // toggles are secondary and sit to its left rather than sharing the
-    // center point.
+    // Center section — the clock owns true screen-center; the sunset/idle/
+    // transparency toggles are secondary and sit to its left rather than
+    // sharing the center point.
     ClockWidget {
         id: clock
         screenName: bar.screen.name
@@ -173,6 +179,14 @@ PanelWindow {
                 // hyprsunset — now via its systemd --user service too, same
                 // reasoning as hyprsunset's onScheduleSaved above.
                 Quickshell.execDetached(["systemctl", "--user", "restart", "hypridle.service"])
+            }
+        }
+        TransparencyToggle {
+            opaque: ShellState.transparencyOpaque
+            onToggle: {
+                ShellState.transparencyOpaque = !ShellState.transparencyOpaque
+                Quickshell.execDetached(["python3", Quickshell.env("HOME") + "/.config/quickshell/scripts/toggle-transparency.py",
+                    ShellState.transparencyOpaque ? "opaque" : "semi"])
             }
         }
     }

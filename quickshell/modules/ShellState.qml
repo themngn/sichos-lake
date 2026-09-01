@@ -21,6 +21,24 @@ QtObject {
 
     property bool idleActive: false
 
+    // Whether the bar/terminal transparency toggle is in "opaque" mode.
+    // kitty.conf's background_opacity line is the actual source of truth
+    // (see toggle-transparency.py) — this is just loaded from it once at
+    // startup so the bar and its toggle icon open already matching
+    // whatever kitty windows currently show, then flipped locally by the
+    // toggle itself (see Bar.qml's TransparencyToggle).
+    property bool transparencyOpaque: false
+
+    readonly property FileView _kittyConf: FileView {
+        path: Quickshell.env("HOME") + "/.config/kitty/kitty.conf"
+        printErrors: false
+    }
+
+    function _loadTransparency() {
+        const m = /background_opacity\s+([\d.]+)/.exec(root._kittyConf.text())
+        root.transparencyOpaque = m ? (+m[1] >= 1.0) : false
+    }
+
     // User's chosen sunset mode, from SunsetToggle's popup: "schedule"
     // (follow hyprsunset.conf's day/night profiles), "on" (a warm filter
     // forced on, whatever kelvin), or "off" (identity forced, no filter).
@@ -88,7 +106,10 @@ QtObject {
         onTriggered: root._recomputeSunsetWarm()
     }
 
-    Component.onCompleted: root._loadSunsetKelvin()
+    Component.onCompleted: {
+        root._loadSunsetKelvin()
+        root._loadTransparency()
+    }
 
     // Dragging the popup's slider updates the displayed value on every
     // mouse move (cheap, just a property), but the disk write + hyprctl

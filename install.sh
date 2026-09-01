@@ -549,6 +549,11 @@ echo "==> kitty config"
 install_file "$HERE/kitty/kitty.conf" "$HOME/.config/kitty/kitty.conf"
 echo "    installed to ~/.config/kitty"
 
+echo "==> neovim config (transparent background)"
+
+install_file "$HERE/nvim/init.lua" "$HOME/.config/nvim/init.lua"
+echo "    installed to ~/.config/nvim"
+
 echo "==> pavucontrol-dark GTK4 theme"
 
 # A *named* theme under ~/.local/share/themes, not ~/.config/gtk-4.0/gtk.css:
