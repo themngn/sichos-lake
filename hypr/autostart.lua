@@ -2,55 +2,79 @@
 ---- AUTOSTART ----
 -------------------
 
-local programs = require("programs")
-
 -- See https://wiki.hypr.land/Configuring/Basics/Autostart/
 
 -- Autostart necessary processes (like notifications daemons, status bars, etc.)
 -- Or execute your favorite apps at launch like this:
 --
 hl.on("hyprland.start", function ()
-  -- graphical-session.target isn't reliably activated in this setup, so the
-  -- xdg-desktop-portal daemons (needed for dark-mode/appearance signalling to
-  -- GTK4/libadwaita apps like Nautilus, and to waybar) are started directly here
-  -- instead of relying on systemd to launch them.
-  hl.exec_cmd("/usr/libexec/xdg-desktop-portal-hyprland & /usr/libexec/xdg-desktop-portal-gtk & (sleep 1; /usr/libexec/xdg-desktop-portal --replace) &")
-  -- No polkit authentication agent runs by default here either (same
-  -- graphical-session.target gap) — without one, polkit-gated actions like
-  -- mounting a LUKS drive from Nautilus fail outright with "Not authorized"
-  -- instead of prompting, since there's nothing to grant/ask.
-  hl.exec_cmd("/usr/libexec/hyprpolkitagent")
-  -- greetd's PAM stack has `pam_gnome_keyring.so auto_start` configured,
-  -- but that's a no-op unless the gnome-keyring package (providing
-  -- gnome-keyring-daemon) is actually installed — see packages.txt. Even
-  -- installed, PAM's own auto-unlock never fires here: greetd's
-  -- `initial_session` autologins straight into Hyprland with no password
-  -- prompt at all (see /etc/greetd/config.toml), so the PAM auth stage
-  -- that would normally capture a password and unlock the keyring never
-  -- runs. So this starts+unlocks it directly instead, the same way PAM
-  -- would: `--login` reading an empty passphrase from stdin (a blank
-  -- line, NOT zero bytes — actual EOF with no bytes is read as
-  -- "cancelled", not "empty password"). This must be the FIRST thing to
-  -- touch org.freedesktop.secrets each boot: it's a D-Bus-activatable
-  -- service (/usr/share/dbus-1/services/org.freedesktop.secrets.service),
-  -- so anything that queries it first (`busctl`, a secrets client) spawns
-  -- a bare `--components=secrets`-only instance via that service file,
-  -- which starts locked with no login/unlock step — confirmed by testing
-  -- both orders directly. `--login` also sets up SSH_AUTH_SOCK, pushed
-  -- into systemd --user's environment too since systemd/D-Bus-activated
-  -- apps won't otherwise see it.
-  --
-  -- An empty-passphrase keyring is still a real, separate encrypted
-  -- secret store — not the same thing as weakening an app's own
-  -- encryption (see the desktop-entry override note below) — it's just
-  -- unlocked with a known blank passphrase instead of prompting nobody.
-  -- Without ANY unlocked keyring, Electron apps' safeStorage can't find
-  -- a supported backend and throws up a blocking "System unsupported" /
-  -- "No encryption support" dialog on every launch (seen with Element).
-  -- The keyring file and its "default" collection alias
-  -- (~/.local/share/keyrings/{login.keyring,default}) are created once
-  -- and persist; this only needs to unlock them each boot.
-  hl.exec_cmd("printf '\\n' | gnome-keyring-daemon --login --components=pkcs11,secrets,ssh >/dev/null 2>&1; systemctl --user import-environment SSH_AUTH_SOCK")
+  -- xdg-desktop-portal(-hyprland/-gtk), hyprpolkitagent, hyprsunset, and
+  -- hypridle used to be launched as plain background processes here, on the
+  -- (long-held) premise that graphical-session.target never activates in
+  -- this setup — see CLAUDE.md's Hyprland section for the history. Under
+  -- the SDDM+uwsm-managed session now in use it demonstrably does activate
+  -- (`systemctl --user is-active graphical-session.target` reports active,
+  -- and uwsm is specifically what exports WAYLAND_DISPLAY into systemd's
+  -- user-manager environment — these units all gate on
+  -- ConditionEnvironment=WAYLAND_DISPLAY, so without uwsm they'd never
+  -- start even if enabled). So all five now run as their packaged
+  -- `systemd --user` units instead: the portals are Type=dbus (no enable
+  -- needed, D-Bus-activate on demand), the other three are `systemctl
+  -- --user enable`d by install.sh (right after the Hyprland config step).
+  -- If graphical-session.target ever stops activating
+  -- again (e.g. picking the plain, non-uwsm `hyprland.desktop` entry at the
+  -- SDDM prompt), these services simply won't start — that's the tradeoff
+  -- for dropping the manual fallback.
+  -- This used to be removed on the theory that SDDM's `/etc/pam.d/sddm`
+  -- (which does list `pam_gnome_keyring.so` in both its `auth` and
+  -- `session` stages) would auto-create+unlock a real-password "login"
+  -- keyring by itself, making a manual step redundant. Tested that theory
+  -- against a real reboot+login and it's false: `journalctl -b 0` shows
+  -- zero `pam_gnome_keyring` activity at login, and the first thing to
+  -- actually touch org.freedesktop.secrets afterward D-Bus-activated a bare
+  -- daemon with no "login" collection at all (`discover_other_daemon: 0` —
+  -- nothing was already running). What the user actually saw: gnome-keyring
+  -- fell back to interactively prompting for a brand-new "Default keyring"
+  -- password on first secrets access, AND rewrote the `default` alias file
+  -- to point at that instead of "login" — so it silently kept prompting on
+  -- every subsequent access too, since apps resolve the "default" alias,
+  -- not "login" by name. (That stray keyring got backed up as
+  -- `Default_keyring.keyring.bak-<timestamp>`, alias reset back to
+  -- "login".) So this is back to manually bootstrapping a blank-passphrase
+  -- "login" keyring every boot — not because of autologin this time, but
+  -- because PAM integration with gnome-keyring just doesn't work under this
+  -- SDDM setup, full stop. Blank passphrase specifically because it's the
+  -- one password guaranteed to never need an interactive prompt: `--login`
+  -- reads it from stdin as a blank line, NOT zero bytes (actual EOF is read
+  -- as "cancelled", not "empty password"). `--login` itself doesn't claim
+  -- org.freedesktop.secrets on the bus — it just writes
+  -- $XDG_RUNTIME_DIR/keyring/control with the unlocked state; whatever
+  -- D-Bus later activates from org.freedesktop.secrets.service
+  -- (`--start --components=secrets`) is what actually owns the name, and is
+  -- supposed to find that control file (`discover_other_daemon: 1` in its
+  -- log) and proxy to it rather than starting locked — confirmed working
+  -- live via busctl once this line runs before anything else touches
+  -- secrets. This must therefore be the FIRST thing to touch
+  -- org.freedesktop.secrets each boot, which it is (hyprland.start fires
+  -- before anything else in this config). Deliberately NOT killing any
+  -- prior gnome-keyring-daemon here (an earlier version did): `pkill -f`'s
+  -- pattern matches this very shell's own argv (it contains the literal
+  -- string being searched for), so it could kill its own invoking shell
+  -- before reaching the `--login` call — and on a clean boot there's
+  -- nothing running yet to kill anyway, so it bought nothing. `--login`
+  -- also sets up SSH_AUTH_SOCK, pushed into systemd --user's environment
+  -- too since systemd/D-Bus-activated apps won't otherwise see it. An
+  -- empty-passphrase keyring is still a real, separate encrypted secret
+  -- store — not the same thing as weakening an app's own encryption (see
+  -- the desktop-entry override note below) — it's just unlocked with a
+  -- known blank passphrase instead of prompting nobody. Without ANY
+  -- unlocked keyring, Electron apps' safeStorage can't find a supported
+  -- backend and throws up a blocking "System unsupported" / "No encryption
+  -- support" dialog on every launch (seen with Element). If you ever see an
+  -- interactive "unlock keyring" prompt anyway, leave the password field
+  -- BLANK and submit — that's the actual passphrase; typing your account
+  -- password will never work and just re-prompts forever.
+  hl.exec_cmd("rm -rf \"$XDG_RUNTIME_DIR/keyring\"; printf '\\n' | gnome-keyring-daemon --login --components=pkcs11,secrets,ssh >/dev/null 2>&1; systemctl --user import-environment SSH_AUTH_SOCK")
   -- Even with a real keyring unlocked, Chromium's desktop-environment
   -- sniffing doesn't recognize XDG_CURRENT_DESKTOP=Hyprland and won't
   -- auto-select the libsecret backend — Element/Vesktop's desktop-entry
@@ -59,13 +83,23 @@ hl.on("hyprland.start", function ()
   -- --password-store=basic, which is the actual weak/unencrypted fallback).
   hl.exec_cmd("gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'")
   hl.exec_cmd("gsettings set org.gnome.desktop.interface gtk-theme 'adw-gtk3-dark'")
-  hl.exec_cmd(programs.terminal)
   -- hyprpaper (this build) does not read hyprpaper.conf; the wallpaper must
   -- be set over its IPC socket after it starts up.
-  hl.exec_cmd("quickshell & (hyprpaper & sleep 1; hyprctl hyprpaper wallpaper ',/home/mono/Pictures/wallpaper.jpg') & firefox")
+  hl.exec_cmd("quickshell & (hyprpaper & sleep 1; hyprctl hyprpaper wallpaper ',/home/mono/Pictures/wallpaper.jpg') &")
+  -- Blue-light filter (hyprsunset.conf) and the idle/lock daemon
+  -- (hypridle.conf, lock/screen-off timeouts; the bar's Stay Awake toggle —
+  -- Bar.qml's IdleInhibitor — suspends both while on) now run as their
+  -- packaged systemd --user services instead of being launched here — see
+  -- this function's opening comment for the migration.
   -- Apps toggled on in the launcher's Autostart folder (SUPER+SHIFT+Q ->
   -- Autostart) are launched with their own native "start minimized to
   -- tray" flag instead of appearing in front of you — see
   -- quickshell/scripts/autostart-launch.py.
   hl.exec_cmd("python3 \"$HOME/.config/quickshell/scripts/autostart-launch.py\"")
+  -- Monitor event watcher daemon (hotplug, clamshell, modeless recovery):
+  hl.exec_cmd("python3 \"$HOME/.config/hypr/monitor-watch.py\" &")
+  -- SichOS Gamepad Overlay Daemon:
+  -- Listens for controller Guide/Home button to toggle the Quickshell launcher
+  -- overlay and navigates apps/folders with D-Pad/stick when active.
+  hl.exec_cmd("sichos-gamepad &")
 end)
