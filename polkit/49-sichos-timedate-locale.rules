@@ -1,0 +1,19 @@
+// Skip the polkit password prompt for changing the system locale/timezone
+// from an active local session, if you're in the wheel group (i.e. already
+// have sudo). Upstream's own default policy for these two actions requires
+// auth_admin_keep even for a fully active session — fine for a
+// multi-admin box, but SichOS's launcher (Menu > Settings > Time & Region,
+// TimeRegion.qml) calls timedatectl/localectl directly as a GUI action
+// with no terminal to type a password into, so it'd otherwise always
+// prompt. Scoped to wheel + an active session, not a blanket allow, so a
+// remote/inactive session or a non-admin account still gets the normal
+// prompt.
+polkit.addRule(function(action, subject) {
+    if (
+        (action.id == "org.freedesktop.locale1.set-locale" ||
+         action.id == "org.freedesktop.timedate1.set-timezone") &&
+        subject.active && subject.isInGroup("wheel")
+    ) {
+        return polkit.Result.YES;
+    }
+});

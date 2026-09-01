@@ -1,0 +1,19 @@
+# Deployed to /etc/sysconfig/sddm by install.sh (wired into sddm.service via
+# EnvironmentFile=-/etc/sysconfig/sddm — real process environment variables
+# for the sddm daemon, cage compositor, and greeter). First two comment lines +
+# QML_DISABLE_DISK_CACHE are Fedora's own stock content, kept as-is.
+#
+# workaround https://bugzilla.redhat.com/1686675
+# see also https://bugreports.qt.io/browse/QTBUG-58508
+QML_DISABLE_DISK_CACHE=1
+# enable qDebug messages for debug build
+# QT_LOGGING_RULES="*.debug=true"
+
+# SichOS: SDDM Wayland greeter cursor configuration.
+# Cage (wlroots) and Qt Wayland read these directly for cursor theme and sizing.
+XCURSOR_THEME=Adwaita
+XCURSOR_SIZE=24
+
+# On AMD/NVIDIA GPU and driver combos where hardware cursor planes fail or glitch,
+# wlroots honors WLR_NO_HARDWARE_CURSORS to fall back to software cursor rendering.
+WLR_NO_HARDWARE_CURSORS=1

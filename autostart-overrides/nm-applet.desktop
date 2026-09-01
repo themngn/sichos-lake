@@ -1,0 +1,8 @@
+# SichOS override suppressing NetworkManager's own /etc/xdg/autostart/nm-applet.desktop
+# for this user — deployed to ~/.config/autostart/nm-applet.desktop, which the XDG
+# autostart spec gives priority over the system one (same basename, Hidden=true wins).
+# Not needed here: this repo has its own wifi TUI (wlctl, quickshell/scripts/
+# wlctl-toggle.sh) instead of a tray applet. Package itself is left installed (it's
+# a NetworkManager component, not something to remove) — only autostart is suppressed.
+[Desktop Entry]
+Hidden=true

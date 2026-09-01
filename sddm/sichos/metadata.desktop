@@ -1,0 +1,9 @@
+[SddmGreeterTheme]
+Name=SichOS
+Description=Hand-written minimal theme matching this desktop's own quickshell look
+Author=SichOS
+Type=sddm-theme
+Version=1.0
+MainScript=Main.qml
+Theme-Id=sichos
+Theme-API=2.0
