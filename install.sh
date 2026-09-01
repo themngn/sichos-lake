@@ -5,9 +5,8 @@
 #   - RPM Fusion (free + nonfree) and, by default, Flatpak + the Flathub remote
 #     (Element/Vesktop, if selected, also get an org.freedesktop.secrets
 #     flatpak override and a desktop-entry override — see hypr/autostart.lua
-#     for why: without them, an autologin setup like this one's greetd
-#     config can never unlock a real keyring, and these Electron apps show
-#     a blocking dialog on every launch)
+#     for why: without them these Electron apps' safeStorage can't reach a
+#     keyring backend and show a blocking dialog on every launch)
 #   - the JetBrainsMono Nerd Font (not packaged by Fedora; fetched from
 #     upstream nerd-fonts releases)
 #   - the Hyprland Lua config (~/.config/hypr)
@@ -16,17 +15,21 @@
 #     screenshot overlay, cloned to ~/.config/quickshell/HyprQuickFrame and
 #     bound to Print/SHIFT+Print/CTRL+Print in keybindings.lua, plus satty
 #     (mineiro/satty COPR) for its "Edit" annotation action
+#   - sichos-gamepad (mdukhota/test1 COPR), native controller overlay daemon
 #   - the kitty config (~/.config/kitty)
 #   - qt6ct with a dark color scheme, so Qt6 apps (Telegram) pick up dark
 #     window chrome/dialogs via QT_QPA_PLATFORMTHEME=qt6ct (set in env.lua)
 #   - the "unlock" Plymouth theme (black bg, purple lock/entry, SignOS logo)
-#   - the greetd autologin config (initial_session as mono + a real greeter
-#     fallback, plus the missing "greeter" system user)
+#   - SDDM as the login screen/display manager, with the real modern Plasma 6
+#     Breeze theme (sddm-breeze + kde-settings-sddm — not sddm's own bare
+#     default, which is a much plainer fallback), real password login — no
+#     autologin. Also disables greetd (this setup's old display manager, now
+#     retired: tuigreet/qtgreet were both greetd greeters, no longer used)
 #   - the desktop wallpaper (wallpaper/wallpaper.jpg)
 #
 # Safe to re-run: each step checks current state before changing anything.
-# System-level steps (packages, greeter user, theme files, greetd config)
-# run via sudo and will prompt for your password in this terminal.
+# System-level steps (packages, theme files, SDDM) run via sudo and will
+# prompt for your password in this terminal.
 #
 # Flags:
 #   --vm   force software rendering (WLR_RENDERER=pixman, LIBGL_ALWAYS_SOFTWARE=1)
@@ -35,8 +38,8 @@
 #   --alt  swap the Hyprland main modifier from SUPER to ALT in keybindings.lua
 #          (useful when the host OS/hypervisor eats the Super key).
 #
-# wlctl, pavucontrol dark theme, fastfetch branding, Plymouth theme, greetd
-# autologin, and the wallpaper are all core parts of this setup and always
+# wlctl, pavucontrol dark theme, fastfetch branding, Plymouth theme, SDDM,
+# and the wallpaper are all core parts of this setup and always
 # run — they are not configurable. Telegram is a genuinely optional extra
 # app: it's opt-in via SKIP_TELEGRAM=0 (default is skipped). Flatpak +
 # Flathub defaults to ON instead (SKIP_FLATPAK=1 to skip it).
@@ -47,7 +50,10 @@
 # ungoogled-chromium, waterfox — see BROWSER_FLATPAK_ID below). Non-Firefox
 # choices are Flatpak apps, so they also need to be in FLATHUB_APPS —
 # sichos-setup.sh's Browser step keeps both in sync; set them by hand
-# together if scripting install.sh directly.
+# together if scripting install.sh directly. GFN_APPS is the same idea for
+# GeForce NOW (sichos-setup.sh's Gaming step): it's a Flatpak app id too,
+# but installed from its own Nvidia-hosted "GeForceNOW" remote instead of
+# Flathub, since Nvidia doesn't publish it there.
 #
 # Git identity and SSH key setup are opt-IN (the opposite default, since
 # running install.sh bare shouldn't silently touch your git config or mint a
@@ -62,6 +68,10 @@
 # github.com/<user>.keys, independent of SSH_KEY_MODE — that's this
 # machine's identity going out, this is who's allowed to log in. SICHOS_HOSTNAME
 # overrides the default fedora->SichOS rename with a custom hostname.
+# SICHOS_TIMEZONE (an IANA zone like America/New_York), SICHOS_LANG (a
+# glibc locale like en_US.UTF-8), and SICHOS_LC_NUMERIC/SICHOS_LC_MONETARY/
+# SICHOS_LC_COLLATE (per-category overrides, same locale format) are all
+# blank = leave unchanged by default.
 # ./sichos-setup.sh sets all of these for you interactively.
 
 set -euo pipefail
@@ -102,6 +112,142 @@ if [ -n "$TARGET_HOSTNAME" ] && [ "$TARGET_HOSTNAME" != "$CURRENT_HOSTNAME" ]; t
     sudo hostnamectl set-hostname "$TARGET_HOSTNAME"
 else
     echo "    hostname already set ($CURRENT_HOSTNAME), leaving as is"
+fi
+
+echo "==> Time & Region"
+
+# Also settable later from the quickshell launcher itself (Menu > Settings
+# > Time & Region — TimeRegion.qml), which calls timedatectl/localectl the
+# same way; both go through polkit (hyprpolkitagent, already autostarted)
+# rather than needing sudo here.
+CURRENT_TIMEZONE="$(timedatectl show -p Timezone --value 2>/dev/null || echo "")"
+TARGET_TIMEZONE="${SICHOS_TIMEZONE:-}"
+if [ -n "$TARGET_TIMEZONE" ] && [ "$TARGET_TIMEZONE" != "$CURRENT_TIMEZONE" ]; then
+    # A plain file-existence check against the zoneinfo database — cheap,
+    # and guards the one real crash risk here: set -e means a typo'd
+    # timezone name would otherwise abort every remaining install step.
+    if [ -f "/usr/share/zoneinfo/$TARGET_TIMEZONE" ]; then
+        sudo timedatectl set-timezone "$TARGET_TIMEZONE"
+        echo "    timezone set to $TARGET_TIMEZONE"
+    else
+        echo "    '$TARGET_TIMEZONE' isn't a valid zoneinfo name (see 'timedatectl list-timezones') — left as ${CURRENT_TIMEZONE:-unset}"
+    fi
+else
+    echo "    timezone already ${CURRENT_TIMEZONE:-unset}"
+fi
+
+# "Locale" isn't one setting — LANG is the fallback every category (date/
+# time, numbers, currency, sort order) uses unless it has its own explicit
+# override (LC_NUMERIC/LC_MONETARY/LC_COLLATE). 12-hour vs 24-hour isn't
+# one of these categories — no glibc locale is "en_US but 24-hour", so
+# there's nothing proper to pick here; that's a plain on/off preference for
+# the quickshell bar's own clock, set from the launcher itself (Menu >
+# Settings > Time & Region — TimeRegion.use24Hour), not this installer.
+# Crucially, `localectl set-locale` REPLACES the whole locale config with
+# exactly the assignments it's given — it does not merge with what's
+# already set — so every category that's currently configured has to be
+# resent together in one call, or the ones left out would silently revert
+# to the C/POSIX default. Same rule the launcher's TimeRegion.qml follows
+# for live edits.
+CURRENT_STATUS="$(localectl status 2>/dev/null)"
+extract_locale_var() { echo "$CURRENT_STATUS" | sed -n "s/.*$1=\([^ ]*\).*/\1/p" | head -1; }
+CURRENT_LANG="$(extract_locale_var LANG)"
+CURRENT_LC_NUMERIC="$(extract_locale_var LC_NUMERIC)"
+CURRENT_LC_MONETARY="$(extract_locale_var LC_MONETARY)"
+CURRENT_LC_COLLATE="$(extract_locale_var LC_COLLATE)"
+
+TARGET_LANG="${SICHOS_LANG:-$CURRENT_LANG}"
+TARGET_LC_NUMERIC="${SICHOS_LC_NUMERIC:-$CURRENT_LC_NUMERIC}"
+TARGET_LC_MONETARY="${SICHOS_LC_MONETARY:-$CURRENT_LC_MONETARY}"
+TARGET_LC_COLLATE="${SICHOS_LC_COLLATE:-$CURRENT_LC_COLLATE}"
+
+if [ "$TARGET_LANG" != "$CURRENT_LANG" ] \
+    || [ "$TARGET_LC_NUMERIC" != "$CURRENT_LC_NUMERIC" ] || [ "$TARGET_LC_MONETARY" != "$CURRENT_LC_MONETARY" ] \
+    || [ "$TARGET_LC_COLLATE" != "$CURRENT_LC_COLLATE" ]; then
+    LOCALE_ARGS=("LANG=${TARGET_LANG:-en_US.UTF-8}")
+    [ -n "$TARGET_LC_NUMERIC" ] && LOCALE_ARGS+=("LC_NUMERIC=$TARGET_LC_NUMERIC")
+    [ -n "$TARGET_LC_MONETARY" ] && LOCALE_ARGS+=("LC_MONETARY=$TARGET_LC_MONETARY")
+    [ -n "$TARGET_LC_COLLATE" ] && LOCALE_ARGS+=("LC_COLLATE=$TARGET_LC_COLLATE")
+    sudo localectl set-locale "${LOCALE_ARGS[@]}"
+    echo "    locale set: ${LOCALE_ARGS[*]} (install glibc-langpack-<xx> for any not already generated)"
+else
+    echo "    locale already Language=${CURRENT_LANG:-unset}, Number=${CURRENT_LC_NUMERIC:-same as Language}, Currency=${CURRENT_LC_MONETARY:-same as Language}, Sort=${CURRENT_LC_COLLATE:-same as Language}"
+fi
+
+echo "==> polkit rule: skip prompt for locale/timezone changes"
+
+# Upstream's own default policy for org.freedesktop.locale1.set-locale and
+# org.freedesktop.timedate1.set-timezone requires auth_admin_keep even for
+# a fully active local session — fine for a multi-admin box, but the
+# launcher's own Time & Region screen (TimeRegion.qml) calls
+# timedatectl/localectl directly as a GUI action with no terminal to type
+# a password into, so it'd otherwise always prompt (see
+# polkit/49-sichos-timedate-locale.rules for the actual rule: scoped to
+# the wheel group on an active session, not a blanket allow — a remote or
+# inactive session still gets the normal prompt). polkitd watches
+# rules.d and picks this up immediately, no restart needed.
+sudo mkdir -p /etc/polkit-1/rules.d
+RULE_DEST=/etc/polkit-1/rules.d/49-sichos-timedate-locale.rules
+if ! cmp -s "$HERE/polkit/49-sichos-timedate-locale.rules" "$RULE_DEST" 2>/dev/null; then
+    if [ -f "$RULE_DEST" ]; then
+        sudo cp "$RULE_DEST" "$RULE_DEST.bak"
+        echo "    backed up existing rule to $RULE_DEST.bak"
+    fi
+    sudo cp "$HERE/polkit/49-sichos-timedate-locale.rules" "$RULE_DEST"
+    echo "    installed to $RULE_DEST"
+else
+    echo "    rule already up to date"
+fi
+
+echo "==> Bluetooth: fix HID controllers that pair then instantly disconnect"
+
+# A well-known BlueZ/kernel L2CAP quirk: many wireless game controllers
+# (reproduced live with a GuliKit Controller XW — `bluetoothctl pair`
+# reports "Pairing successful" and a momentary Connected: yes, then the
+# device drops straight back to Paired: no / Connected: no on its own)
+# fail to complete their HID connection when BlueZ negotiates L2CAP's
+# Enhanced Re-Transmission Mode with them. Disabling ERTM is the standard,
+# widely-documented fix. Only touches main.conf if bluez is even installed,
+# and only once (checked so a re-run doesn't pile up duplicate lines).
+BT_CONF=/etc/bluetooth/main.conf
+if [ -f "$BT_CONF" ]; then
+    if ! grep -q "^DisableERTM" "$BT_CONF"; then
+        sudo sed -i '/^\[General\]/a DisableERTM = true' "$BT_CONF"
+        sudo systemctl restart bluetooth
+        echo "    added DisableERTM = true to $BT_CONF and restarted bluetooth"
+    else
+        echo "    already configured"
+    fi
+else
+    echo "    bluez not installed, skipped"
+fi
+
+echo "==> Bluetooth: let HID controllers connect without full bonding"
+
+# The ERTM fix above wasn't the whole story: reproduced live with the same
+# GuliKit Controller XW — even once the connection itself stopped dropping,
+# it never actually became a working gamepad (no /dev/input device, no
+# response in-browser at hardwaretester.com/gamepad). `busctl` introspection
+# showed why: BlueZ correctly resolves an org.bluez.Input1 interface and
+# ServicesResolved goes true, but Bonded stays "no" even though pairing
+# succeeds and the controller explicitly negotiates "General Bonding" —
+# and input.conf's ClassicBondedOnly (on by default) refuses to bring up
+# HID for anything that isn't fully Bonded. Confirmed fix: flip it off.
+IN_CONF=/etc/bluetooth/input.conf
+if [ -f "$IN_CONF" ]; then
+    if grep -q "^ClassicBondedOnly=false" "$IN_CONF"; then
+        echo "    already configured"
+    else
+        if grep -q "^#ClassicBondedOnly=true" "$IN_CONF"; then
+            sudo sed -i 's/^#ClassicBondedOnly=true/ClassicBondedOnly=false/' "$IN_CONF"
+        else
+            printf '\n# Added by SichOS install.sh — see comment above.\nClassicBondedOnly=false\n' | sudo tee -a "$IN_CONF" >/dev/null
+        fi
+        sudo systemctl restart bluetooth
+        echo "    set ClassicBondedOnly=false in $IN_CONF and restarted bluetooth"
+    fi
+else
+    echo "    bluez not installed, skipped"
 fi
 
 echo "==> RPM Fusion (free + nonfree)"
@@ -146,6 +292,24 @@ else
         fi
     done
 
+    # GeForce NOW isn't on Flathub — Nvidia ships it from their own repo
+    # instead, so it needs its own remote rather than another FLATHUB_APPS
+    # entry. --user + a user remote, matching Nvidia's own install
+    # instructions, rather than the sudo + system-wide remote used for
+    # flathub above — nothing else here needs anything narrower than that.
+    for app in ${GFN_APPS:-}; do
+        if flatpak info "$app" >/dev/null 2>&1; then
+            echo "    $app already installed"
+        else
+            if ! flatpak remote-list --user 2>/dev/null | grep -q '^GeForceNOW'; then
+                flatpak remote-add --user --if-not-exists GeForceNOW https://international.download.nvidia.com/GFNLinux/flatpak/geforcenow.flatpakrepo
+                echo "    added GeForceNOW remote (user)"
+            fi
+            echo "    installing $app"
+            flatpak install -y --noninteractive --user GeForceNOW "$app"
+        fi
+    done
+
     # Element and Vesktop are both Electron apps that need a couple of
     # keyring-related fixes applied on top of a plain flatpak install (see
     # hypr/autostart.lua for the rest of the picture) — otherwise they show
@@ -183,6 +347,27 @@ else
         # goes through this cache and shows "No Apps available" without it.
         update-desktop-database "$HOME/.local/share/applications"
     fi
+
+    # Flatpak apps don't install CLI binaries into $PATH by default.
+    # Create wrapper scripts in ~/.local/bin for editors so `code` and
+    # `codium` commands work out-of-the-box in terminals and scripts.
+    mkdir -p "$HOME/.local/bin"
+    if flatpak info com.visualstudio.code >/dev/null 2>&1; then
+        cat << 'EOF' > "$HOME/.local/bin/code"
+#!/usr/bin/env bash
+exec flatpak run com.visualstudio.code "$@"
+EOF
+        chmod +x "$HOME/.local/bin/code"
+        echo "    installed CLI wrapper ~/.local/bin/code -> com.visualstudio.code"
+    fi
+    if flatpak info com.vscodium.codium >/dev/null 2>&1; then
+        cat << 'EOF' > "$HOME/.local/bin/codium"
+#!/usr/bin/env bash
+exec flatpak run com.vscodium.codium "$@"
+EOF
+        chmod +x "$HOME/.local/bin/codium"
+        echo "    installed CLI wrapper ~/.local/bin/codium -> com.vscodium.codium"
+    fi
 fi
 
 echo "==> Hyprland + quickshell packages"
@@ -207,8 +392,8 @@ fi
 echo "==> base packages (packages.txt)"
 
 # packages.txt is a plain list with '#'-prefixed comment lines and blocks;
-# anything still commented out (qt6ct, hyprshutdown, etc.) is deliberately
-# skipped here. dnf no-ops on anything already installed.
+# anything still commented out (qt6ct, etc.) is deliberately skipped here.
+# dnf no-ops on anything already installed.
 mapfile -t BASE_PKGS < <(grep -v '^\s*#' "$HERE/packages.txt" | grep -v '^\s*$' | awk '{print $1}')
 if [ "${#BASE_PKGS[@]}" -gt 0 ]; then
     sudo dnf install -y "${BASE_PKGS[@]}"
@@ -254,6 +439,18 @@ if [ "$ALT" -eq 1 ]; then
     sed -i 's/local mainMod = "SUPER"/local mainMod = "ALT"/' "$KEYBINDS_LUA"
     echo "    --alt: main modifier set to ALT in keybindings.lua"
 fi
+
+# hyprpolkitagent/hyprsunset/hypridle run as their packaged systemd --user
+# services rather than as plain background processes from autostart.lua —
+# see that file's opening comment for the full history/rationale. Only
+# takes effect if the SDDM session picked at login is the uwsm-managed
+# `hyprland-uwsm.desktop` entry (uwsm is what exports WAYLAND_DISPLAY into
+# systemd's user-manager environment, which these units require via
+# ConditionEnvironment) — under the plain `hyprland.desktop` entry this is a
+# harmless no-op, nothing starts. xdg-desktop-portal(-hyprland/-gtk) need no
+# enabling here: they're Type=dbus and activate on demand.
+systemctl --user enable hyprpolkitagent.service hyprsunset.service hypridle.service >/dev/null 2>&1
+echo "    enabled hyprpolkitagent/hyprsunset/hypridle systemd --user services"
 
 echo "==> Firefox"
 
@@ -395,11 +592,25 @@ else
     echo "    installed to /usr/local/bin/wlctl"
 fi
 
+echo "==> suppressing nm-applet autostart (wlctl replaces its tray icon)"
+
+install_file "$HERE/autostart-overrides/nm-applet.desktop" "$HOME/.config/autostart/nm-applet.desktop"
+echo "    installed to ~/.config/autostart (overrides /etc/xdg/autostart/nm-applet.desktop)"
+
 echo "==> fastfetch config (SichOS branding)"
 
 install_file "$HERE/fastfetch/config.jsonc" "$HOME/.config/fastfetch/config.jsonc"
 install_file "$HERE/fastfetch/logo.txt" "$HOME/.config/fastfetch/logo.txt"
 echo "    installed to ~/.config/fastfetch"
+
+echo "==> sichos-gamepad (native controller overlay daemon)"
+
+if ! rpm -q sichos-gamepad >/dev/null 2>&1; then
+    sudo dnf copr enable -y mdukhota/test1
+    sudo dnf install -y sichos-gamepad
+else
+    echo "    already installed"
+fi
 
 echo "==> Plymouth 'unlock' theme"
 
@@ -415,39 +626,100 @@ sudo cp "$HERE"/plymouth/unlock/* /usr/share/plymouth/themes/unlock/
 sudo plymouth-set-default-theme -R unlock
 echo "    installed, initramfs rebuilt"
 
-echo "==> greetd"
+echo "==> SDDM"
 
-if ! rpm -q greetd >/dev/null 2>&1; then
-    echo "    installing greetd"
-    sudo dnf install -y greetd
+if ! rpm -q sddm >/dev/null 2>&1; then
+    echo "    installing sddm"
+    sudo dnf install -y sddm
 else
-    echo "    greetd already installed"
+    echo "    sddm already installed"
+fi
+if ! rpm -q cage >/dev/null 2>&1; then
+    echo "    installing cage (SDDM Wayland compositor)"
+    sudo dnf install -y cage
+else
+    echo "    cage already installed"
 fi
 
-if ! getent passwd greeter >/dev/null; then
-    echo "    creating missing 'greeter' system user (greetd's default_session"
-    echo "    fallback needs this account; without it greetd crash-loops)"
-    sudo useradd --system --no-create-home --shell /usr/sbin/nologin greeter
-else
-    echo "    'greeter' system user already exists"
+# The bare sddm package's own fallback look is not particularly polished.
+# Two other approaches were tried and abandoned before this one:
+#   1. The *authentic* modern Plasma 6 Breeze theme (sddm-breeze +
+#      kde-settings-sddm) — works, but pulls in ~195 MiB of KDE Frameworks/
+#      Plasma QML runtime (plasma-workspace, baloo, kactivitymanagerd,
+#      kwallet, krunner, networkmanager-qt, ...) that nothing else on this
+#      Hyprland setup uses, and it's not prunable: plasma-workspace has its
+#      OWN hard `Requires:` on all of that, so trimming any of it cascades
+#      to removing the theme too.
+#   2. A vendored third-party theme (Sugar Candy) picked for being pure
+#      QtQuick with no KDE Frameworks dependency — except it's Qt5-only
+#      (`import QtGraphicalEffects 1.0`), and Fedora's sddm package only
+#      ships `sddm-greeter-qt6` — no Qt5 greeter exists at all here, so it
+#      could never have worked regardless of which Qt5 packages got
+#      installed (confirmed live: the exact "module ... is not installed"
+#      error, even with those packages present — Qt5 QML plugins simply
+#      cannot load in a Qt6 QQmlEngine).
+# So: sddm/sichos/ is hand-written instead, built entirely on SddmComponents
+# (ships with the base `sddm` package itself) and QtQuick.Effects (ships
+# with qt6-qtdeclarative, sddm's own hard Qt6 Quick dependency) — genuinely
+# zero packages beyond what a bare `sddm` install already requires. See
+# sddm/sichos/Main.qml's own header comment for the verified SDDM QML API
+# calls used (checked against upstream's own reference theme, not guessed).
+if rpm -q sddm-breeze kde-settings-sddm >/dev/null 2>&1; then
+    echo "    removing sddm-breeze + kde-settings-sddm (replaced by the hand-written sichos theme)"
+    sudo dnf remove -y sddm-breeze kde-settings-sddm
+fi
+if rpm -q xwaylandvideobridge >/dev/null 2>&1; then
+    echo "    removing xwaylandvideobridge (unwanted plasma-workspace autostart helper)"
+    sudo dnf remove -y xwaylandvideobridge
+fi
+if rpm -q qt5-qtgraphicaleffects qt5-qtquickcontrols2 >/dev/null 2>&1; then
+    echo "    removing qt5-qtgraphicaleffects/qt5-qtquickcontrols2 (needed only by the abandoned Sugar Candy attempt)"
+    sudo dnf remove -y qt5-qtgraphicaleffects qt5-qtquickcontrols2
 fi
 
-sudo mkdir -p /etc/greetd
-if ! cmp -s "$HERE/greetd/config.toml" /etc/greetd/config.toml 2>/dev/null; then
-    if [ -f /etc/greetd/config.toml ]; then
-        sudo cp /etc/greetd/config.toml /etc/greetd/config.toml.bak
-        echo "    backed up existing config to /etc/greetd/config.toml.bak"
+sudo mkdir -p /usr/share/sddm/themes/sichos
+sudo cp -r "$HERE"/sddm/sichos/. /usr/share/sddm/themes/sichos/
+# Main.qml's Background source is theme-relative — reuses the same wallpaper
+# file the desktop itself uses (see the "wallpaper" step below) rather than
+# vendoring a second copy of it in the repo. SDDM can't read ~/Pictures
+# directly (runs as its own system user, before any login), so this has to
+# be a real copy, not a symlink into $HOME.
+sudo cp "$HERE/wallpaper/wallpaper.jpg" /usr/share/sddm/themes/sichos/background.jpg
+
+sudo mkdir -p /etc/sddm.conf.d
+if ! cmp -s "$HERE/sddm/10-theme.conf" /etc/sddm.conf.d/10-theme.conf 2>/dev/null; then
+    sudo cp "$HERE/sddm/10-theme.conf" /etc/sddm.conf.d/10-theme.conf
+    echo "    theme set to sichos (cage compositor)"
+else
+    echo "    theme config already up to date"
+fi
+
+# XCURSOR_THEME/SIZE as real process env vars for cage and the greeter —
+# ensures proper cursor theme and software cursor fallback under wlroots.
+if ! cmp -s "$HERE/sddm/sysconfig-sddm" /etc/sysconfig/sddm 2>/dev/null; then
+    if [ -f /etc/sysconfig/sddm ]; then
+        sudo cp /etc/sysconfig/sddm /etc/sysconfig/sddm.bak
+        echo "    backed up existing /etc/sysconfig/sddm to sddm.bak"
     fi
-    sudo cp "$HERE/greetd/config.toml" /etc/greetd/config.toml
-    echo "    config installed"
+    sudo cp "$HERE/sddm/sysconfig-sddm" /etc/sysconfig/sddm
+    echo "    installed to /etc/sysconfig/sddm"
 else
-    echo "    config already up to date"
+    echo "    /etc/sysconfig/sddm already up to date"
 fi
 
-# Installing the package alone doesn't make greetd the active display
-# manager or boot into a graphical session — both have to be set
+# Retiring greetd (tuigreet/qtgreet were both greetd greeters this setup used
+# previously) — disable it so it can't fight sddm over the display-manager.service
+# alias. Only affects the *next* boot, same as everything else in this block;
+# doesn't touch the current running session.
+if systemctl is-enabled greetd >/dev/null 2>&1; then
+    echo "    disabling greetd (replaced by sddm)"
+    sudo systemctl disable greetd >/dev/null 2>&1 || true
+fi
+
+# No autologin. Installing the package alone doesn't make it the active
+# display manager or boot into a graphical session — both have to be set
 # explicitly, or a fresh machine just sits at multi-user.target forever.
-sudo systemctl enable greetd
+sudo systemctl enable sddm
 if [ "$(systemctl get-default)" != "graphical.target" ]; then
     echo "    setting default boot target to graphical.target"
     sudo systemctl set-default graphical.target
@@ -467,10 +739,22 @@ cp "$HERE/wallpaper/wallpaper.jpg" "$HOME/Pictures/wallpaper.jpg"
 if pgrep -x hyprpaper >/dev/null 2>&1 && [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
     pkill hyprpaper
     sleep 1
+    # A leftover socket from the killed process can still be sitting there
+    # when the new one binds (SIGTERM is asynchronous) — same race as
+    # hyprsunset's restart in Bar.qml's onScheduleSaved.
+    rm -f "$XDG_RUNTIME_DIR"/hypr/*/.hyprpaper.sock
     nohup hyprpaper >/tmp/hyprpaper.log 2>&1 &
     disown
     sleep 1
-    hyprctl hyprpaper wallpaper ",$HOME/Pictures/wallpaper.jpg,cover" >/dev/null 2>&1 || true
+
+    # Unlike the old rendered SichOS-logo-on-black wallpaper (which needed a
+    # native-resolution render per monitor to avoid GPU minification
+    # aliasing on the sharp text), this is a real photo — normal GPU
+    # bilinear downscaling looks fine on it, so one shared file with
+    # "cover" fit (this IPC call's optional third argument:
+    # [mon],[path],[fit_mode]) applied to every monitor (empty mon field)
+    # is enough; no per-monitor render step needed.
+    hyprctl hyprpaper wallpaper ",$HOME/Pictures/wallpaper.jpg,cover" >/dev/null 2>&1
     echo "    installed and reloaded live"
 else
     echo "    installed (hyprpaper not running under this session — will show on next login)"
@@ -658,9 +942,9 @@ cat <<EOF
 
 ==> Done.
 
-Nothing here restarted greetd, quickshell, or rebooted for you:
-  - reboot (or \`sudo systemctl restart greetd\`) to pick up the greetd/
-    Plymouth changes$([ "$VM" -eq 1 ] && echo "/env.lua render overrides (env vars are only read at Hyprland startup, and initial_session only fires once per boot, so a reboot is the reliable way)")
+Nothing here restarted sddm, quickshell, or rebooted for you:
+  - reboot (or \`sudo systemctl restart sddm\`) to pick up the SDDM/
+    Plymouth changes$([ "$VM" -eq 1 ] && echo "/env.lua render overrides (env vars are only read at Hyprland startup, so a reboot is the reliable way)")
   - Hyprland and quickshell config changes are already live$([ "$ALT" -eq 1 ] && echo " (except the --alt modifier swap, which needs the reboot above too)")
   - restart kitty for its config change to take effect
   - the hostname change (if applied) is live system-wide already; open a new

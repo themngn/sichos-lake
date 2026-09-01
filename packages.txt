@@ -10,6 +10,14 @@ nautilus                 # $fileManager in hyprland.lua/programs.lua (SUPER+E, S
 hyprpaper                # autostart.lua: wallpaper daemon
 hyprlock                  # screen locker (SUPER+L, keybindings.lua) — from the same
                           # lionheartp/Hyprland COPR as hyprland/quickshell
+hyprsunset                # blue-light filter, day/night profiles in hyprsunset.conf,
+                          # autostarted in autostart.lua — same COPR
+hypridle                  # idle daemon (auto-lock/screen-off timeouts, hypridle.conf),
+                          # autostarted in autostart.lua — same COPR. Without this, the
+                          # bar's Stay Awake toggle has nothing to inhibit: Hyprland has
+                          # no built-in idle-timeout/auto-lock/DPMS behavior of its own.
+hyprshutdown              # graceful shutdown GUI (SUPER+M, keybindings.lua) — same COPR
+hyprland-guiutils          # Hyprland Qt/qml utility apps — same COPR
 fastfetch                # ~/.config/fastfetch: SichOS branding (logo.txt + config.jsonc)
 gum                      # sichos-setup.sh: interactive installer TUI
 gnome-software            # GUI app store — installs/updates both dnf packages (via
@@ -17,6 +25,8 @@ gnome-software            # GUI app store — installs/updates both dnf packages
 vlc                       # media player
 
 ## Session / input
+cage                      # SDDM Wayland greeter compositor (wlroots-based kiosk compositor;
+                          # replaces weston to ensure mouse cursor visibility and wlr_cursor support)
 wireplumber              # provides wpctl, used in volume/mute keybinds
 brightnessctl
 playerctl
@@ -25,8 +35,8 @@ NetworkManager-wifi      # wifi device plugin — without it NM treats wlan devi
                           # generic (unmanaged) instead of wifi; needed by wlctl
 power-profiles-daemon    # quickshell/modules/PowerProfile.qml
 pavucontrol               # quickshell/modules/Volume.qml on-click
-gnome-keyring             # secrets/SSH-agent service — greetd's pam_gnome_keyring.so
-                          # auto_start needs this package installed to have anything to
+gnome-keyring             # secrets/SSH-agent service — pam_gnome_keyring.so's auto_start
+                          # needs this package installed to have anything to
                           # start; without it there's no org.freedesktop.secrets D-Bus
                           # service, and Electron apps (Element, Vesktop) show a blocking
                           # "System unsupported" keyring dialog on every launch. Also
@@ -52,8 +62,6 @@ hyprpolkitagent           # autostart.lua: polkit auth agent — without it, pol
                           # (e.g. mounting a LUKS drive from Nautilus) fail with "Not authorized"
 
 ## Optional / not needed
-# hyprshutdown — referenced in keybindings.lua (SUPER+M) behind a `command -v` check,
-# so its absence is harmless (falls back to hyprctl dispatch exit).
 # firefox — installed conditionally via install.sh's "==> Firefox" section
 # (SKIP_FIREFOX, default installed) instead of unconditionally here, since
 # sichos-setup.sh's Browser step lets you skip it in favor of another
