@@ -1,25 +1,26 @@
 import QtQuick
 
-// Clock and Date Bar Widget with interactive hover/click Calendar popup.
-// Left click toggles the calendar popup. Hover (with 250ms initial delay,
-// or immediate switch if another menu is already open) opens CalendarPopup.qml,
-// staying open while hovered over the card.
+// Warm Light / Night Light indicator and settings toggle (SunsetToggle.qml).
+// Left click toggles between schedule and off. Hover (with 250ms initial delay,
+// or immediate switch if another menu is already open) opens SunsetPopup.qml,
+// staying open while hovered over the popup card.
 Pill {
     id: root
-    property date now: new Date()
+    property bool active: false
+    property string mode: "schedule"
+    property int kelvin: 2500
+    property bool scheduleWarm: false
     property string screenName: ""
+    signal modeSelected(string mode)
+    signal setTemperature(int kelvin)
+    signal scheduleSaved()
 
-    Timer {
-        interval: 1000
-        running: true
-        repeat: true
-        onTriggered: root.now = new Date()
-    }
+    opacity: root.active ? 1 : 0.5
 
     // --- Hover Management with Trigger Delay, Immediate Switch & Stay on Hover ---
-    readonly property string popupId: "calendar"
+    readonly property string popupId: "sunset"
     readonly property bool popupOpen: ShellState.activePopup === root.popupId && ShellState.activePopupScreen === root.screenName
-    readonly property bool popupHovered: calendarPopup.popupHovered
+    readonly property bool popupHovered: popup.popupHovered
 
     Timer {
         id: openDelayTimer
@@ -69,24 +70,38 @@ Pill {
     onPopupHoveredChanged: _updateHoverState()
 
     onClicked: (mouse) => {
-        if (root.popupOpen) {
-            ShellState.activePopup = ""
+        if (mouse.button === Qt.RightButton) {
+            if (root.popupOpen) {
+                ShellState.activePopup = ""
+            } else {
+                ShellState.activePopup = root.popupId
+                ShellState.activePopupScreen = root.screenName
+            }
         } else {
-            ShellState.activePopup = root.popupId
-            ShellState.activePopupScreen = root.screenName
+            if (root.mode === "off") {
+                root.modeSelected("schedule")
+            } else {
+                root.modeSelected("off")
+            }
         }
     }
 
     Text {
-        text: Qt.formatDateTime(root.now, TimeRegion.use24Hour ? "ddd dd  HH:mm" : "ddd dd  h:mm AP")
+        text: "\uf186"
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize
-        color: Theme.text
+        color: root.active ? Theme.text : Theme.textMuted
     }
 
-    CalendarPopup {
-        id: calendarPopup
+    SunsetPopup {
+        id: popup
         anchorItem: root
         visible: root.popupOpen
+        mode: root.mode
+        kelvin: root.kelvin
+        scheduleWarm: root.scheduleWarm
+        onModeSelected: (m) => root.modeSelected(m)
+        onSetTemperature: (k) => root.setTemperature(k)
+        onScheduleSaved: root.scheduleSaved()
     }
 }

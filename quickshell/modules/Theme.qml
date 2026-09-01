@@ -2,22 +2,24 @@ pragma Singleton
 import QtQuick
 
 QtObject {
-    // Matches the original waybar style.css palette closely
-    readonly property color text: "#ffffff"
-    readonly property color textMuted: Qt.rgba(1, 1, 1, 0.65)
-    readonly property color textDim: Qt.rgba(1, 1, 1, 0.5)
+    // Theme palette derived from colors.toml (sage/spruce theme)
+    readonly property color text: "#f0f9e3"
+    readonly property color textMuted: "#b4bbaa"
+    readonly property color textDim: "#676f71"
 
     readonly property color background: "#000000"
-    readonly property color accent: "#c102fa"
+    readonly property color cardBackground: "#141c1e"
+    readonly property color accent: "#698b85"
+    readonly property color accentHover: "#77a29b"
 
-    readonly property color submap: "#f1c40f"
-    readonly property color success: "#26a65b"
-    readonly property color critical: "#f53c3c"
-    readonly property color urgent: "#eb4d4b"
+    readonly property color submap: "#e1ffdf"
+    readonly property color success: "#b2cfb8"
+    readonly property color critical: "#a9b495"
+    readonly property color urgent: "#a5ac97"
 
-    readonly property color perfPerformance: "#f53c3c"
-    readonly property color perfBalanced: "#2980b9"
-    readonly property color perfPowerSaver: "#2ecc71"
+    readonly property color perfPerformance: "#a9b495"
+    readonly property color perfBalanced: "#698b85"
+    readonly property color perfPowerSaver: "#b2cfb8"
 
     // font.family takes a single family name (this build has no font.families
     // fallback-list support); Qt's font engine still auto-falls-back to other

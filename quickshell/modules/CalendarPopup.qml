@@ -1,7 +1,8 @@
 import QtQuick
 import Quickshell
-import Quickshell.Hyprland
 
+// Calendar popup panel for ClockWidget.qml.
+// Hover-driven with persistent hover: allows browsing months and inspecting dates smoothly.
 PopupWindow {
     id: popup
 
@@ -10,15 +11,13 @@ PopupWindow {
     anchor.item: anchorItem
     anchor.edges: Edges.Bottom
     anchor.gravity: Edges.Bottom
-    anchor.margins.top: 6
+    anchor.margins.top: 4
+
+    readonly property bool popupHovered: popupMouseArea.containsMouse
 
     implicitWidth: bg.implicitWidth
     implicitHeight: bg.implicitHeight
     color: "transparent"
-    visible: false
-    // Without an actual focus grab, HyprlandFocusGrab's "cleared" signal never
-    // fires, so the popup only ever closed via re-clicking the clock.
-    grabFocus: true
 
     property date viewDate: new Date()
     readonly property date today: new Date()
@@ -50,27 +49,64 @@ PopupWindow {
     readonly property bool viewingCurrentMonth:
         viewDate.getFullYear() === today.getFullYear() && viewDate.getMonth() === today.getMonth()
 
-    HyprlandFocusGrab {
-        id: grab
-        windows: [popup]
-        active: popup.visible
-        onCleared: popup.visible = false
-    }
-
     Rectangle {
         id: bg
-        implicitWidth: grid.implicitWidth + 24
-        implicitHeight: header.implicitHeight + grid.implicitHeight + 28
+        implicitWidth: contentColumn.implicitWidth + 24
+        implicitHeight: contentColumn.implicitHeight + 24
         color: "#1c1c1c"
         border.color: Qt.rgba(1, 1, 1, 0.15)
         border.width: 1
         radius: 6
 
-        Column {
+        MouseArea {
+            id: popupMouseArea
             anchors.fill: parent
-            anchors.margins: 12
+            hoverEnabled: true
+            z: -1
+        }
+
+        Column {
+            id: contentColumn
+            anchors {
+                left: parent.left
+                right: parent.right
+                top: parent.top
+                margins: 12
+            }
             spacing: 8
 
+            // Menu Title Header
+            Item {
+                width: parent.width
+                height: 20
+
+                Row {
+                    spacing: 6
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    Text {
+                        text: "󰸗"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSize + 1
+                        color: Theme.accent
+                    }
+                    Text {
+                        text: "Calendar"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSize
+                        font.bold: true
+                        color: Theme.text
+                    }
+                }
+            }
+
+            Rectangle {
+                width: parent.width
+                height: 1
+                color: Qt.rgba(1, 1, 1, 0.08)
+            }
+
+            // Month Navigation Row
             Row {
                 id: header
                 width: parent.width
@@ -85,7 +121,11 @@ PopupWindow {
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontSize
                     color: Theme.text
-                    MouseArea { anchors.fill: parent; onClicked: popup.shiftMonth(-1) }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: popup.shiftMonth(-1)
+                    }
                 }
 
                 Text {
@@ -98,7 +138,11 @@ PopupWindow {
                     font.pixelSize: Theme.fontSize
                     font.bold: true
                     color: Theme.text
-                    MouseArea { anchors.fill: parent; onClicked: popup.goToday() }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: popup.goToday()
+                    }
                 }
 
                 Text {
@@ -110,10 +154,15 @@ PopupWindow {
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontSize
                     color: Theme.text
-                    MouseArea { anchors.fill: parent; onClicked: popup.shiftMonth(1) }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: popup.shiftMonth(1)
+                    }
                 }
             }
 
+            // Days Grid
             Grid {
                 id: grid
                 columns: 7

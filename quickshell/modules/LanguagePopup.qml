@@ -59,7 +59,7 @@ PopupWindow {
                     width: rowContent.implicitWidth + 16
                     height: rowContent.implicitHeight + 6
                     radius: 4
-                    color: row.active ? Qt.rgba(0.757, 0.008, 0.980, 0.16) : "transparent"
+                    color: row.active ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16) : "transparent"
 
                     Row {
                         id: rowContent

@@ -36,6 +36,12 @@ Pill {
     }
 
     Text {
+        // Fixed width (same approach as BluetoothIndicator's icon) so the
+        // pill doesn't shift the rest of the bar when the profile's glyph
+        // changes — different icons have different font-advance widths even
+        // at the same pixel size.
+        width: Theme.fontSize * 1.6
+        horizontalAlignment: Text.AlignHCenter
         text: root.icon()
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize + 2

@@ -125,17 +125,7 @@ Pill {
                     }
                 }
 
-                // Mirrors waybar's `box-shadow: inset 0 -2px #fff` active-workspace underline
-                Rectangle {
-                    anchors {
-                        left: parent.left
-                        right: parent.right
-                        bottom: parent.bottom
-                    }
-                    height: 2
-                    color: Theme.text
-                    visible: modelData.focused
-                }
+
 
                 MouseArea {
                     id: wsMouse

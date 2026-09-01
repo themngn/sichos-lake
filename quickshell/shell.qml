@@ -11,4 +11,6 @@ ShellRoot {
 
     Launcher {}
     VolumeOSD {}
+    Notifications {}
+    NowPlaying {}
 }

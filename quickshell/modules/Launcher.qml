@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Networking
 import Quickshell.Bluetooth
+import Quickshell.Hyprland
 
 // Walker-style launcher: one search box, one list, and the root level is
 // a plain directory listing — "Apps", "Toggles" and "Power" are all
@@ -14,7 +15,6 @@ PanelWindow {
     screen: Quickshell.screens[0]
     visible: false
     focusable: true
-    color: Qt.rgba(0, 0, 0, 0.35)
 
     anchors {
         top: true
@@ -23,7 +23,34 @@ PanelWindow {
         bottom: true
     }
 
-    property string mode: "root" // "root" | "apps" | "toggles" | "power" | "hidden" | "appmenu"
+    // Only dim behind the launcher when there's actually a window on the
+    // current workspace to dim — on an empty workspace the dim just muddies
+    // the wallpaper for no reason. Same activeWorkspaceHasWindows check as
+    // Bar.qml, scoped to this launcher's own screen (it's the one PanelWindow
+    // instance, always Quickshell.screens[0]).
+    readonly property var hyprMonitor: {
+        const list = Hyprland.monitors.values
+        for (const m of list) if (m.name === launcher.screen.name) return m
+        return null
+    }
+    property int windowEpoch: 0
+    Connections {
+        target: Hyprland
+        function onRawEvent(event) {
+            if (event.name === "openwindow" || event.name === "closewindow"
+                || event.name === "movewindow" || event.name === "movewindowv2")
+                launcher.windowEpoch++
+        }
+    }
+    readonly property bool activeWorkspaceHasWindows: {
+        const epoch = launcher.windowEpoch // forces recompute on every window event
+        if (!launcher.hyprMonitor || !launcher.hyprMonitor.activeWorkspace) return false
+        const wsId = launcher.hyprMonitor.activeWorkspace.id
+        return Hyprland.toplevels.values.some(t => t.workspace && t.workspace.id === wsId)
+    }
+    color: launcher.activeWorkspaceHasWindows ? Qt.rgba(0, 0, 0, 0.35) : "transparent"
+
+    property string mode: "root" // "root" | "apps" | "toggles" | "power" | "autostart" | "reload" | "settings" | "settings-bar" | "settings-timeregion" | "picklist:<field>" | "folder:<id>" | "folderpick" | "newfoldername" | "appmenu"
     property string query: ""
     property int selectedIndex: 0
     // Which folder to return to when backing out of the app submenu.
@@ -33,13 +60,33 @@ PanelWindow {
 
     readonly property var toggleItems: {
         const items = [
-            { type: "toggle", id: "idle", name: "Idle Inhibitor", active: ShellState.idleActive },
+            { type: "toggle", id: "idle", name: "Stay Awake", active: ShellState.idleActive },
             { type: "toggle", id: "wifi", name: "Wi-Fi", active: Networking.wifiEnabled }
         ]
         if (Bluetooth.defaultAdapter)
             items.push({ type: "toggle", id: "bluetooth", name: "Bluetooth", active: Bluetooth.defaultAdapter.enabled })
         return items
     }
+
+    function _barWidgetName(id) {
+        for (const w of BarSettings.widgets) {
+            if (w.id === id) return w.name
+        }
+        return id
+    }
+    // Reflects the user's current order (not BarSettings.widgets' fixed
+    // declaration order) — drag-reordered in the ListView delegate below.
+    readonly property var barWidgetItems: BarSettings.orderedIds().map(id => ({
+        type: "bar-widget",
+        id: id,
+        name: launcher._barWidgetName(id),
+        active: BarSettings.isEnabled(id)
+    }))
+
+    readonly property var settingsItems: [
+        { type: "folder", id: "settings-bar", name: "Bar Widgets", icon: "" },
+        { type: "folder", id: "settings-timeregion", name: "Time & Region", icon: "" }
+    ]
 
     readonly property var powerItems: [
         { type: "power", id: "logout", name: "Logout", danger: false },
@@ -57,13 +104,34 @@ PanelWindow {
         { type: "reload", id: "quickshell", name: "Reload Quickshell", danger: false }
     ]
 
-    readonly property var appItems: AppIndex.apps
-        .filter(a => !HiddenApps.isHidden(a.name))
-        .map(a => ({ type: "app", name: a.name, exec: a.exec, icon: a.icon, terminal: a.terminal }))
+    // Every non-hidden, non-Steam app, regardless of folder membership —
+    // the base list folder lookups (folderApps below) filter from, and
+    // autostartItems is built from, so an app doesn't vanish from those
+    // just because appItems (the flat root list, right below) also
+    // excludes it there.
+    readonly property var browsableApps: AppIndex.apps
+        .filter(a => !HiddenApps.isHidden(a.name) && !a.steam)
+        .map(a => ({ type: "app", name: a.name, exec: a.exec, icon: a.icon, terminal: a.terminal,
+                     steam: !!a.steam, iconFile: a.iconFile || "" }))
+
+    // Steam games are deliberately excluded here — like hidden apps, they're
+    // only reachable through their own folder (Games), not flat-listed
+    // alongside everything else too (they're excluded from browsableApps
+    // itself, so no separate check needed). Same for anything in a custom
+    // folder, unless that app's "Keep in Apps List" override is on (see
+    // AppFolders.keepsInRoot / folderPickItems below).
+    readonly property var appItems: launcher.browsableApps
+        .filter(a => !AppFolders.isInAnyFolder(a.name) || AppFolders.keepsInRoot(a.name))
 
     readonly property var hiddenItems: AppIndex.apps
         .filter(a => HiddenApps.isHidden(a.name))
-        .map(a => ({ type: "app", name: a.name, exec: a.exec, icon: a.icon, terminal: a.terminal }))
+        .map(a => ({ type: "app", name: a.name, exec: a.exec, icon: a.icon, terminal: a.terminal,
+                     steam: !!a.steam, iconFile: a.iconFile || "" }))
+
+    readonly property var steamAppItems: AppIndex.apps
+        .filter(a => a.steam && !HiddenApps.isHidden(a.name))
+        .map(a => ({ type: "app", name: a.name, exec: a.exec, icon: a.icon, terminal: a.terminal,
+                     steam: true, iconFile: a.iconFile || "" }))
 
     // Deliberately a curated allowlist, not every installed app — autostart
     // only makes sense for apps with a real "start minimized/to tray" flag
@@ -73,7 +141,7 @@ PanelWindow {
     // support entirely; the other two only expose it as a GUI setting).
     readonly property var autostartCandidates: ["Telegram", "Element", "Vesktop", "Discord", "Steam"]
 
-    readonly property var autostartItems: launcher.appItems
+    readonly property var autostartItems: launcher.browsableApps
         .filter(a => launcher.autostartCandidates.includes(a.name))
         .map(a => ({ type: "autostart-app", name: a.name, exec: a.exec, icon: a.icon,
                      terminal: a.terminal, active: AutostartApps.isEnabled(a.name) }))
@@ -83,8 +151,161 @@ PanelWindow {
         const hidden = HiddenApps.isHidden(launcher.contextApp.name)
         return [
             { type: "action", id: "launch", name: "Launch" },
-            { type: "action", id: hidden ? "unhide" : "hide", name: hidden ? "Unhide" : "Hide" }
+            { type: "action", id: hidden ? "unhide" : "hide", name: hidden ? "Unhide" : "Hide" },
+            { type: "action", id: "addfolder", name: "Add to Folder" }
         ]
+    }
+
+    // Folder rows mixed into the Apps listing itself (see currentItems'
+    // "apps" branch below) rather than living behind their own menu: the
+    // built-in Games (all installed Steam titles — see
+    // AppIndex/list-apps.py) and Hidden folders, computed from other state
+    // rather than stored here, plus whatever custom folders AppFolders
+    // holds. Games is left out entirely when there are none, so a
+    // non-Steam machine doesn't get an empty folder for something it will
+    // never use; Hidden always shows, matching its old always-present
+    // root-level slot.
+    readonly property var folderListItems: {
+        const items = []
+        if (launcher.steamAppItems.length > 0) items.push({ type: "folder", id: "folder:games", name: "Games", icon: "" })
+        for (const f of AppFolders.folders) items.push({ type: "folder", id: "folder:" + f.id, name: f.name, icon: "" })
+        return items
+    }
+    // Always last, after every real app — separate from folderListItems
+    // so it can be appended at the end instead of the front. Parenthesized
+    // because a bare "{" here would be parsed as a QML statement block,
+    // not the object literal it needs to be.
+    readonly property var hiddenFolderItem: ({ type: "folder", id: "folder:hidden", name: "Hidden", icon: "" })
+    function folderName(id) {
+        if (id === "games") return "Games"
+        if (id === "hidden") return "Hidden"
+        const f = AppFolders.folders.find(f => f.id === id)
+        return f ? f.name : "Folder"
+    }
+    function folderApps(id) {
+        if (id === "games") return launcher.steamAppItems
+        if (id === "hidden") return launcher.hiddenItems
+        const f = AppFolders.folders.find(f => f.id === id)
+        if (!f) return []
+        return launcher.browsableApps.filter(a => f.apps.includes(a.name))
+    }
+    // Breadcrumb shown as a dim second line under a search result, since a
+    // flat, cross-category query result loses the folder context browsing
+    // normally has. Only ever called on rows from allItems (app/toggle/
+    // power/bar-widget), so every branch here is reachable.
+    function pathFor(item) {
+        if (item.type === "toggle") return "Menu > Toggles"
+        if (item.type === "power") return "Menu > Power"
+        if (item.type === "bar-widget") return "Menu > Settings > Bar Widgets"
+        if (item.steam) return "Menu > Apps > Games"
+        const folderNames = AppFolders.folders.filter(f => f.apps.includes(item.name)).map(f => f.name)
+        return "Menu > Apps" + (folderNames.length > 0 ? " > " + folderNames.join(", ") : "")
+    }
+    // The "Add to Folder" submenu for whichever app is in contextApp — a
+    // "+ New Folder" action plus every custom folder as an on/off toggle
+    // (Games/Hidden aren't offered: their membership is automatic, not
+    // something to hand-edit here).
+    readonly property var folderPickItems: {
+        if (!launcher.contextApp) return []
+        const items = [{ type: "action", id: "newfolder", name: "+ New Folder" }]
+        if (AppFolders.isInAnyFolder(launcher.contextApp.name))
+            items.push({ type: "keepinroot-toggle", name: "Keep in Apps List", active: AppFolders.keepsInRoot(launcher.contextApp.name) })
+        for (const f of AppFolders.folders)
+            items.push({ type: "folder-toggle", id: f.id, name: f.name, active: AppFolders.hasApp(f.id, launcher.contextApp.name) })
+        return items
+    }
+    function createFolderFromQuery() {
+        const name = launcher.query.trim()
+        if (!name) return
+        const id = AppFolders.create(name)
+        if (launcher.contextApp) AppFolders.addApp(id, launcher.contextApp.name)
+        launcher.mode = "folderpick"
+        launcher.query = ""
+        launcher.selectedIndex = 0
+    }
+
+    // Turns a locale's territory ("en_AU.UTF-8" -> "AU") into its flag
+    // emoji — algorithmic (each letter maps to a Unicode "regional
+    // indicator symbol", U+1F1E6 + offset from 'A'), not a lookup table,
+    // so it covers every country code for free. "" (no match, e.g. the
+    // territory-less "C"/"C.utf8"/"POSIX") just means no flag shows.
+    function flagForLocale(loc) {
+        const m = loc.match(/_([A-Za-z]{2})/)
+        if (!m) return ""
+        let flag = ""
+        for (const ch of m[1].toUpperCase()) {
+            const offset = ch.charCodeAt(0) - 65
+            if (offset < 0 || offset > 25) return ""
+            flag += String.fromCodePoint(0x1F1E6 + offset)
+        }
+        return flag
+    }
+    function localeWithFlag(loc) {
+        const flag = launcher.flagForLocale(loc)
+        return flag ? flag + " " + loc : loc
+    }
+
+    // "Locale" isn't one setting — see TimeRegion.qml's own comment. Each
+    // of the LC_* rows is independently overridable, falling back to
+    // Language when not explicitly set. 24-Hour Time is deliberately a
+    // plain toggle, not a locale pick — see TimeRegion.qml's comment on
+    // why "12h vs 24h" isn't a real, independently-selectable locale fact.
+    readonly property var timeRegionItems: [
+        { type: "action", id: "edit-timezone", name: "Timezone: " + (TimeRegion.timezone || "(unknown)") },
+        { type: "action", id: "edit-lang", name: "Language: " + (TimeRegion.lang ? launcher.localeWithFlag(TimeRegion.lang) : "(unknown)") },
+        { type: "toggle", id: "use24hour", name: "24-Hour Time", active: TimeRegion.use24Hour },
+        { type: "action", id: "edit-lcnumeric", name: "Number Format: " + (TimeRegion.lcNumeric ? launcher.pickListPreview("lcnumeric", TimeRegion.lcNumeric) : "(same as Language)") },
+        { type: "action", id: "edit-lcmonetary", name: "Currency: " + (TimeRegion.lcMonetary ? launcher.pickListPreview("lcmonetary", TimeRegion.lcMonetary) : "(same as Language)") },
+        { type: "action", id: "edit-lccollate", name: "Sort Order: " + (TimeRegion.lcCollate ? launcher.localeWithFlag(TimeRegion.lcCollate) : "(same as Language)") }
+    ]
+    // Human label for a picklist:<field> mode's breadcrumb (see breadcrumb()
+    // below) — kept next to pickListItems since both are keyed by the same
+    // field name.
+    function pickListLabel(field) {
+        if (field === "timezone") return "Timezone"
+        if (field === "lang") return "Language"
+        if (field === "lcnumeric") return "Number Format"
+        if (field === "lcmonetary") return "Currency"
+        if (field === "lccollate") return "Sort Order"
+        return "Value"
+    }
+    // Every valid zoneinfo name / generated locale, searchable rather than
+    // typed from memory — activate() applies whichever gets picked (id
+    // "pick:<value>", the field itself coming from the "picklist:<field>"
+    // mode string) via the matching TimeRegion.set* call, which triggers
+    // the polkit prompt (hyprpolkitagent) and refreshes the displayed
+    // value once it's approved. Every LC_* field but Language itself also
+    // gets a leading "clear the override" option.
+    //
+    // Number/Currency are abstracted all the way down to just the format
+    // pattern ("1,234.56", "£1,234.56") — nobody picking "how should
+    // numbers look" should have to know or care which locale code happens
+    // to produce that, and dozens of locales share the same one anyway
+    // (this is real glibc data from TimeRegion.localeInfo, not a guess).
+    // pickListItems below dedupes down to the distinct patterns; whichever
+    // locale first produced a given pattern is what's silently applied.
+    // Language/Sort Order/Timezone have no such context-free preview, so
+    // they still show the underlying code.
+    function pickListPreview(field, loc) {
+        const info = TimeRegion.localeInfo[loc] || {}
+        if (field === "lcnumeric") return "1" + (info.thousandsSep || "") + "234" + (info.decimalPoint || ".") + "56"
+        if (field === "lcmonetary") return info.currencySymbol ? info.currencySymbol + "1,234.56" : "(no currency symbol)"
+        return loc
+    }
+    function pickListItems(field) {
+        if (field === "timezone") return TimeRegion.timezones.map(tz => ({ type: "action", id: "pick:" + tz, name: tz }))
+        if (field === "lang" || field === "lccollate")
+            return TimeRegion.locales.map(loc => ({ type: "action", id: "pick:" + loc, name: launcher.localeWithFlag(loc) }))
+
+        const seen = {}
+        const options = []
+        for (const loc of TimeRegion.locales) {
+            const preview = launcher.pickListPreview(field, loc)
+            if (seen[preview]) continue
+            seen[preview] = true
+            options.push({ type: "action", id: "pick:" + loc, name: preview })
+        }
+        return [{ type: "action", id: "pick:", name: "(same as Language)" }].concat(options)
     }
 
     // Icons are Nerd Font glyphs (Font Awesome set), not .desktop icons —
@@ -94,9 +315,9 @@ PanelWindow {
         { type: "folder", id: "apps", name: "Apps", icon: "" },
         { type: "folder", id: "toggles", name: "Toggles", icon: "" },
         { type: "folder", id: "power", name: "Power", icon: "" },
-        { type: "folder", id: "hidden", name: "Hidden", icon: "" },
         { type: "folder", id: "autostart", name: "Autostart", icon: "" },
         { type: "folder", id: "reload", name: "Reload", icon: "" },
+        { type: "folder", id: "settings", name: "Settings", icon: "" },
         { type: "info", id: "info", name: "Info", icon: "" }
     ]
 
@@ -104,15 +325,23 @@ PanelWindow {
     // apps + toggles + power actions at once regardless of which folder
     // you're browsing. Hidden apps are deliberately left out: they're
     // only reachable through the Hidden folder.
-    readonly property var allItems: launcher.appItems.concat(launcher.toggleItems).concat(launcher.powerItems)
+    readonly property var allItems: launcher.browsableApps.concat(launcher.steamAppItems).concat(launcher.toggleItems).concat(launcher.powerItems).concat(launcher.barWidgetItems)
 
     readonly property var currentItems: {
-        if (launcher.mode === "apps") return launcher.appItems
+        // Folders (Games/Hidden/custom) are mixed in with the regular apps
+        // here rather than living behind their own root-level menu.
+        if (launcher.mode === "apps") return launcher.folderListItems.concat(launcher.appItems).concat([launcher.hiddenFolderItem])
         if (launcher.mode === "toggles") return launcher.toggleItems
         if (launcher.mode === "power") return launcher.powerItems
-        if (launcher.mode === "hidden") return launcher.hiddenItems
         if (launcher.mode === "autostart") return launcher.autostartItems
         if (launcher.mode === "reload") return launcher.reloadItems
+        if (launcher.mode === "settings") return launcher.settingsItems
+        if (launcher.mode === "settings-bar") return launcher.barWidgetItems
+        if (launcher.mode === "settings-timeregion") return launcher.timeRegionItems
+        if (launcher.mode.indexOf("picklist:") === 0) return launcher.pickListItems(launcher.mode.slice(9))
+        if (launcher.mode.indexOf("folder:") === 0) return launcher.folderApps(launcher.mode.slice(7))
+        if (launcher.mode === "folderpick") return launcher.folderPickItems
+        if (launcher.mode === "newfoldername") return []
         if (launcher.mode === "appmenu") return launcher.appMenuItems
         return launcher.rootItems
     }
@@ -120,22 +349,56 @@ PanelWindow {
     readonly property var filtered: {
         const q = launcher.query.toLowerCase()
         if (!q) return launcher.currentItems
-        if (launcher.mode === "appmenu") return launcher.currentItems
+        // A picklist gets its own scoped, local filter — a plain
+        // sub-search of just that list, not the global cross-category one
+        // below (which would just find nothing, since none of these are
+        // part of allItems).
+        if (launcher.mode.indexOf("picklist:") === 0)
+            return launcher.currentItems.filter(i => i.name.toLowerCase().includes(q))
+        if (launcher.mode === "appmenu" || launcher.mode === "folderpick" || launcher.mode === "newfoldername") return launcher.currentItems
         return launcher.allItems.filter(i => i.name.toLowerCase().includes(q))
     }
 
-    readonly property string title: launcher.mode === "appmenu" ? launcher.contextApp.name
-        : launcher.query.length > 0 ? "Search"
-        : launcher.mode === "apps" ? "Apps"
-        : launcher.mode === "toggles" ? "Toggles"
-        : launcher.mode === "power" ? "Power"
-        : launcher.mode === "hidden" ? "Hidden"
-        : launcher.mode === "autostart" ? "Autostart"
-        : launcher.mode === "reload" ? "Reload"
-        : "Menu"
+    // Full breadcrumb for a given mode, same idea as pathFor's search-result
+    // subtitles — used both for the header title itself and as the prefix
+    // when a submenu (appmenu/folderpick/newfoldername) builds its own.
+    function breadcrumb(m) {
+        if (m === "apps") return "Menu > Apps"
+        if (m === "toggles") return "Menu > Toggles"
+        if (m === "power") return "Menu > Power"
+        if (m === "autostart") return "Menu > Autostart"
+        if (m === "reload") return "Menu > Reload"
+        if (m === "settings") return "Menu > Settings"
+        if (m === "settings-bar") return "Menu > Settings > Bar Widgets"
+        if (m === "settings-timeregion") return "Menu > Settings > Time & Region"
+        if (m.indexOf("picklist:") === 0) return "Menu > Settings > Time & Region > " + launcher.pickListLabel(m.slice(9))
+        if (m.indexOf("folder:") === 0) return "Menu > Apps > " + launcher.folderName(m.slice(7))
+        return "Menu"
+    }
 
+    readonly property string title: launcher.mode === "appmenu" ? launcher.breadcrumb(launcher.returnMode) + " > " + launcher.contextApp.name
+        : launcher.mode === "folderpick" ? launcher.breadcrumb(launcher.returnMode) + " > " + launcher.contextApp.name + " > Add to Folder"
+        : launcher.mode === "newfoldername" ? launcher.breadcrumb(launcher.returnMode) + " > " + launcher.contextApp.name + " > Add to Folder > New Folder"
+        : launcher.mode.indexOf("picklist:") === 0 ? launcher.breadcrumb(launcher.mode)
+        : launcher.query.length > 0 ? "Search"
+        : launcher.breadcrumb(launcher.mode)
+
+    // Whichever monitor Hyprland currently has focus on, matched back to
+    // its Quickshell screen by name (PanelWindow.screen wants the latter,
+    // not a HyprlandMonitor) — falls back to the first screen if Hyprland
+    // hasn't reported a focused monitor yet.
+    function activeScreen() {
+        const mon = Hyprland.focusedMonitor
+        if (mon) {
+            for (const s of Quickshell.screens) {
+                if (s.name === mon.name) return s
+            }
+        }
+        return Quickshell.screens[0]
+    }
     // SUPER+Q: straight into Apps.
     function openApps() {
+        launcher.screen = launcher.activeScreen()
         launcher.mode = "apps"
         launcher.query = ""
         launcher.selectedIndex = 0
@@ -143,6 +406,7 @@ PanelWindow {
     }
     // SUPER+SHIFT+Q: the full root menu (Apps / Toggles / Power folders).
     function openFull() {
+        launcher.screen = launcher.activeScreen()
         launcher.mode = "root"
         launcher.query = ""
         launcher.selectedIndex = 0
@@ -160,8 +424,28 @@ PanelWindow {
         else launcher.openFull()
     }
     function goBack() {
-        if (launcher.mode === "appmenu") {
+        if (launcher.mode === "newfoldername") {
+            launcher.mode = "folderpick"
+            launcher.query = ""
+            launcher.selectedIndex = 0
+        } else if (launcher.mode === "folderpick") {
+            launcher.mode = "appmenu"
+            launcher.query = ""
+            launcher.selectedIndex = 0
+        } else if (launcher.mode === "appmenu") {
             launcher.mode = launcher.returnMode
+            launcher.query = ""
+            launcher.selectedIndex = 0
+        } else if (launcher.mode.indexOf("picklist:") === 0) {
+            launcher.mode = "settings-timeregion"
+            launcher.query = ""
+            launcher.selectedIndex = 0
+        } else if (launcher.mode === "settings-bar" || launcher.mode === "settings-timeregion") {
+            launcher.mode = "settings"
+            launcher.query = ""
+            launcher.selectedIndex = 0
+        } else if (launcher.mode.indexOf("folder:") === 0) {
+            launcher.mode = "apps"
             launcher.query = ""
             launcher.selectedIndex = 0
         } else if (launcher.mode !== "root") {
@@ -197,10 +481,23 @@ PanelWindow {
             if (item.id === "idle") ShellState.idleActive = !ShellState.idleActive
             else if (item.id === "wifi") Networking.wifiEnabled = !Networking.wifiEnabled
             else if (item.id === "bluetooth") Bluetooth.defaultAdapter.enabled = !Bluetooth.defaultAdapter.enabled
+            else if (item.id === "use24hour") TimeRegion.setUse24Hour(!TimeRegion.use24Hour)
             return
         }
         if (item.type === "autostart-app") {
             AutostartApps.toggle(item.name)
+            return
+        }
+        if (item.type === "bar-widget") {
+            BarSettings.toggle(item.id)
+            return
+        }
+        if (item.type === "folder-toggle") {
+            AppFolders.toggleApp(item.id, launcher.contextApp.name)
+            return
+        }
+        if (item.type === "keepinroot-toggle") {
+            AppFolders.toggleKeepInRoot(launcher.contextApp.name)
             return
         }
         if (item.type === "info") {
@@ -213,11 +510,15 @@ PanelWindow {
             return
         }
         if (item.type === "power") {
+            // hyprshutdown only closes apps and exits Hyprland — it does not
+            // touch the system — so reboot/shutdown chain the actual
+            // systemctl call via --post-cmd, run once apps are already
+            // closed and Hyprland has exited. Same binary as SUPER+M.
             const commands = {
-                logout: ["sh", "-c", "hyprctl dispatch exit"],
+                logout: ["hyprshutdown"],
                 suspend: ["systemctl", "suspend"],
-                reboot: ["systemctl", "reboot"],
-                shutdown: ["systemctl", "poweroff"]
+                reboot: ["hyprshutdown", "--post-cmd", "systemctl reboot"],
+                shutdown: ["hyprshutdown", "--post-cmd", "systemctl poweroff"]
             }
             launcher.close()
             Quickshell.execDetached(commands[item.id])
@@ -238,7 +539,22 @@ PanelWindow {
             return
         }
         if (item.type === "action") {
-            if (item.id === "launch") {
+            if (item.id.indexOf("pick:") === 0) {
+                // Which field this applies to comes from the mode string
+                // itself ("picklist:<field>"), not the item — the same
+                // list of values (locales) is shared across several
+                // fields, so the item alone can't tell them apart.
+                const value = item.id.slice(5)
+                const field = launcher.mode.slice(9)
+                if (field === "timezone") TimeRegion.setTimezone(value)
+                else if (field === "lang") TimeRegion.setLang(value)
+                else if (field === "lcnumeric") TimeRegion.setLcNumeric(value)
+                else if (field === "lcmonetary") TimeRegion.setLcMonetary(value)
+                else if (field === "lccollate") TimeRegion.setLcCollate(value)
+                launcher.mode = "settings-timeregion"
+                launcher.query = ""
+                launcher.selectedIndex = 0
+            } else if (item.id === "launch") {
                 launcher.launchApp(launcher.contextApp)
             } else if (item.id === "hide") {
                 HiddenApps.hide(launcher.contextApp.name)
@@ -248,6 +564,34 @@ PanelWindow {
             } else if (item.id === "unhide") {
                 HiddenApps.unhide(launcher.contextApp.name)
                 launcher.mode = launcher.returnMode
+                launcher.query = ""
+                launcher.selectedIndex = 0
+            } else if (item.id === "addfolder") {
+                launcher.mode = "folderpick"
+                launcher.query = ""
+                launcher.selectedIndex = 0
+            } else if (item.id === "newfolder") {
+                launcher.mode = "newfoldername"
+                launcher.query = ""
+                launcher.selectedIndex = 0
+            } else if (item.id === "edit-timezone") {
+                launcher.mode = "picklist:timezone"
+                launcher.query = ""
+                launcher.selectedIndex = 0
+            } else if (item.id === "edit-lang") {
+                launcher.mode = "picklist:lang"
+                launcher.query = ""
+                launcher.selectedIndex = 0
+            } else if (item.id === "edit-lcnumeric") {
+                launcher.mode = "picklist:lcnumeric"
+                launcher.query = ""
+                launcher.selectedIndex = 0
+            } else if (item.id === "edit-lcmonetary") {
+                launcher.mode = "picklist:lcmonetary"
+                launcher.query = ""
+                launcher.selectedIndex = 0
+            } else if (item.id === "edit-lccollate") {
+                launcher.mode = "picklist:lccollate"
                 launcher.query = ""
                 launcher.selectedIndex = 0
             }
@@ -279,9 +623,24 @@ PanelWindow {
         function close() { launcher.close() }
     }
 
-    onVisibleChanged: if (launcher.visible) {
-        input.forceActiveFocus()
-        AppIndex.refresh()
+    readonly property string stateFile: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/sichos-launcher.active"
+
+    Component.onCompleted: {
+        Quickshell.execDetached(["rm", "-f", launcher.stateFile])
+    }
+
+    Component.onDestruction: {
+        Quickshell.execDetached(["rm", "-f", launcher.stateFile])
+    }
+
+    onVisibleChanged: {
+        if (launcher.visible) {
+            input.forceActiveFocus()
+            AppIndex.refresh()
+            Quickshell.execDetached(["touch", launcher.stateFile])
+        } else {
+            Quickshell.execDetached(["rm", "-f", launcher.stateFile])
+        }
     }
 
     MouseArea {
@@ -314,17 +673,13 @@ PanelWindow {
                 spacing: 6
 
                 Text {
-                    visible: launcher.mode !== "root"
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "<"
-                    color: Theme.accent
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize + 3
-                    MouseArea { anchors.fill: parent; onClicked: launcher.goBack() }
-                }
-
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
+                    // A full breadcrumb (see title/breadcrumb() below) can
+                    // run long for a deep path — bounded and elided from
+                    // the left so the leaf (what you're actually looking
+                    // at) stays visible instead of the "Apps > " prefix.
+                    width: 550
+                    elide: Text.ElideLeft
                     text: "[ " + launcher.title + " ]"
                     color: Theme.textMuted
                     font.family: Theme.fontFamily
@@ -337,7 +692,7 @@ PanelWindow {
                 height: 40
                 radius: 0
                 color: Qt.rgba(0, 0, 0, 0.4)
-                border.color: Qt.rgba(0.757, 0.008, 0.980, 0.5)
+                border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.5)
                 border.width: 1
 
                 Text {
@@ -375,7 +730,18 @@ PanelWindow {
                     // text cursor's boundary so moving the cursor while
                     // typing a query still works normally.
                     Keys.onPressed: (event) => {
-                        if (event.key === Qt.Key_Backspace && input.text.length === 0) {
+                        if (event.key === Qt.Key_PageDown) {
+                            launcher.selectedIndex = Math.min(launcher.filtered.length - 1, launcher.selectedIndex + 5)
+                            list.positionViewAtIndex(launcher.selectedIndex, ListView.Contain)
+                            event.accepted = true
+                        } else if (event.key === Qt.Key_PageUp) {
+                            launcher.selectedIndex = Math.max(0, launcher.selectedIndex - 5)
+                            list.positionViewAtIndex(launcher.selectedIndex, ListView.Contain)
+                            event.accepted = true
+                        } else if (event.key === Qt.Key_Tab) {
+                            launcher.enter(launcher.filtered[launcher.selectedIndex])
+                            event.accepted = true
+                        } else if (event.key === Qt.Key_Backspace && input.text.length === 0) {
                             launcher.goBack()
                             event.accepted = true
                         } else if (event.key === Qt.Key_Left && input.cursorPosition === 0) {
@@ -386,7 +752,7 @@ PanelWindow {
                             event.accepted = true
                         }
                     }
-                    Keys.onEscapePressed: launcher.close()
+                    Keys.onEscapePressed: launcher.goBack()
                     Keys.onDownPressed: {
                         launcher.selectedIndex = Math.min(launcher.filtered.length - 1, launcher.selectedIndex + 1)
                         list.positionViewAtIndex(launcher.selectedIndex, ListView.Contain)
@@ -395,8 +761,14 @@ PanelWindow {
                         launcher.selectedIndex = Math.max(0, launcher.selectedIndex - 1)
                         list.positionViewAtIndex(launcher.selectedIndex, ListView.Contain)
                     }
-                    Keys.onReturnPressed: launcher.activate(launcher.filtered[launcher.selectedIndex])
-                    Keys.onEnterPressed: launcher.activate(launcher.filtered[launcher.selectedIndex])
+                    Keys.onReturnPressed: {
+                        if (launcher.mode === "newfoldername") launcher.createFolderFromQuery()
+                        else launcher.activate(launcher.filtered[launcher.selectedIndex])
+                    }
+                    Keys.onEnterPressed: {
+                        if (launcher.mode === "newfoldername") launcher.createFolderFromQuery()
+                        else launcher.activate(launcher.filtered[launcher.selectedIndex])
+                    }
                 }
             }
 
@@ -425,11 +797,22 @@ PanelWindow {
                     required property int index
                     // "toggle" (idle/wifi/bluetooth) and "autostart-app" both
                     // render as an On/Off pill instead of the ">" submenu arrow.
-                    readonly property bool isToggleLike: row.modelData.type === "toggle" || row.modelData.type === "autostart-app"
+                    readonly property bool isToggleLike: row.modelData.type === "toggle" || row.modelData.type === "autostart-app" || row.modelData.type === "bar-widget" || row.modelData.type === "folder-toggle" || row.modelData.type === "keepinroot-toggle"
+                    // A search query can mix bar-widget rows in among
+                    // apps/toggles/power results (search spans everything),
+                    // which breaks the index math dragging relies on — only
+                    // draggable when the list is the plain, unfiltered folder.
+                    readonly property bool isDraggable: row.modelData.type === "bar-widget" && launcher.query.length === 0
+                    // Search results get a dim second line (see pathFor)
+                    // showing where the result actually lives — every row
+                    // that can appear in a search comes from allItems
+                    // (app/toggle/power/bar-widget), so this is never blank.
+                    readonly property bool showPath: launcher.query.length > 0
                     width: list.width
-                    height: 40
+                    height: 54
                     radius: 0
-                    color: row.index === launcher.selectedIndex ? Qt.rgba(0.757, 0.008, 0.980, 0.16) : "transparent"
+                    color: row.index === launcher.selectedIndex ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16) : "transparent"
+                    z: dragArea.drag.active ? 10 : 0
 
                     Rectangle {
                         visible: row.index === launcher.selectedIndex
@@ -463,30 +846,45 @@ PanelWindow {
                             readonly property bool hasRealIcon: row.modelData.type === "app" || row.modelData.type === "autostart-app"
                             visible: hasRealIcon
                             anchors.verticalCenter: parent.verticalCenter
-                            source: hasRealIcon && row.modelData.icon ? Quickshell.iconPath(row.modelData.icon, true) : ""
-                            width: 25
-                            height: 25
-                            sourceSize: Qt.size(25, 25)
+                            // Steam games carry a raw cached file path (no
+                            // icon-theme name to resolve — see
+                            // list-apps.py) instead of the usual icon name.
+                            source: hasRealIcon && row.modelData.iconFile ? ("file://" + row.modelData.iconFile)
+                                : hasRealIcon && row.modelData.icon ? Quickshell.iconPath(row.modelData.icon, true) : ""
+                            width: 32
+                            height: 32
+                            sourceSize: Qt.size(32, 32)
                             fillMode: Image.PreserveAspectFit
                         }
 
                         Text {
                             visible: row.modelData.type !== "app" && row.modelData.type !== "autostart-app" && !!row.modelData.icon
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 32
+                            width: 38
                             horizontalAlignment: Text.AlignHCenter
                             text: row.modelData.icon || ""
                             color: Theme.text
                             font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSize + 16
+                            font.pixelSize: Theme.fontSize + 20
                         }
 
-                        Text {
+                        Column {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: row.modelData.name
-                            color: row.modelData.type === "power" && row.modelData.danger ? Theme.critical : Theme.text
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSize + 3
+                            spacing: 1
+
+                            Text {
+                                text: row.modelData.name
+                                color: row.modelData.type === "power" && row.modelData.danger ? Theme.critical : Theme.text
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontSize + 3
+                            }
+                            Text {
+                                visible: row.showPath
+                                text: row.showPath ? launcher.pathFor(row.modelData) : ""
+                                color: Theme.textDim
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontSize - 2
+                            }
                         }
                     }
 
@@ -504,6 +902,7 @@ PanelWindow {
                     }
 
                     Rectangle {
+                        id: onOffPill
                         visible: row.isToggleLike
                         anchors {
                             right: parent.right
@@ -531,6 +930,53 @@ PanelWindow {
                         hoverEnabled: true
                         onEntered: launcher.selectedIndex = row.index
                         onClicked: launcher.activate(row.modelData)
+                    }
+
+                    // Declared after the row-wide MouseArea above so it sits
+                    // on top of it in input stacking order — otherwise that
+                    // MouseArea (being the later sibling) would swallow
+                    // clicks/drags meant for this before they ever reached it.
+                    // drag.target moves the whole delegate Rectangle itself;
+                    // ListView assigns each delegate's y as a plain value
+                    // (not a live binding) during layout, so this direct
+                    // write doesn't fight anything — it just sticks until
+                    // the next layout pass, which is exactly what lets the
+                    // row stay wherever it's dropped until the model change
+                    // below snaps everything back into its new order.
+                    Text {
+                        visible: row.isDraggable
+                        anchors {
+                            right: onOffPill.left
+                            rightMargin: 8
+                            verticalCenter: parent.verticalCenter
+                        }
+                        text: "⠿"
+                        font.pixelSize: 16
+                        color: dragArea.pressed ? Theme.accent : Theme.textMuted
+
+                        MouseArea {
+                            id: dragArea
+                            anchors.fill: parent
+                            anchors.margins: -6
+                            enabled: row.isDraggable
+                            cursorShape: Qt.SizeVerCursor
+                            drag.target: row.isDraggable ? row : null
+                            drag.axis: Drag.YAxis
+                            drag.minimumY: 0
+                            drag.maximumY: (list.count - 1) * row.height
+
+                            onReleased: {
+                                const targetIndex = Math.max(0, Math.min(list.count - 1, Math.round(row.y / row.height)))
+                                const delta = targetIndex - row.index
+                                if (delta > 0) {
+                                    for (let s = 0; s < delta; s++) BarSettings.moveDown(row.modelData.id)
+                                } else if (delta < 0) {
+                                    for (let s = 0; s < -delta; s++) BarSettings.moveUp(row.modelData.id)
+                                } else {
+                                    row.y = row.index * row.height
+                                }
+                            }
+                        }
                     }
                 }
             }
