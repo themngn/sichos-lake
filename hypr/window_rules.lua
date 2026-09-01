@@ -101,3 +101,4 @@ hl.window_rule({
     size  = "500 281",          -- 400x225 + 25%, still ~16:9
     move  = "monitor_w-540 40", -- 500 + 40 margin from the right; 40 down from the top
 })
+

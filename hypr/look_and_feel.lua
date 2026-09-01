@@ -11,8 +11,8 @@ hl.config({
         border_size = 0,
 
         col = {
-            active_border   = { colors = {"rgba(33ccffee)", "rgba(00ff99ee)"}, angle = 45 },
-            inactive_border = "rgba(595959aa)",
+            active_border   = "rgba(00000000)",
+            inactive_border = "rgba(00000000)",
         },
 
         -- Set to true to enable resizing windows by clicking and dragging on borders and gaps
@@ -33,10 +33,7 @@ hl.config({
         inactive_opacity = 1.0,
 
         shadow = {
-            enabled      = true,
-            range        = 4,
-            render_power = 3,
-            color        = 0xee1a1a1a,
+            enabled = false,
         },
 
         blur = {
@@ -98,7 +95,7 @@ hl.animation({ leaf = "zoomFactor",    enabled = true,  speed = 7,    bezier = "
 --     rounding    = 0,
 -- })
 
--- Keep workspaces 1-6 alive with no windows so the quickshell bar's Workspaces
+-- Keep workspaces 1-10 alive with no windows so the quickshell bar's Workspaces
 -- module (which reads persistent workspaces from these rules) always shows them.
 for i = 1, 6 do
     hl.workspace_rule({ workspace = tostring(i), persistent = true })

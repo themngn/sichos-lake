@@ -9,9 +9,9 @@
 # driven by theme.toml, so they stay pill-shaped regardless of this setting.
 
 # Main highlight color on the active tab
-accent = "#cba6f7"
+accent = "#698b85"
 # Text color on the active tab (should contrast with accent)
-accentText = "#11111b"
+accentText = "#0E1415"
 # Dim overlay opacity when selecting (0.0 - 1.0)
 dimOpacity = 0.6
 # Corner radius on selection outline
@@ -27,11 +27,11 @@ annotationTool = "satty"
 
 [bar]
 # Segmented control background
-background = "rgba(38, 38, 38, 0.4)"
+background = "rgba(14, 20, 21, 0.6)"
 # Segmented control border
-border = "rgba(255, 255, 255, 0.15)"
+border = "rgba(105, 139, 133, 0.3)"
 # Inactive tab text color
-text = "#AAFFFFFF"
+text = "#f0f9e3"
 # Drop shadow under the bar
 shadow = "#80000000"
 
@@ -39,19 +39,19 @@ shadow = "#80000000"
 # Drop shadow under toggle pills
 shadow = "#80000000"
 # Edit toggle icon color
-edit = "#1ABC9C"
+edit = "#b2cfb8"
 # Temp toggle icon color
-temp = "#2C66D8"
+temp = "#698b85"
 
 [share]
 # Icon color when device is reachable
-connected = "#3498DB"
+connected = "#698b85"
 # Icon color while checking connectivity
-pending = "#95A5A6"
+pending = "#676f71"
 # Icon color on connection failure
-errorIcon = "white"
+errorIcon = "#f0f9e3"
 # Background color on connection failure
-errorBackground = "#E74C3C"
+errorBackground = "#a9b495"
 
 [hooks]
 # Command to run after a screenshot is saved (leave empty to disable)

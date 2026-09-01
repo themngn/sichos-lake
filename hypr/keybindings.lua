@@ -11,7 +11,7 @@ hl.bind(mainMod .. " + Return", hl.dsp.exec_cmd(programs.terminal))
 hl.bind(mainMod .. " + SHIFT + Return", hl.dsp.exec_cmd(programs.browser))
 local closeWindowBind = hl.bind(mainMod .. " + W", hl.dsp.window.close())
 -- closeWindowBind:set_enabled(false)
-hl.bind(mainMod .. " + M", hl.dsp.exec_cmd("command -v hyprshutdown >/dev/null 2>&1 && hyprshutdown || hyprctl dispatch 'hl.dsp.exit()'"))
+hl.bind(mainMod .. " + M", hl.dsp.exec_cmd("hyprshutdown"))
 hl.bind(mainMod .. " + E", hl.dsp.exec_cmd(programs.fileManager))
 hl.bind(mainMod .. " + SHIFT + F", hl.dsp.exec_cmd(programs.fileManager))
 hl.bind(mainMod .. " + V", hl.dsp.window.float({ action = "toggle" }))
@@ -44,20 +44,46 @@ hl.bind(mainMod .. " + right", hl.dsp.focus({ direction = "right" }))
 hl.bind(mainMod .. " + up",    hl.dsp.focus({ direction = "up" }))
 hl.bind(mainMod .. " + down",  hl.dsp.focus({ direction = "down" }))
 
--- Switch workspaces with mainMod + [0-9]
--- Move active window to a workspace with mainMod + SHIFT + [0-9]
+-- Swap active window with adjacent window with mainMod + SHIFT + arrow keys
+hl.bind(mainMod .. " + SHIFT + left",  hl.dsp.window.swap({ direction = "left" }))
+hl.bind(mainMod .. " + SHIFT + right", hl.dsp.window.swap({ direction = "right" }))
+hl.bind(mainMod .. " + SHIFT + up",    hl.dsp.window.swap({ direction = "up" }))
+hl.bind(mainMod .. " + SHIFT + down",  hl.dsp.window.swap({ direction = "down" }))
+
+-- Switch workspaces with mainMod + [1-9, 0]
+-- Move active window to workspace with mainMod + SHIFT + [1-9, 0]
+-- Move active window silently with mainMod + SHIFT + ALT + [1-9, 0]
 for i = 1, 10 do
-    local key = i % 10 -- 10 maps to key 0
-    hl.bind(mainMod .. " + " .. key,             hl.dsp.focus({ workspace = i}))
-    hl.bind(mainMod .. " + SHIFT + " .. key,     hl.dsp.window.move({ workspace = i }))
+    local key = i == 10 and "0" or tostring(i)
+    hl.bind(mainMod .. " + " .. key,                 hl.dsp.focus({ workspace = tostring(i) }))
+    hl.bind(mainMod .. " + SHIFT + " .. key,         hl.dsp.window.move({ workspace = tostring(i) }))
+    hl.bind(mainMod .. " + SHIFT + ALT + " .. key,   hl.dsp.window.move({ workspace = tostring(i), follow = false }))
 end
+
+-- Workspace navigation
+hl.bind(mainMod .. " + TAB",          hl.dsp.focus({ workspace = "e+1" }))
+hl.bind(mainMod .. " + SHIFT + TAB",  hl.dsp.focus({ workspace = "e-1" }))
+hl.bind(mainMod .. " + CTRL + TAB",   hl.dsp.focus({ workspace = "previous" }))
+
+-- Move current workspace to adjacent monitor
+hl.bind(mainMod .. " + SHIFT + ALT + left",  hl.dsp.workspace.move({ monitor = "l" }))
+hl.bind(mainMod .. " + SHIFT + ALT + right", hl.dsp.workspace.move({ monitor = "r" }))
+hl.bind(mainMod .. " + SHIFT + ALT + up",    hl.dsp.workspace.move({ monitor = "u" }))
+hl.bind(mainMod .. " + SHIFT + ALT + down",  hl.dsp.workspace.move({ monitor = "d" }))
+
+-- Focus next / previous monitor
+hl.bind("CTRL + ALT + TAB",           hl.dsp.focus({ monitor = "+1" }))
+hl.bind("CTRL + ALT + SHIFT + TAB",   hl.dsp.focus({ monitor = "-1" }))
+
+-- Laptop lid switch
+hl.bind("switch:off:Lid Switch", hl.dsp.exec_cmd("python3 $HOME/.config/hypr/monitor-watch.py --sync-clamshell"))
 
 -- Example special workspace (scratchpad)
 hl.bind(mainMod .. " + A",         hl.dsp.workspace.toggle_special("A"))
 hl.bind(mainMod .. " + SHIFT + A", hl.dsp.window.move({ workspace = "special:A" }))
 hl.bind(mainMod .. " + S",         hl.dsp.workspace.toggle_special("S"))
 hl.bind(mainMod .. " + SHIFT + S", hl.dsp.window.move({ workspace = "special:S" }))
-hl.bind(mainMod .. " + D",         hl.dsp.workspace.toggle_special(""))
+hl.bind(mainMod .. " + D",         hl.dsp.workspace.toggle_special("D"))
 hl.bind(mainMod .. " + SHIFT + D", hl.dsp.window.move({ workspace = "special:D" }))
 
 -- Scroll through existing workspaces with mainMod + scroll
