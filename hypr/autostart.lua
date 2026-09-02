@@ -96,8 +96,6 @@ hl.on("hyprland.start", function ()
   -- tray" flag instead of appearing in front of you — see
   -- quickshell/scripts/autostart-launch.py.
   hl.exec_cmd("python3 \"$HOME/.config/quickshell/scripts/autostart-launch.py\"")
-  -- Monitor event watcher daemon (hotplug, clamshell, modeless recovery):
-  hl.exec_cmd("python3 \"$HOME/.config/hypr/monitor-watch.py\" &")
   -- SichOS Gamepad Overlay Daemon:
   -- Listens for controller Guide/Home button to toggle the Quickshell launcher
   -- overlay and navigates apps/folders with D-Pad/stick when active.

@@ -75,9 +75,6 @@ hl.bind(mainMod .. " + SHIFT + ALT + down",  hl.dsp.workspace.move({ monitor = "
 hl.bind("CTRL + ALT + TAB",           hl.dsp.focus({ monitor = "+1" }))
 hl.bind("CTRL + ALT + SHIFT + TAB",   hl.dsp.focus({ monitor = "-1" }))
 
--- Laptop lid switch
-hl.bind("switch:off:Lid Switch", hl.dsp.exec_cmd("python3 $HOME/.config/hypr/monitor-watch.py --sync-clamshell"))
-
 -- Example special workspace (scratchpad)
 hl.bind(mainMod .. " + A",         hl.dsp.workspace.toggle_special("A"))
 hl.bind(mainMod .. " + SHIFT + A", hl.dsp.window.move({ workspace = "special:A" }))
