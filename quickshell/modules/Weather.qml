@@ -13,6 +13,9 @@ Pill {
     property var code: null
     property bool isDay: true
     property string city: ""
+    property var feelsLikeC: null
+    property var humidity: null
+    property var windKph: null
     property var hourly: []
     property var daily: []
     property string screenName: ""
@@ -113,19 +116,45 @@ Pill {
         color: Theme.text
     }
 
+    function _applyData(data) {
+        if (data.tempC === undefined || data.tempC === null) return false
+        root.tempC = data.tempC
+        root.code = data.code
+        root.isDay = data.isDay
+        root.city = data.city
+        root.feelsLikeC = data.feelsLikeC !== undefined ? data.feelsLikeC : null
+        root.humidity = data.humidity !== undefined ? data.humidity : null
+        root.windKph = data.windKph !== undefined ? data.windKph : null
+        root.hourly = data.hourly || []
+        root.daily = data.daily || []
+        return true
+    }
+
+    // weather.py re-runs from scratch on every quickshell (re)start with no
+    // memory of its own, so without this the pill goes blank for however
+    // long the two network calls take. weather.py maintains this same file
+    // as its own on-disk cache (mirroring exactly what it last emitted), so
+    // reading it here shows the last known reading on the very first frame;
+    // the Process below then overwrites it with a fresh poll shortly after.
+    FileView {
+        id: cacheFile
+        path: Quickshell.env("HOME") + "/.config/quickshell/weather-cache.json"
+        printErrors: false
+        onLoaded: {
+            try {
+                root._applyData(JSON.parse(text()))
+            } catch (e) { /* no cache yet -- stays blank until the process finishes */ }
+        }
+    }
+
     Process {
         id: weatherProc
         command: ["python3", Quickshell.env("HOME") + "/.config/quickshell/scripts/weather.py"]
         stdout: StdioCollector {
             onStreamFinished: {
                 try {
-                    const data = JSON.parse(text)
-                    root.tempC = data.tempC
-                    root.code = data.code
-                    root.isDay = data.isDay
-                    root.city = data.city
-                    root.hourly = data.hourly || []
-                    root.daily = data.daily || []
+                    if (!root._applyData(JSON.parse(text)))
+                        root.tempC = null
                 } catch (e) {
                     root.tempC = null
                 }
@@ -214,14 +243,18 @@ Pill {
                     }
                 }
 
-                // Current conditions
+                // Current conditions: icon+temp, feels-like, humidity,
+                // and wind spread across four equal-width slots spanning
+                // the full popup width, same "divide the width evenly"
+                // approach as the hourly forecast row further down.
                 Item {
                     width: parent.width
                     height: headerIcon.implicitHeight
 
                     Row {
-                        id: headerRow
-                        spacing: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: 0
+                        spacing: 8
                         Text {
                             id: headerIcon
                             text: root.iconFor(root.code, root.isDay)
@@ -230,12 +263,86 @@ Pill {
                             color: Theme.text
                         }
                         Text {
-                            anchors.verticalCenter: headerIcon.verticalCenter
+                            anchors.verticalCenter: parent.verticalCenter
                             text: Math.round(root.tempC) + "°C"
                             font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSize + 4
+                            font.pixelSize: Theme.fontSize
                             font.bold: true
                             color: Theme.text
+                        }
+                    }
+
+                    Row {
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: parent.width * 0.30
+                        visible: root.feelsLikeC !== null
+                        spacing: 8
+
+                        Column {
+                            id: feelsLabel
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 1
+                            Text {
+                                text: "Feels"
+                                color: Theme.textDim
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontSize - 3
+                            }
+                            Text {
+                                text: "like:"
+                                color: Theme.textDim
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontSize - 3
+                            }
+                        }
+                        Text {
+                            anchors.verticalCenter: feelsLabel.verticalCenter
+                            text: Math.round(root.feelsLikeC) + "°"
+                            color: Theme.textMuted
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSize
+                        }
+                    }
+
+                    Row {
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: parent.width * 0.58
+                        visible: root.feelsLikeC !== null
+                        spacing: 6
+                        Text {
+                            id: humidityIcon
+                            text: ""
+                            color: Theme.textDim
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSize + 3
+                        }
+                        Text {
+                            anchors.verticalCenter: humidityIcon.verticalCenter
+                            text: root.humidity + "%"
+                            color: Theme.textMuted
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSize
+                        }
+                    }
+
+                    Row {
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: parent.width * 0.80
+                        visible: root.feelsLikeC !== null
+                        spacing: 6
+                        Text {
+                            id: windIcon
+                            text: ""
+                            color: Theme.textDim
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSize + 3
+                        }
+                        Text {
+                            anchors.verticalCenter: windIcon.verticalCenter
+                            text: Math.round(root.windKph) + " km/h"
+                            color: Theme.textMuted
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSize
                         }
                     }
                 }
@@ -278,6 +385,19 @@ Pill {
                                 color: Theme.text
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.fontSize - 3
+                            }
+                            // Empty (not visible:false) so every column keeps
+                            // the same height whether or not it has a
+                            // reading to show -- otherwise the row above
+                            // (temp) ends up at different y-positions across
+                            // columns depending on which hours are rainy.
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: (hourDelegate.modelData.precipProb || 0) >= 20
+                                    ? hourDelegate.modelData.precipProb + "%" : ""
+                                color: Theme.accent
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontSize - 4
                             }
                         }
                     }
@@ -332,16 +452,21 @@ Pill {
                                     leftMargin: 8
                                 }
                                 spacing: 3
-                                visible: dayDelegate.modelData.precipProb >= 20
-
                                 Text {
                                     text: ""
-                                    color: Theme.accent
+                                    color: dayDelegate.modelData.precipProb >= 20 ? Theme.accent : Theme.textDim
                                     font.family: Theme.fontFamily
                                     font.pixelSize: Theme.fontSize - 3
                                 }
                                 Text {
                                     text: dayDelegate.modelData.precipProb + "%"
+                                    color: Theme.textDim
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontSize - 3
+                                }
+                                Text {
+                                    text: dayDelegate.modelData.precipMm > 0
+                                        ? " · " + dayDelegate.modelData.precipMm.toFixed(1) + "mm" : ""
                                     color: Theme.textDim
                                     font.family: Theme.fontFamily
                                     font.pixelSize: Theme.fontSize - 3
