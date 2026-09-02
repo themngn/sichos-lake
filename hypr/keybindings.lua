@@ -50,15 +50,9 @@ hl.bind(mainMod .. " + SHIFT + right", hl.dsp.window.swap({ direction = "right" 
 hl.bind(mainMod .. " + SHIFT + up",    hl.dsp.window.swap({ direction = "up" }))
 hl.bind(mainMod .. " + SHIFT + down",  hl.dsp.window.swap({ direction = "down" }))
 
--- Switch workspaces with mainMod + [1-9, 0]
--- Move active window to workspace with mainMod + SHIFT + [1-9, 0]
--- Move active window silently with mainMod + SHIFT + ALT + [1-9, 0]
-for i = 1, 10 do
-    local key = i == 10 and "0" or tostring(i)
-    hl.bind(mainMod .. " + " .. key,                 hl.dsp.focus({ workspace = tostring(i) }))
-    hl.bind(mainMod .. " + SHIFT + " .. key,         hl.dsp.window.move({ workspace = tostring(i) }))
-    hl.bind(mainMod .. " + SHIFT + ALT + " .. key,   hl.dsp.window.move({ workspace = tostring(i), follow = false }))
-end
+-- Switch workspaces with mainMod + [1-9, 0], move windows with mainMod +
+-- SHIFT(+ALT) + [1-9, 0]: see workspaces.lua, which owns these binds now
+-- (dynamic workspace pool -- workspaces.md).
 
 -- Workspace navigation
 hl.bind(mainMod .. " + TAB",          hl.dsp.focus({ workspace = "e+1" }))

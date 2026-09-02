@@ -1,10 +1,33 @@
 import QtQuick
 import Quickshell
 import Quickshell.Hyprland
+import Quickshell.Io
 
 Pill {
     id: root
     horizontalPadding: 0
+
+    // Cosmetic-only placeholder pills for the dynamic workspace pool
+    // (hypr/workspaces.lua, workspaces.md) so pool workspace ids are
+    // always visible even before anything's been put on them, without
+    // Hyprland's own workspace_rule persistent=true -- that actively
+    // broke the pool (see the comment in workspaces.lua where that block
+    // used to be) because it made Hyprland force-reassign persistent
+    // workspaces onto whichever monitor has focus on every monitor
+    // connect. This file is written by workspaces.lua and is otherwise
+    // unused -- Lua stays the sole source of truth for anything that
+    // actually dispatches or binds.
+    FileView {
+        id: poolSizeFile
+        path: Quickshell.env("HOME") + "/.local/state/sichos/pool-size"
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+    }
+    readonly property int poolSize: {
+        const n = parseInt(poolSizeFile.text())
+        return Number.isFinite(n) && n > 0 ? n : 6
+    }
 
     // Bumped on every window lifecycle event so the `windows` list below
     // (which the icon Repeater's identity depends on) always re-evaluates
@@ -54,6 +77,16 @@ Pill {
     // Special workspaces sort after normal ones, id-ascending within each group
     readonly property var sortedWorkspaces: {
         const list = Hyprland.workspaces.values.slice()
+        const liveIds = new Set(list.map(w => w.id))
+        // Placeholder pills for pool ids Hyprland hasn't materialized (an
+        // empty/unsummoned pool workspace doesn't exist as a live object --
+        // see workspaces.lua). Plain JS objects, not real HyprlandWorkspace
+        // instances, so they have no .activate() -- the click handler below
+        // falls back to Hyprland.dispatch() for those.
+        for (let i = 1; i <= root.poolSize; i++) {
+            if (!liveIds.has(i))
+                list.push({ id: i, name: String(i), focused: false, urgent: false, placeholder: true })
+        }
         list.sort((a, b) => {
             const aSpecial = a.name.startsWith("special:")
             const bSpecial = b.name.startsWith("special:")
@@ -131,7 +164,7 @@ Pill {
                     id: wsMouse
                     anchors.fill: parent
                     hoverEnabled: true
-                    onClicked: modelData.activate()
+                    onClicked: modelData.placeholder ? Hyprland.dispatch("workspace " + modelData.id) : modelData.activate()
                 }
             }
         }

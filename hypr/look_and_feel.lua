@@ -95,8 +95,13 @@ hl.animation({ leaf = "zoomFactor",    enabled = true,  speed = 7,    bezier = "
 --     rounding    = 0,
 -- })
 
--- Keep workspaces 1-10 alive with no windows so the quickshell bar's Workspaces
--- module (which reads persistent workspaces from these rules) always shows them.
-for i = 1, 6 do
-    hl.workspace_rule({ workspace = tostring(i), persistent = true })
-end
+-- Used to be a `for i=1,6 do hl.workspace_rule({workspace=tostring(i),
+-- persistent=true}) end` block here, keeping empty pool workspaces alive
+-- for the quickshell bar. Removed outright, not moved: a persistent
+-- workspace_rule with no explicit `monitor` field makes Hyprland's own
+-- native reconciliation force-reassign it onto whichever monitor has
+-- focus on every monitor connect -- confirmed live, it was yanking
+-- occupied workspaces off other monitors onto the one you happened to be
+-- looking at. workspaces.lua now handles pool sizing without persistence,
+-- and the bar (quickshell/modules/Workspaces.qml) fakes the always-visible
+-- pills itself by reading workspaces.lua's pool-size file directly.
