@@ -75,7 +75,7 @@ PanelWindow {
     // they're a fixed trio, not covered by BarSettings.
     Component { id: trayComp; Tray {} }
     Component { id: aiModelUsageComp; AiModelUsage { screenName: bar.screen.name } }
-    Component { id: notificationCenterComp; NotificationCenter {} }
+    Component { id: notificationCenterComp; NotificationCenter { screen: bar.screen; screenName: bar.screen.name } }
     Component { id: languageComp; Language {} }
     Component { id: bluetoothComp; BluetoothIndicator { screenName: bar.screen.name } }
     Component { id: networkComp; NetworkIndicator {} }

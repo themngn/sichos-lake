@@ -9,10 +9,18 @@ import Quickshell
 Pill {
     id: root
 
+    // Set by Bar.qml to this instance's own screen/name, same pattern as
+    // Weather/AiModelUsage/BluetoothIndicator -- `screen` is what the
+    // PanelWindow below actually renders on, `screenName` is just the
+    // string key ShellState.notificationCenterScreen compares against.
+    property var screen: null
+    property string screenName: ""
+
     readonly property int count: NotificationHistory.entries.length
+    readonly property bool panelOpen: ShellState.notificationCenterScreen === root.screenName
 
     tooltipText: root.count > 0 ? root.count + " notification" + (root.count === 1 ? "" : "s") : "No notifications"
-    onClicked: panel.visible = !panel.visible
+    onClicked: ShellState.notificationCenterScreen = root.panelOpen ? "" : root.screenName
 
     Text {
         // Presence-only indicator (no count) — a number badge kept
@@ -28,8 +36,8 @@ Pill {
     PanelWindow {
         id: panel
 
-        screen: Quickshell.screens[0]
-        visible: false
+        screen: root.screen
+        visible: root.panelOpen
         focusable: true
         color: Qt.rgba(0, 0, 0, 0.35)
 
@@ -42,7 +50,7 @@ Pill {
 
         MouseArea {
             anchors.fill: parent
-            onClicked: panel.visible = false
+            onClicked: ShellState.notificationCenterScreen = ""
         }
 
         Rectangle {
