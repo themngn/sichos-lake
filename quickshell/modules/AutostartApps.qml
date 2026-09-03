@@ -24,6 +24,15 @@ QtObject {
         else root.enable(name)
     }
 
+    // See BarSettings.qml's _ipc for why this exists — FileView's
+    // watchChanges doesn't pick up external writes in practice, so the
+    // standalone settings app calls `quickshell ipc call autostartapps
+    // reload` after it writes autostart-apps.json itself.
+    property IpcHandler _ipc: IpcHandler {
+        target: "autostartapps"
+        function reload() { root.view.reload() }
+    }
+
     property FileView view: FileView {
         path: Quickshell.env("HOME") + "/.config/quickshell/autostart-apps.json"
         watchChanges: true

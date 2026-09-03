@@ -82,6 +82,17 @@ QtObject {
         adapter.order = ids
     }
 
+    // Lets `quickshell ipc call barsettings reload` re-read the file from
+    // outside the process — needed because FileView's watchChanges doesn't
+    // actually pick up writes made by another process (tested live: editing
+    // this file externally while quickshell was running produced no bar
+    // change at all, even after several seconds). The standalone settings
+    // app (settings/) calls this after writing bar-settings.json itself.
+    property IpcHandler _ipc: IpcHandler {
+        target: "barsettings"
+        function reload() { root.view.reload() }
+    }
+
     property FileView view: FileView {
         path: Quickshell.env("HOME") + "/.config/quickshell/bar-settings.json"
         watchChanges: true
