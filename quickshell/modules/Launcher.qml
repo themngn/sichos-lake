@@ -346,6 +346,39 @@ PanelWindow {
         return launcher.rootItems
     }
 
+    // Lower is better, and applies across every category at once (apps,
+    // toggles, power actions, bar widgets) — e.g. the "Stay Awake" toggle
+    // legitimately outranks an app it only substring-matches, same as any
+    // other prefix hit would. A plain substring test (the old behavior)
+    // ranks "Steam" above "Telegram" for query "te" — S-T-E-A-M contains
+    // "te" too, and it only won on alphabetical luck (S < T). Humans expect
+    // a query to match where a name *starts* first: name-prefix (tier 0),
+    // then a word boundary inside the name (space, '-', '_', or a
+    // lower→upper camelCase step, e.g. "Cast" in "GoogleCast" — tier 1),
+    // then anywhere-substring (tier 2) last.
+    //
+    // Within a tier, an earlier match *relative to the name's own length*
+    // breaks the tie — not raw character index, or "OBS Studio" would
+    // always beat "Visual Studio Code" on "st" purely for being the shorter
+    // string, even though the match sits proportionally later in it (index
+    // 4 of 10 vs. 7 of 18: 0.40 vs 0.39). Encoded as tier + fraction so it
+    // never crosses into a neighboring tier. Exact ties (two prefix
+    // matches, e.g. "Steam" vs. "Stay Awake" on "st") are meant to fall
+    // back to the underlying list's existing order (apps before toggles
+    // before bar widgets, alphabetical within apps) — confirmed live that
+    // QML's Array.sort does NOT reliably preserve that on a tie (Stay Awake
+    // sorted before Steam despite matching rank and a later position in the
+    // source list), so `filtered` below tie-breaks on original index
+    // explicitly instead of trusting sort stability.
+    function matchRank(name, q) {
+        const lower = name.toLowerCase()
+        if (lower.startsWith(q)) return 0
+        for (let i = 1; i < name.length; i++) {
+            const boundary = /[\s\-_]/.test(name[i - 1]) || (/[a-z]/.test(name[i - 1]) && /[A-Z]/.test(name[i]))
+            if (boundary && lower.startsWith(q, i)) return 1 + i / name.length
+        }
+        return 2 + lower.indexOf(q) / name.length
+    }
     readonly property var filtered: {
         const q = launcher.query.toLowerCase()
         if (!q) return launcher.currentItems
@@ -354,9 +387,17 @@ PanelWindow {
         // below (which would just find nothing, since none of these are
         // part of allItems).
         if (launcher.mode.indexOf("picklist:") === 0)
-            return launcher.currentItems.filter(i => i.name.toLowerCase().includes(q))
+            return launcher.currentItems
+                .map((item, idx) => ({ item: item, idx: idx }))
+                .filter(e => e.item.name.toLowerCase().includes(q))
+                .sort((a, b) => launcher.matchRank(a.item.name, q) - launcher.matchRank(b.item.name, q) || a.idx - b.idx)
+                .map(e => e.item)
         if (launcher.mode === "appmenu" || launcher.mode === "folderpick" || launcher.mode === "newfoldername") return launcher.currentItems
-        return launcher.allItems.filter(i => i.name.toLowerCase().includes(q))
+        return launcher.allItems
+            .map((item, idx) => ({ item: item, idx: idx }))
+            .filter(e => e.item.name.toLowerCase().includes(q))
+            .sort((a, b) => launcher.matchRank(a.item.name, q) - launcher.matchRank(b.item.name, q) || a.idx - b.idx)
+            .map(e => e.item)
     }
 
     // Full breadcrumb for a given mode, same idea as pathFor's search-result
