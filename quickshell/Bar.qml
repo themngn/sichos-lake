@@ -170,6 +170,9 @@ PanelWindow {
                 Quickshell.execDetached(["systemctl", "--user", "restart", "hyprsunset.service"])
             }
         }
+        HdrToggle {
+            screenName: bar.screen.name
+        }
         IdleToggle {
             screenName: bar.screen.name
             active: ShellState.idleActive
