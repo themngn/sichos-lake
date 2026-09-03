@@ -420,7 +420,17 @@ fi
 echo "==> Hyprland config"
 
 for f in "$HERE"/hypr/*; do
-    install_file "$f" "$HOME/.config/hypr/$(basename "$f")"
+    base="$(basename "$f")"
+    # monitors.lua is genuinely per-machine (see CLAUDE.md) — the repo's copy
+    # is only a template for a fresh install to seed. Once a real deployed
+    # one exists, re-running install.sh must never touch it: install_file()
+    # would otherwise overwrite the live monitor layout with that generic
+    # template on every run, backing up the real config as .bak instead of
+    # leaving it in place.
+    if [ "$base" = "monitors.lua" ] && [ -f "$HOME/.config/hypr/monitors.lua" ]; then
+        continue
+    fi
+    install_file "$f" "$HOME/.config/hypr/$base"
 done
 echo "    installed to ~/.config/hypr (Hyprland reloads config automatically on save)"
 
