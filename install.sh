@@ -564,6 +564,52 @@ echo "==> neovim config (transparent background)"
 install_file "$HERE/nvim/init.lua" "$HOME/.config/nvim/init.lua"
 echo "    installed to ~/.config/nvim"
 
+echo "==> zsh (shell + prompt)"
+
+# antidote (https://antidote.sh) has no dnf/COPR package — official install
+# method is a plain git clone. zsh/.zsh_plugins.txt lists the plugins;
+# `antidote load` in .zshrc bundles/caches them into ~/.zsh_plugins.zsh on
+# first run (a generated build artifact, not tracked in this repo).
+if [ -d "$HOME/.antidote" ]; then
+    echo "    antidote already installed"
+else
+    git clone --depth=1 https://github.com/mattmc3/antidote.git "$HOME/.antidote"
+    echo "    cloned antidote to ~/.antidote"
+fi
+
+# oh-my-posh (https://ohmyposh.dev) also has no dnf/COPR package — official
+# installer script, pinned to ~/.local/bin (same spot the VS Code CLI
+# wrappers above use) rather than trusting its installer's own default,
+# which differs for root vs non-root.
+if command -v oh-my-posh >/dev/null 2>&1; then
+    echo "    oh-my-posh already installed"
+else
+    curl -s https://ohmyposh.dev/install.sh | bash -s -- -d "$HOME/.local/bin"
+    echo "    installed oh-my-posh to ~/.local/bin"
+fi
+
+# Unlike kitty.conf/qt6ct.conf (files nobody but this repo writes), Fedora
+# ships a default ~/.zshrc and any pre-existing user has their own — on a
+# fresh machine install_file() backs that up as ~/.zshrc.bak and replaces
+# it with this one. Intentional (this is an opinionated personal distro
+# config, not a generic zsh installer), just not free like the other two.
+install_file "$HERE/zsh/.zshrc" "$HOME/.zshrc"
+install_file "$HERE/zsh/.zsh_plugins.txt" "$HOME/.zsh_plugins.txt"
+install_file "$HERE/zsh/prompt.toml" "$HOME/.config/prompt.toml"
+echo "    installed ~/.zshrc, ~/.zsh_plugins.txt, ~/.config/prompt.toml"
+
+# Last, since antidote/oh-my-posh above must already be in place before the
+# next login shell starts — flipping this first and failing partway through
+# would drop the user into a zsh with no prompt/plugins configured yet.
+ZSH_BIN="$(command -v zsh)"
+if [ "$(getent passwd "$(whoami)" | cut -d: -f7)" != "$ZSH_BIN" ]; then
+    sudo usermod -s "$ZSH_BIN" "$(whoami)"
+    echo "    set login shell to $ZSH_BIN (takes effect on next login)"
+    SHELL_CHANGED=1
+else
+    echo "    login shell already zsh"
+fi
+
 echo "==> pavucontrol-dark GTK4 theme"
 
 # A *named* theme under ~/.local/share/themes, not ~/.config/gtk-4.0/gtk.css:
@@ -963,5 +1009,9 @@ Nothing here restarted sddm, quickshell, or rebooted for you:
   - Hyprland and quickshell config changes are already live$([ "$ALT" -eq 1 ] && echo " (except the --alt modifier swap, which needs the reboot above too)")
   - restart kitty for its config change to take effect
   - the hostname change (if applied) is live system-wide already; open a new
-    terminal to see it reflected in your shell prompt and fastfetch
+    terminal to see it reflected in your shell prompt and fastfetch$([ "${SHELL_CHANGED:-0}" = "1" ] && echo "
+  - login shell changed to zsh: only \`usermod\`'s /etc/passwd entry updated —
+    log out and back in (or reboot) to pick it up. Every kitty window opened
+    in the *current* graphical session, new or old, still gets bash: kitty
+    resolves the shell from \$SHELL, which was fixed at SDDM login time")
 EOF

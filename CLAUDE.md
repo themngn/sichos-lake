@@ -34,7 +34,12 @@ places — the repo file (what `install.sh` ships to every future machine) and t
   `quickshell/` → `~/.config/quickshell/`, `kitty/kitty.conf` → `~/.config/kitty/kitty.conf`,
   `qt6ct/qt6ct.conf` → `~/.config/qt6ct/qt6ct.conf`, `hyprquickframe/theme.toml` →
   `~/.config/hyprquickframe/theme.toml`, `fastfetch/` → `~/.config/fastfetch/`,
-  `wallpaper/wallpaper.jpg` → `~/Pictures/wallpaper.jpg`. System-level
+  `wallpaper/wallpaper.jpg` → `~/Pictures/wallpaper.jpg`. `zsh/` is the one non-flat exception:
+  `zsh/.zshrc` → `~/.zshrc`, `zsh/.zsh_plugins.txt` → `~/.zsh_plugins.txt`, `zsh/prompt.toml` →
+  `~/.config/prompt.toml` (bare file, not under a subdirectory) — antidote and oh-my-posh
+  themselves have no dnf/COPR package and are installed manually by the "==> zsh" `install.sh`
+  step (git clone / official installer script) rather than via `packages.txt`;
+  `~/.zsh_plugins.zsh` is antidote's own generated plugin bundle/cache, not tracked here. System-level
   targets (Plymouth theme, the polkit rule, SDDM) live outside `$HOME` entirely — see the
   matching `install.sh` step for their real destination: `sddm/sichos/` →
   `/usr/share/sddm/themes/sichos/`, `sddm/10-theme.conf` → `/etc/sddm.conf.d/10-theme.conf`,
