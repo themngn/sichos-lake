@@ -592,11 +592,15 @@ else
     echo "    cloned antidote to ~/.antidote"
 fi
 
-# oh-my-posh (https://ohmyposh.dev) also has no dnf/COPR package — official
-# installer script, pinned to ~/.local/bin (same spot the VS Code CLI
-# wrappers above use) rather than trusting its installer's own default,
-# which differs for root vs non-root.
-if command -v oh-my-posh >/dev/null 2>&1; then
+# oh-my-posh (https://ohmyposh.dev): pinned to ~/.local/bin (same spot the
+# VS Code CLI wrappers above use) via its official installer script rather
+# than trusting its installer's own default (differs for root vs non-root).
+# Fedora does now package oh-my-posh too, but it lags badly behind upstream
+# (28.10.0 vs. 31.1.2 seen here) — checking `command -v oh-my-posh` would
+# match that stale /usr/bin one and skip installing ours, even though
+# ~/.local/bin correctly precedes /usr/bin in PATH once it's populated. So
+# this checks the exact pinned path, not "any oh-my-posh in PATH".
+if [ -x "$HOME/.local/bin/oh-my-posh" ]; then
     echo "    oh-my-posh already installed"
 else
     curl -s https://ohmyposh.dev/install.sh | bash -s -- -d "$HOME/.local/bin"

@@ -36,9 +36,14 @@ places — the repo file (what `install.sh` ships to every future machine) and t
   `~/.config/hyprquickframe/theme.toml`, `fastfetch/` → `~/.config/fastfetch/`,
   `wallpaper/wallpaper.jpg` → `~/Pictures/wallpaper.jpg`. `zsh/` is the one non-flat exception:
   `zsh/.zshrc` → `~/.zshrc`, `zsh/.zsh_plugins.txt` → `~/.zsh_plugins.txt`, `zsh/prompt.toml` →
-  `~/.config/prompt.toml` (bare file, not under a subdirectory) — antidote and oh-my-posh
-  themselves have no dnf/COPR package and are installed manually by the "==> zsh" `install.sh`
-  step (git clone / official installer script) rather than via `packages.txt`;
+  `~/.config/prompt.toml` (bare file, not under a subdirectory) — antidote has no dnf/COPR
+  package and is installed manually (git clone) by the "==> zsh" `install.sh` step rather than
+  via `packages.txt`. oh-my-posh is installed the same manual way (official installer script,
+  pinned to `~/.local/bin`) even though Fedora does now package it — that package lags badly
+  behind upstream (28.10.0 vs. 31.1.2 seen on this machine), so `install.sh` checks specifically
+  for `~/.local/bin/oh-my-posh` rather than `command -v oh-my-posh`, which would match the stale
+  system one first if it's ever installed (`~/.local/bin` does correctly precede `/usr/bin` in
+  `PATH` once populated — confirmed on this machine);
   `~/.zsh_plugins.zsh` is antidote's own generated plugin bundle/cache, not tracked here. System-level
   targets (Plymouth theme, the polkit rule, SDDM) live outside `$HOME` entirely — see the
   matching `install.sh` step for their real destination: `sddm/sichos/` →
