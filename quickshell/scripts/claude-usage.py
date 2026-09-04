@@ -25,13 +25,14 @@ credentials, endpoint down, etc.) — the widget treats null as "unknown"
 and falls back to showing nothing rather than a wrong number.
 """
 import json
+import os
 import subprocess
 import sys
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
-CREDENTIALS_PATH = "/home/mono/.claude/.credentials.json"
+CREDENTIALS_PATH = os.path.expanduser("~/.claude/.credentials.json")
 USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
 
 

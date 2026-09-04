@@ -85,7 +85,7 @@ hl.on("hyprland.start", function ()
   hl.exec_cmd("gsettings set org.gnome.desktop.interface gtk-theme 'adw-gtk3-dark'")
   -- hyprpaper (this build) does not read hyprpaper.conf; the wallpaper must
   -- be set over its IPC socket after it starts up.
-  hl.exec_cmd("quickshell & (hyprpaper & sleep 1; hyprctl hyprpaper wallpaper ',/home/mono/Pictures/wallpaper.jpg') &")
+  hl.exec_cmd("quickshell & (hyprpaper & sleep 1; hyprctl hyprpaper wallpaper \",$HOME/Pictures/wallpaper.jpg\") &")
   -- Blue-light filter (hyprsunset.conf) and the idle/lock daemon
   -- (hypridle.conf, lock/screen-off timeouts; the bar's Stay Awake toggle —
   -- Bar.qml's IdleInhibitor — suspends both while on) now run as their

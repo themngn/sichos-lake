@@ -432,6 +432,14 @@ for f in "$HERE"/hypr/*; do
     fi
     install_file "$f" "$HOME/.config/hypr/$base"
 done
+# hyprlock.conf/hyprpaper.conf keep a literal "$HOME" placeholder in the repo
+# rather than a real path (there's no per-machine value to template there
+# otherwise) — but hyprlang only reliably expands $VAR inside cmd[...] shell
+# contexts (confirmed: hyprpaper --verbose never even logs parsing its own
+# preload/wallpaper lines, so it can't be used to test plain-scalar
+# expansion either), not in a plain scalar like background{path=...}. Patch
+# the real path in at deploy time instead of trusting that expansion.
+sed -i "s|\$HOME|$HOME|g" "$HOME/.config/hypr/hyprlock.conf" "$HOME/.config/hypr/hyprpaper.conf"
 echo "    installed to ~/.config/hypr (Hyprland reloads config automatically on save)"
 
 if [ "$VM" -eq 1 ]; then
