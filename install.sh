@@ -345,6 +345,13 @@ else
         # though `xdg-mime query default` finds them fine — that command
         # reads .desktop files directly, but the portal's own app-chooser
         # goes through this cache and shows "No Apps available" without it.
+        # update-desktop-database ships in desktop-file-utils, which isn't
+        # in packages.txt and hadn't been installed yet on a genuinely fresh
+        # machine ("command not found" here) — it just happened to already
+        # be present as a transitive dependency on this dev box.
+        if ! command -v update-desktop-database >/dev/null 2>&1; then
+            sudo dnf install -y desktop-file-utils
+        fi
         update-desktop-database "$HOME/.local/share/applications"
     fi
 
