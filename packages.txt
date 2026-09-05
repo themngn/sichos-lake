@@ -1,5 +1,5 @@
 # Packages required by ~/.config/hypr, ~/.config/quickshell, ~/.config/kitty
-# Last updated 2026-09-03. Fedora (dnf) package names. All entries below are installed.
+# Last updated 2026-09-05. Fedora (dnf) package names. All entries below are installed.
 
 ## Core
 hyprland
@@ -44,6 +44,9 @@ ddcutil                  # external-monitor (DDC/CI) brightness for the bar's Di
                           # Its udev rule needs a reload to grant /dev/i2c-* access (see
                           # "==> ddcutil" in install.sh).
 playerctl
+pipewire-codec-aptx      # from rpmfusion-free-updates (enabled unconditionally above) — aptX/
+                          # aptX HD Bluetooth codec support for WirePlumber; without it Bluetooth
+                          # headphones/headsets fall back to SBC even when both ends support aptX
 NetworkManager
 NetworkManager-wifi      # wifi device plugin — without it NM treats wlan devices as
                           # generic (unmanaged) instead of wifi; needed by wlctl
@@ -96,6 +99,11 @@ gnome-firmware            # GUI for fwupd (already installed as a dependency) �
                           # now-retired p7zip in Fedora 44)
 unrar                     # .rar extraction — from rpmfusion-nonfree (enabled unconditionally
                           # above), since RAR's license keeps it out of Fedora/RPM Fusion free
+file-roller               # GNOME Archive Manager — GUI for browsing/creating archives (Nautilus's
+                          # own extract/compress-here menu entries don't need this, but opening a
+                          # .zip/.tar/etc. by double-click does)
+ffmpegthumbnailer         # video thumbnails in Nautilus (GNOME's thumbnail factory picks this up
+                          # automatically via its .thumbnailer spec, no config needed)
 
 ## Optional / not needed
 # firefox — installed conditionally via install.sh's "==> Firefox" section

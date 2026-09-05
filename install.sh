@@ -438,6 +438,23 @@ else
     echo "    libavcodec-free not installed, skipped"
 fi
 
+# mesa-va-drivers-freeworld adds hardware VA-API video decode (H.264 high
+# profile, HEVC, VC-1) on top of Mesa's own radeonsi/iHD drivers -- unlike
+# ffmpeg/libavcodec above, Fedora Workstation doesn't pull in even the
+# patent-safe mesa-va-drivers by default, so there may be nothing to swap
+# from (confirmed on this machine: neither package was installed, so VLC/mpv
+# were doing pure software decode despite having a GPU that supports this in
+# hardware).
+if rpm -q mesa-va-drivers-freeworld >/dev/null 2>&1; then
+    echo "    mesa-va-drivers-freeworld already installed"
+elif rpm -q mesa-va-drivers >/dev/null 2>&1; then
+    echo "    swapping mesa-va-drivers -> mesa-va-drivers-freeworld"
+    sudo dnf swap -y mesa-va-drivers mesa-va-drivers-freeworld --allowerasing
+else
+    echo "    installing mesa-va-drivers-freeworld (nothing to swap from)"
+    sudo dnf install -y mesa-va-drivers-freeworld
+fi
+
 echo "==> Btrfs snapshots (snapper + btrfs-assistant)"
 
 # Filesystem-gated rather than a sichos-setup.sh toggle: this is a safety
@@ -1053,15 +1070,31 @@ else
     sudo dnf install -y libreoffice
 fi
 
-echo "==> Printing (CUPS)"
+echo "==> Printing & scanning (CUPS / SANE)"
 
 if [ "${SKIP_CUPS:-1}" = "1" ]; then
     echo "    skipped"
-elif rpm -q cups >/dev/null 2>&1; then
+else
+    # Not gated on `rpm -q cups` the way most SKIP_ steps are: that check used
+    # to short-circuit this whole block once cups existed, so sane-backends/
+    # simple-scan (added later) would never install for anyone who'd already
+    # run this step. dnf no-ops on anything already present (see the
+    # packages.txt loop's own comment), so just always install the set.
+    sudo dnf install -y cups system-config-printer sane-backends simple-scan
+    sudo systemctl enable --now cups
+fi
+
+echo "==> EasyEffects (microphone noise suppression)"
+
+if [ "${SKIP_EASYEFFECTS:-1}" = "1" ]; then
+    echo "    skipped"
+elif rpm -q easyeffects >/dev/null 2>&1; then
     echo "    already installed"
 else
-    sudo dnf install -y cups system-config-printer
-    sudo systemctl enable --now cups
+    # Pulls in rnnoise as a dependency (its RNNoise-based "Noise Reduction"
+    # input effect). Not auto-enabled -- open the app, pick your mic under
+    # Input, and add the Noise Reduction effect; no CLI/config equivalent.
+    sudo dnf install -y easyeffects
 fi
 
 if [ -z "${GIT_NAME:-}" ] && [ -z "${GIT_EMAIL:-}" ]; then

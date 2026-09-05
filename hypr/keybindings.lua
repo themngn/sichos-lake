@@ -6,6 +6,26 @@ local programs = require("programs")
 
 local mainMod = "SUPER" -- Sets "Windows" key as main modifier
 
+-- Laptop lid switch handling. Closing the lid doesn't disconnect eDP-1 (the
+-- near-universal kernel name for a built-in panel) the way unplugging a
+-- monitor does, so Hyprland keeps treating it as a live output even though
+-- nothing is visible. systemd-logind's own defaults already do the right
+-- thing for suspend (HandleLidSwitch=suspend when undocked,
+-- HandleLidSwitchDocked=ignore -- which per `man logind.conf` also covers
+-- "more than one display connected", not just an actual docking station --
+-- so a lid close with an external monitor attached doesn't suspend at all);
+-- what's missing is Hyprland disabling the now-invisible internal panel in
+-- that docked case, so windows/workspaces stop landing on it. Device
+-- confirmed present as "Lid Switch" via `hyprctl devices` and the bind
+-- syntax verified live via `hyprctl eval` before adding this. Harmless
+-- no-op on any machine without a lid switch (desktops).
+hl.bind("switch:on:Lid Switch", function()
+    hl.monitor({ output = "eDP-1", disabled = true })
+end)
+hl.bind("switch:off:Lid Switch", function()
+    hl.monitor({ output = "eDP-1", disabled = false })
+end)
+
 -- Example binds, see https://wiki.hypr.land/Configuring/Basics/Binds/ for more
 hl.bind(mainMod .. " + Return", hl.dsp.exec_cmd(programs.terminal))
 hl.bind(mainMod .. " + SHIFT + Return", hl.dsp.exec_cmd(programs.browser))
