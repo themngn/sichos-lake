@@ -76,6 +76,12 @@
 
 set -euo pipefail
 
+# Every step below checks current state before changing anything, so a failure
+# partway through is always safe to just retry — but set -e means a failure
+# otherwise aborts silently with no indication of that. Surface it instead.
+trap 'ec=$?; echo; echo "install.sh failed (exit $ec) at line $LINENO: $BASH_COMMAND" >&2; \
+      echo "Safe to re-run: ./install.sh is idempotent and skips whatever already succeeded." >&2' ERR
+
 VM=0
 ALT=0
 for arg in "$@"; do

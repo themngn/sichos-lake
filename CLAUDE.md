@@ -34,7 +34,11 @@ places — the repo file (what `install.sh` ships to every future machine) and t
   `quickshell/` → `~/.config/quickshell/`, `kitty/kitty.conf` → `~/.config/kitty/kitty.conf`,
   `qt6ct/qt6ct.conf` → `~/.config/qt6ct/qt6ct.conf`, `hyprquickframe/theme.toml` →
   `~/.config/hyprquickframe/theme.toml`, `fastfetch/` → `~/.config/fastfetch/`,
-  `wallpaper/wallpaper.jpg` → `~/Pictures/wallpaper.jpg`. `zsh/` is the one non-flat exception:
+  `wallpaper/wallpaper.jpg` → `~/Pictures/wallpaper.jpg`, `nvim/init.lua` →
+  `~/.config/nvim/init.lua`, `themes/pavucontrol-dark/gtk-4.0/gtk.css` →
+  `~/.local/share/themes/pavucontrol-dark/gtk-4.0/gtk.css`, `desktop-overrides/*.desktop` →
+  `~/.local/share/applications/*.desktop`, `autostart-overrides/nm-applet.desktop` →
+  `~/.config/autostart/nm-applet.desktop`. `zsh/` is the one non-flat exception:
   `zsh/.zshrc` → `~/.zshrc`, `zsh/.zsh_plugins.txt` → `~/.zsh_plugins.txt`, `zsh/prompt.toml` →
   `~/.config/prompt.toml` (bare file, not under a subdirectory) — antidote has no dnf/COPR
   package and is installed manually (git clone) by the "==> zsh" `install.sh` step rather than
@@ -46,7 +50,9 @@ places — the repo file (what `install.sh` ships to every future machine) and t
   `PATH` once populated — confirmed on this machine);
   `~/.zsh_plugins.zsh` is antidote's own generated plugin bundle/cache, not tracked here. System-level
   targets (Plymouth theme, the polkit rule, SDDM) live outside `$HOME` entirely — see the
-  matching `install.sh` step for their real destination: `sddm/sichos/` →
+  matching `install.sh` step for their real destination: `plymouth/unlock/*` →
+  `/usr/share/plymouth/themes/unlock/`, `polkit/49-sichos-timedate-locale.rules` →
+  `/etc/polkit-1/rules.d/49-sichos-timedate-locale.rules`, `sddm/sichos/` →
   `/usr/share/sddm/themes/sichos/`, `sddm/10-theme.conf` → `/etc/sddm.conf.d/10-theme.conf`,
   `sddm/sysconfig-sddm` → `/etc/sysconfig/sddm` (XCURSOR_THEME/SIZE and WLR_NO_HARDWARE_CURSORS
   for cursor rendering). SDDM's Wayland greeter compositor is `cage` (`cage -s -d` in
