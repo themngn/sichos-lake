@@ -1,55 +1,66 @@
-%global forgeurl	https://github.com/cage-kiosk/cage
+# Mirror of the spec actually used to build this — lives at the root of
+# https://github.com/themngn/cage, branch fullscreen-per-output, which is
+# what mdukhota/test1's COPR package (see install.sh's "==> SDDM" step)
+# builds from via its rpkg/Git source. Kept here too for discoverability
+# alongside cage-fullscreen-per-output.patch; not read by install.sh or
+# COPR from this path — edit the copy on that branch and keep this one in
+# sync by hand.
+Name:           {{{ git_dir_name }}}
+# Epoch, not just a Version bump: this needs to keep sorting ABOVE
+# whatever cage Fedora ships even after future upstream releases (0.3.2,
+# 0.4.0, ...), without needing to hand-chase that version here forever.
+# RPM version comparison checks Epoch before Version/Release at all —
+# any Epoch > the implicit default of 0 unconditionally outranks a
+# same-or-higher Version at epoch 0, regardless of what that Version
+# string actually is. Without this, pinning Version to e.g. "0.3.1"
+# only outranks stock cage-0.3.1-1 until Fedora ships something newer,
+# at which point `dnf install cage` silently prefers stock again.
+Epoch:          1
+# {{{ git_dir_version }}} isn't used here: this branch forked before the
+# v0.3.1 tag was cut, so git describe resolves against v0.3.0 instead
+# (not an ancestor of v0.3.1), giving an auto-derived version like
+# "0.0.git.390.<sha>" instead of something meaningfully tied to 0.3.1.
+Version:        0.3.1
+Release:        2.sichos%{?dist}
+Summary:        A Wayland kiosk (SichOS fork — multi-monitor SDDM login fix)
 
-Name:			cage
-Version:		0.3.1
-Release:		2.sichos%{?dist}
-Summary:		A Wayland kiosk
+License:        MIT
+URL:            https://github.com/themngn/cage
+VCS:            {{{ git_dir_vcs }}}
+Source:         {{{ git_dir_pack }}}
 
-License:		MIT
-URL:			https://www.hjdskes.nl/projects/cage
-Source0:		%{forgeurl}/releases/download/v%{version}/%{name}-%{version}.tar.gz
-Source1:		%{forgeurl}/releases/download/v%{version}/%{name}-%{version}.tar.gz.sig
-# https://keys.openpgp.org/search?q=34FF9526CFEF0E97A340E2E40FDE7BE0E88F5E48
-Source2:		gpgkey-E88F5E48.gpg
-# SichOS: make xdg_toplevel::set_fullscreen(output) actually honor the
-# requested output instead of always using the union of every connected
-# monitor. Without this, a client that fullscreens one toplevel per screen
-# on its own QScreen (sddm-greeter's GreeterApp::addViewForScreen does
-# exactly this) gets every one of those toplevels stretched across the
-# combined resolution of ALL monitors instead of appearing correctly on
-# the one it actually asked for — see sichos-lake's cage/ directory.
-Patch0:			cage-fullscreen-per-output.patch
-
-BuildRequires:	gcc
-BuildRequires:	gnupg2
-BuildRequires:	meson
-BuildRequires:	pkgconfig(scdoc)
-BuildRequires:	pkgconfig(wlroots-0.20)
-BuildRequires:	pkgconfig(wayland-protocols) >= 1.14
-BuildRequires:	pkgconfig(wayland-server)
-BuildRequires:	pkgconfig(xkbcommon)
+BuildRequires:  gcc
+BuildRequires:  meson
+BuildRequires:  pkgconfig(scdoc)
+BuildRequires:  pkgconfig(wlroots-0.20)
+BuildRequires:  pkgconfig(wayland-protocols) >= 1.14
+BuildRequires:  pkgconfig(wayland-server)
+BuildRequires:  pkgconfig(xkbcommon)
 
 %description
 This is Cage, a Wayland kiosk. A kiosk runs a single, maximized application.
 
-This README is only relevant for development resources and instructions. For a
-description of Cage and installation instructions for end-users, please see its
-project page and the Wiki.
+This build carries one fix on top of upstream: xdg_toplevel::set_fullscreen(output)'s
+requested output is now actually honored instead of cage always maximizing to the
+union of every connected monitor's geometry. Without it, any client that fullscreens
+one toplevel per screen on its own output — which is exactly what SDDM's greeter does
+per-monitor — gets every one of those toplevels stretched across the combined
+resolution of all monitors instead of each appearing correctly on the one it asked
+for, so a multi-monitor SDDM login screen ends up stretched across every display
+instead of each screen showing its own correctly cropped background.
 
+See https://github.com/themngn/cage/commits/fullscreen-per-output for the fix itself,
+and https://github.com/themngn/sichos-lake's CLAUDE.md for the full investigation.
 
 %prep
-%{gpgverify} --keyring='%{SOURCE2}' --signature='%{SOURCE1}' --data='%{SOURCE0}'
-%autosetup
-
+{{{ git_dir_setup_macro }}}
 
 %build
 %meson
 %meson_build
 
-
 %install
 %meson_install
-
 
 %files
 %license LICENSE
@@ -57,91 +68,5 @@ project page and the Wiki.
 %{_bindir}/%{name}
 %{_mandir}/man1/%{name}.1.*
 
-
 %changelog
-* Sat Sep 05 2026 SichOS <sichos@localhost> - 0.3.1-2.sichos
-- Patch: honor xdg_toplevel::set_fullscreen(output)'s requested output
-  instead of always maximizing to the union of every connected monitor
-  (fixes multi-monitor SDDM login screens getting stretched across all
-  screens instead of each showing correctly on its own)
-
-* Wed Jul 01 2026 Federico Pellegrin <fede@evolware.org> - 0.3.1-1
-- Update to 0.3.1 (rhbz#2495107)
-
-* Sat Apr 11 2026 Federico Pellegrin <fede@evolware.org> - 0.3.0-1
-- Update to 0.3.0 (rhbz#2457571)
-
-* Fri Jan 16 2026 Fedora Release Engineering <releng@fedoraproject.org> - 0.2.1-3
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_44_Mass_Rebuild
-
-* Fri Jan 16 2026 Fedora Release Engineering <releng@fedoraproject.org> - 0.2.1-2
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_44_Mass_Rebuild
-
-* Tue Oct 07 2025 Federico Pellegrin <fede@evolware.org> - 0.2.1-1
-- Update to 0.2.1 (#2400950)
-
-* Wed Jul 23 2025 Fedora Release Engineering <releng@fedoraproject.org> - 0.2.0-3
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_43_Mass_Rebuild
-
-* Thu Jan 16 2025 Fedora Release Engineering <releng@fedoraproject.org> - 0.2.0-2
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_42_Mass_Rebuild
-
-* Sun Dec 08 2024 Aleksei Bavshin <alebastr@fedoraproject.org> - 0.2.0-1
-- Update to 0.2.0 (#2316836)
-
-* Wed Jul 17 2024 Fedora Release Engineering <releng@fedoraproject.org> - 0.1.5-4
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_41_Mass_Rebuild
-
-* Tue Jan 23 2024 Fedora Release Engineering <releng@fedoraproject.org> - 0.1.5-3
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_40_Mass_Rebuild
-
-* Fri Jan 19 2024 Fedora Release Engineering <releng@fedoraproject.org> - 0.1.5-2
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_40_Mass_Rebuild
-
-* Sat Aug 26 2023 Aleksei Bavshin <alebastr@fedoraproject.org> - 0.1.5-1
-- Update to 0.1.5 (#2227408)
-- Convert License tag to SPDX
-- Update upstream URL and public key
-- Use source archive from release announcement instead of autogenerated one
-
-* Wed Jul 19 2023 Fedora Release Engineering <releng@fedoraproject.org> - 0.1.4-8
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_39_Mass_Rebuild
-
-* Wed Jan 18 2023 Fedora Release Engineering <releng@fedoraproject.org> - 0.1.4-7
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_38_Mass_Rebuild
-
-* Wed Jul 20 2022 Fedora Release Engineering <releng@fedoraproject.org> - 0.1.4-6
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_37_Mass_Rebuild
-
-* Sat Jan 22 2022 Lyes Saadi <fedora@lyes.eu> - 0.1.4-5
-- Fixing the pkgconfig dependency version.
-- Fixing the date for my last changelog entry (it's 2022, already!).
-
-* Wed Jan 19 2022 Fedora Release Engineering <releng@fedoraproject.org> - 0.1.4-4
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_36_Mass_Rebuild
-
-* Sun Jan 16 2022 Lyes Saadi <fedora@lyes.eu> - 0.1.4-3
-- Updating BuildRequires to use pkgconfig instead of packages to better utilize
-  compat packages and using a hard version requirement since wlroots breaks at
-  each update.
-
-* Wed Jul 21 2021 Fedora Release Engineering <releng@fedoraproject.org> - 0.1.4-2
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_35_Mass_Rebuild
-
-* Sat Jul 03 2021 Lyes Saadi <fedora@lyes.eu> - 0.1.4-1
-- Updating to 0.1.4 (Fix #1976482)
-
-* Tue Apr 20 2021 Lyes Saadi <fedora@lyes.eu> - 0.1.3-1
-- Updating to 0.1.3 (Fix #1950582)
-
-* Wed Apr 07 2021 Aleksei Bavshin <alebastr@fedoraproject.org> - 0.1.2.1-4
-- Rebuild for wlroots 0.13.0
-
-* Tue Jan 26 2021 Fedora Release Engineering <releng@fedoraproject.org> - 0.1.2.1-3
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_34_Mass_Rebuild
-
-* Sun Nov 15 2020 Lyes Saadi <fedora@lyes.eu> - 0.1.2.1-2
-- Rebuilding for wlroots 0.12
-
-* Thu Sep 03 2020 Lyes Saadi <fedora@lyes.eu> - 0.1.2.1-1
-- Initial package
+{{{ git_dir_changelog }}}
