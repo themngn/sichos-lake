@@ -83,6 +83,22 @@ hl.on("hyprland.start", function ()
   -- --password-store=basic, which is the actual weak/unencrypted fallback).
   hl.exec_cmd("gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'")
   hl.exec_cmd("gsettings set org.gnome.desktop.interface gtk-theme 'adw-gtk3-dark'")
+  -- xdg-desktop-portal-gtk (Type=dbus, D-Bus-activates on demand — see this
+  -- function's opening comment) is long-lived once started, and its own
+  -- self-drawn dialogs (the GTK file-open/save chooser any app's "Open
+  -- File" triggers, forwarded here via the portal rather than drawn by the
+  -- app itself) don't re-read color-scheme after activation: confirmed live
+  -- that its FileChooser rendered plain light Adwaita despite `gsettings
+  -- get`/the Settings portal's own ReadOne/ReadAll both already correctly
+  -- reporting prefer-dark, and a fresh bare libadwaita test app in the same
+  -- session picking up dark just fine — restarting the service (below) was
+  -- the only thing that fixed it. If something (an early notification, a
+  -- portal query from another autostart step) D-Bus-activates this before
+  -- the gsettings calls above land, it latches onto light for the rest of
+  -- the session; unconditionally restarting it here, after those calls,
+  -- guarantees it (re-)reads the correct value regardless of activation
+  -- order — a no-op cost if it wasn't running yet (systemd just starts it).
+  hl.exec_cmd("systemctl --user restart xdg-desktop-portal-gtk.service")
   -- hyprpaper (this build) does not read hyprpaper.conf; the wallpaper must
   -- be set over its IPC socket after it starts up.
   hl.exec_cmd("quickshell & (hyprpaper & sleep 1; hyprctl hyprpaper wallpaper \",$HOME/Pictures/wallpaper.jpg\") &")
