@@ -438,6 +438,34 @@ else
     echo "    libavcodec-free not installed, skipped"
 fi
 
+echo "==> Btrfs snapshots (snapper + btrfs-assistant)"
+
+# Filesystem-gated rather than a sichos-setup.sh toggle: this is a safety
+# net, not a preference, and it's self-selecting -- a non-btrfs root just
+# gets a clean no-op instead of a checkbox nobody needs to think about.
+if [ "$(findmnt -no FSTYPE /)" != "btrfs" ]; then
+    echo "    root filesystem isn't btrfs, skipped"
+else
+    if ! rpm -q snapper >/dev/null 2>&1; then
+        sudo dnf install -y snapper
+    fi
+    if ! rpm -q btrfs-assistant >/dev/null 2>&1; then
+        sudo dnf install -y btrfs-assistant
+    fi
+    if ! sudo snapper list-configs | grep -q '^root '; then
+        sudo snapper -c root create-config /
+        echo "    created snapper 'root' config"
+    else
+        echo "    snapper 'root' config already exists"
+    fi
+    if [ -z "$(sudo snapper -c root list --columns number 2>/dev/null | tail -n +3)" ]; then
+        sudo snapper -c root create --description "install.sh: initial snapshot"
+        echo "    took initial snapshot"
+    fi
+    sudo systemctl enable --now snapper-timeline.timer snapper-cleanup.timer >/dev/null 2>&1 || true
+    echo "    installed, root snapshots scheduled"
+fi
+
 echo "==> JetBrainsMono Nerd Font"
 
 if fc-list | grep -qi "JetBrainsMono Nerd Font Mono"; then
@@ -999,6 +1027,17 @@ elif rpm -q libreoffice >/dev/null 2>&1; then
     echo "    already installed"
 else
     sudo dnf install -y libreoffice
+fi
+
+echo "==> Printing (CUPS)"
+
+if [ "${SKIP_CUPS:-1}" = "1" ]; then
+    echo "    skipped"
+elif rpm -q cups >/dev/null 2>&1; then
+    echo "    already installed"
+else
+    sudo dnf install -y cups system-config-printer
+    sudo systemctl enable --now cups
 fi
 
 if [ -z "${GIT_NAME:-}" ] && [ -z "${GIT_EMAIL:-}" ]; then

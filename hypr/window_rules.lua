@@ -83,6 +83,16 @@ hl.window_rule({
     size   = "monitor_w*0.8 monitor_h*0.8",
 })
 
+-- Float and center the btop resource monitor (SUPER+B), same treatment as wlctl above.
+hl.window_rule({
+    name  = "float-center-btop",
+    match = { class = "btop" },
+
+    float  = true,
+    center = true,
+    size   = "monitor_w*0.8 monitor_h*0.8",
+})
+
 -- Float, pin (stays visible across every workspace), and corner-position
 -- Firefox's video Picture-in-Picture popup, top-right with a small margin.
 hl.window_rule({

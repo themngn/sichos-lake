@@ -70,6 +70,22 @@ xdg-desktop-portal-hyprland
 hyprpolkitagent           # autostart.lua: polkit auth agent — without it, polkit-gated actions
                           # (e.g. mounting a LUKS drive from Nautilus) fail with "Not authorized"
 
+## Utilities
+hyprpicker                # color picker, SUPER+C in keybindings.lua (autocopies hex to clipboard)
+gamemode                  # Feral GameMode daemon — opt in per-game via Steam launch options
+                          # ("gamemoderun %command%") or Lutris's own GameMode toggle; nothing here
+                          # can inject that automatically, this just makes the daemon available
+mangohud                  # Vulkan/OpenGL FPS/perf overlay — opt in per-game the same way
+                          # (MANGOHUD=1 %command%, or Lutris's own MangoHud toggle)
+cliphist                  # clipboard history, SUPER+SHIFT+V in keybindings.lua — listener started
+                          # in autostart.lua (wl-paste --watch cliphist store)
+fuzzel                    # dmenu-style picker — only used as cliphist's SUPER+SHIFT+V menu for now
+btop                      # resource monitor, SUPER+B opens it in a floating kitty (window_rules.lua)
+gvfs-smb                  # SMB backend for Nautilus's "Connect to Server" — without it that dialog
+                          # silently fails on any smb:// address
+gnome-disk-utility        # "Disks" GUI — partition/SMART info, no equivalent existed before this
+gnome-firmware            # GUI for fwupd (already installed as a dependency) — firmware updates
+
 ## Optional / not needed
 # firefox — installed conditionally via install.sh's "==> Firefox" section
 # (SKIP_FIREFOX, default installed) instead of unconditionally here, since

@@ -116,4 +116,7 @@ hl.on("hyprland.start", function ()
   -- Listens for controller Guide/Home button to toggle the Quickshell launcher
   -- overlay and navigates apps/folders with D-Pad/stick when active.
   hl.exec_cmd("sichos-gamepad &")
+  -- Clipboard history listener for SUPER+SHIFT+V (keybindings.lua). Plain
+  -- background process, matching sichos-gamepad above, not a systemd unit.
+  hl.exec_cmd("wl-paste --watch cliphist store &")
 end)
