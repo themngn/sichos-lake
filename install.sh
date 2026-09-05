@@ -558,6 +558,58 @@ while IFS= read -r -d '' f; do
 done < <(find "$HERE/quickshell" -type f -print0)
 echo "    installed to ~/.config/quickshell (hot-reloads automatically)"
 
+echo "==> quickshell bar widget defaults"
+
+# bar-settings.json isn't part of this repo (BarSettings.qml explicitly treats
+# it as user state, the same as autostart-apps.json) -- on a truly fresh
+# install it doesn't exist yet, and the Battery/Backlight bar widgets default
+# on (only AI Model Usage defaults off, hardcoded in BarSettings.qml itself).
+# On a desktop with no battery/backlight hardware those two widgets have
+# nothing to show, so seed the file with them disabled too -- but only on
+# first install, and only when this really is a battery/backlight-less
+# machine, so a laptop keeps its normal defaults and a re-run never clobbers
+# whatever the user has since chosen in the launcher's Settings > Bar
+# Widgets folder.
+BAR_SETTINGS="$HOME/.config/quickshell/bar-settings.json"
+if [ -f "$BAR_SETTINGS" ]; then
+    echo "    bar-settings.json already exists, leaving the user's widget choices alone"
+else
+    HAS_BATTERY=0
+    for bat in /sys/class/power_supply/BAT*; do
+        [ -e "$bat" ] && HAS_BATTERY=1
+    done
+    HAS_BACKLIGHT=0
+    for bl in /sys/class/backlight/*; do
+        [ -e "$bl" ] && HAS_BACKLIGHT=1
+    done
+    if [ "$HAS_BATTERY" -eq 0 ] && [ "$HAS_BACKLIGHT" -eq 0 ]; then
+        cat > "$BAR_SETTINGS" <<'EOF'
+{
+    "disabled": [
+        "battery",
+        "backlight",
+        "ai-model-usage"
+    ],
+    "order": [
+        "claude-usage",
+        "tray",
+        "language",
+        "bluetooth",
+        "network",
+        "volume",
+        "backlight",
+        "powerprofile",
+        "battery",
+        "notifications"
+    ]
+}
+EOF
+        echo "    no battery/backlight hardware detected, disabled those bar widgets by default"
+    else
+        echo "    battery/backlight hardware detected, leaving bar widget defaults as-is"
+    fi
+fi
+
 echo "==> HyprQuickFrame (screenshot overlay, github.com/Ronin-CK/HyprQuickFrame)"
 
 # A sibling of our own config under ~/.config/quickshell rather than part of
