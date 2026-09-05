@@ -276,13 +276,13 @@ local function bindMonitor(mon)
 
     local tier1 = lowestPoolWorkspace()
     if tier1 then
-        mon:set_workspace(tostring(tier1))
+        mon:set_workspace({ workspace = tostring(tier1) })
         return
     end
 
     local tier2 = highestBackgroundWorkspace()
     if tier2 then
-        mon:set_workspace(tostring(tier2))
+        mon:set_workspace({ workspace = tostring(tier2) })
     end
     -- Neither tier found anything: the Always-Spare Guarantee would be
     -- violated, which shouldn't happen since peak_displays/pool_size is
