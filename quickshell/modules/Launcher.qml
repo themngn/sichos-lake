@@ -60,11 +60,11 @@ PanelWindow {
 
     readonly property var toggleItems: {
         const items = [
-            { type: "toggle", id: "idle", name: "Stay Awake", active: ShellState.idleActive },
-            { type: "toggle", id: "wifi", name: "Wi-Fi", active: Networking.wifiEnabled }
+            { type: "toggle", id: "idle", name: "Stay Awake", active: ShellState.idleActive, aliases: ["caffeine", "idle inhibit", "keep awake"] },
+            { type: "toggle", id: "wifi", name: "Wi-Fi", active: Networking.wifiEnabled, aliases: ["wifi", "wireless"] }
         ]
         if (Bluetooth.defaultAdapter)
-            items.push({ type: "toggle", id: "bluetooth", name: "Bluetooth", active: Bluetooth.defaultAdapter.enabled })
+            items.push({ type: "toggle", id: "bluetooth", name: "Bluetooth", active: Bluetooth.defaultAdapter.enabled, aliases: ["bt"] })
         return items
     }
 
@@ -85,14 +85,16 @@ PanelWindow {
 
     readonly property var settingsItems: [
         { type: "folder", id: "settings-bar", name: "Bar Widgets", icon: "" },
-        { type: "folder", id: "settings-timeregion", name: "Time & Region", icon: "" }
+        { type: "folder", id: "settings-timeregion", name: "Time & Region", icon: "" },
+        { type: "folder", id: "autostart", name: "Autostart", icon: "" },
+        { type: "folder", id: "reload", name: "Reload", icon: "" }
     ]
 
     readonly property var powerItems: [
-        { type: "power", id: "logout", name: "Logout", danger: false },
-        { type: "power", id: "suspend", name: "Suspend", danger: false },
-        { type: "power", id: "reboot", name: "Reboot", danger: true },
-        { type: "power", id: "shutdown", name: "Shutdown", danger: true }
+        { type: "power", id: "logout", name: "Logout", danger: false, aliases: ["log out", "sign out", "exit"] },
+        { type: "power", id: "suspend", name: "Suspend", danger: false, aliases: ["sleep"] },
+        { type: "power", id: "reboot", name: "Reboot", danger: true, aliases: ["restart"] },
+        { type: "power", id: "shutdown", name: "Shutdown", danger: true, aliases: ["poweroff", "power off", "turn off"] }
     ]
 
     // Hyprland reloads its config live on save already (see install.sh) —
@@ -100,8 +102,8 @@ PanelWindow {
     // config" IPC call, so "reload" for it means killing and respawning the
     // process, same as the SUPER+CTRL+SHIFT+R keybinding in keybindings.lua.
     readonly property var reloadItems: [
-        { type: "reload", id: "hyprland", name: "Reload Hyprland", danger: false },
-        { type: "reload", id: "quickshell", name: "Reload Quickshell", danger: false }
+        { type: "reload", id: "hyprland", name: "Reload Hyprland", danger: false, aliases: ["restart hyprland"] },
+        { type: "reload", id: "quickshell", name: "Reload Quickshell", danger: false, aliases: ["restart quickshell", "restart bar"] }
     ]
 
     // Every non-hidden, non-Steam app, regardless of folder membership —
@@ -192,11 +194,17 @@ PanelWindow {
     // Breadcrumb shown as a dim second line under a search result, since a
     // flat, cross-category query result loses the folder context browsing
     // normally has. Only ever called on rows from allItems (app/toggle/
-    // power/bar-widget), so every branch here is reachable.
+    // power/reload/time-region action — bar-widget is deliberately absent
+    // from allItems, see its comment there), so every branch here is
+    // reachable. "use24hour" is a plain toggle type like idle/wifi/
+    // bluetooth but lives under Settings > Time & Region, not Toggles, so
+    // it needs its own check ahead of the generic toggle case.
     function pathFor(item) {
+        if (item.type === "toggle" && item.id === "use24hour") return "Menu > Settings > Time & Region"
         if (item.type === "toggle") return "Menu > Toggles"
         if (item.type === "power") return "Menu > Power"
-        if (item.type === "bar-widget") return "Menu > Settings > Bar Widgets"
+        if (item.type === "reload") return "Menu > Settings > Reload"
+        if (item.type === "action") return "Menu > Settings > Time & Region"
         if (item.steam) return "Menu > Apps > Games"
         const folderNames = AppFolders.folders.filter(f => f.apps.includes(item.name)).map(f => f.name)
         return "Menu > Apps" + (folderNames.length > 0 ? " > " + folderNames.join(", ") : "")
@@ -251,12 +259,12 @@ PanelWindow {
     // plain toggle, not a locale pick — see TimeRegion.qml's comment on
     // why "12h vs 24h" isn't a real, independently-selectable locale fact.
     readonly property var timeRegionItems: [
-        { type: "action", id: "edit-timezone", name: "Timezone: " + (TimeRegion.timezone || "(unknown)") },
-        { type: "action", id: "edit-lang", name: "Language: " + (TimeRegion.lang ? launcher.localeWithFlag(TimeRegion.lang) : "(unknown)") },
-        { type: "toggle", id: "use24hour", name: "24-Hour Time", active: TimeRegion.use24Hour },
+        { type: "action", id: "edit-timezone", name: "Timezone: " + (TimeRegion.timezone || "(unknown)"), aliases: ["tz"] },
+        { type: "action", id: "edit-lang", name: "Language: " + (TimeRegion.lang ? launcher.localeWithFlag(TimeRegion.lang) : "(unknown)"), aliases: ["locale"] },
+        { type: "toggle", id: "use24hour", name: "24-Hour Time", active: TimeRegion.use24Hour, aliases: ["military time"] },
         { type: "action", id: "edit-lcnumeric", name: "Number Format: " + (TimeRegion.lcNumeric ? launcher.pickListPreview("lcnumeric", TimeRegion.lcNumeric) : "(same as Language)") },
-        { type: "action", id: "edit-lcmonetary", name: "Currency: " + (TimeRegion.lcMonetary ? launcher.pickListPreview("lcmonetary", TimeRegion.lcMonetary) : "(same as Language)") },
-        { type: "action", id: "edit-lccollate", name: "Sort Order: " + (TimeRegion.lcCollate ? launcher.localeWithFlag(TimeRegion.lcCollate) : "(same as Language)") }
+        { type: "action", id: "edit-lcmonetary", name: "Currency: " + (TimeRegion.lcMonetary ? launcher.pickListPreview("lcmonetary", TimeRegion.lcMonetary) : "(same as Language)"), aliases: ["money"] },
+        { type: "action", id: "edit-lccollate", name: "Sort Order: " + (TimeRegion.lcCollate ? launcher.localeWithFlag(TimeRegion.lcCollate) : "(same as Language)"), aliases: ["collation", "sorting"] }
     ]
     // Human label for a picklist:<field> mode's breadcrumb (see breadcrumb()
     // below) — kept next to pickListItems since both are keyed by the same
@@ -315,17 +323,27 @@ PanelWindow {
         { type: "folder", id: "apps", name: "Apps", icon: "" },
         { type: "folder", id: "toggles", name: "Toggles", icon: "" },
         { type: "folder", id: "power", name: "Power", icon: "" },
-        { type: "folder", id: "autostart", name: "Autostart", icon: "" },
-        { type: "folder", id: "reload", name: "Reload", icon: "" },
         { type: "folder", id: "settings", name: "Settings", icon: "" },
         { type: "info", id: "info", name: "Info", icon: "" }
     ]
 
     // Everything selectable, flattened — search always looks through
-    // apps + toggles + power actions at once regardless of which folder
-    // you're browsing. Hidden apps are deliberately left out: they're
-    // only reachable through the Hidden folder.
-    readonly property var allItems: launcher.browsableApps.concat(launcher.steamAppItems).concat(launcher.toggleItems).concat(launcher.powerItems).concat(launcher.barWidgetItems)
+    // apps + toggles + power actions + most Settings options at once,
+    // regardless of which folder you're browsing. Hidden apps are
+    // deliberately left out: they're only reachable through the Hidden
+    // folder. Two Settings lists are also left out: autostartItems (each
+    // entry there is an app already present in browsableApps, so
+    // including it too would just duplicate that app in search results
+    // under a different type — "autostart-app" — for no benefit; the
+    // per-app minimize-on-launch toggle is only reachable by browsing
+    // into Settings > Autostart) and barWidgetItems (its reordering-only
+    // rows aren't meaningful outside the drag-to-reorder list itself, and
+    // matching one from a global query would give it no way to actually
+    // reorder — see isDraggable below, gated on an empty query for the
+    // same reason — so it's only reachable by browsing into Settings >
+    // Bar Widgets). reloadItems and timeRegionItems have no such
+    // drawback and are fully searchable.
+    readonly property var allItems: launcher.browsableApps.concat(launcher.steamAppItems).concat(launcher.toggleItems).concat(launcher.powerItems).concat(launcher.reloadItems).concat(launcher.timeRegionItems)
 
     readonly property var currentItems: {
         // Folders (Games/Hidden/custom) are mixed in with the regular apps
@@ -379,6 +397,49 @@ PanelWindow {
         }
         return 2 + lower.indexOf(q) / name.length
     }
+    // The same word-boundary rule matchRank uses (space/-/_/camelCase
+    // step), but collecting just the boundary character itself instead of
+    // ranking a substring match from it — "Reload Quickshell" -> "RQ",
+    // "Stay Awake" -> "SA", "Visual Studio Code" -> "VSC". Lets an
+    // abbreviation like "rq" or "vsc" find a multi-word item by initials
+    // alone, the way a human would type it from memory.
+    function initials(name) {
+        let out = name.charAt(0)
+        for (let i = 1; i < name.length; i++) {
+            const boundary = /[\s\-_]/.test(name[i - 1]) || (/[a-z]/.test(name[i - 1]) && /[A-Z]/.test(name[i]))
+            if (boundary) out += name[i]
+        }
+        return out
+    }
+    // Some items (mostly power/reload actions) are commonly asked for by a
+    // different word than their displayed name — "poweroff" for Shutdown,
+    // "restart" for Reboot/Reload — so those carry an `aliases` array
+    // alongside `name` (see powerItems/reloadItems/toggleItems below).
+    // Ranked the same as the name itself via matchRank, and the better
+    // (lower) of the two wins, so an alias match never outranks an actual
+    // name-prefix hit on a different item. Infinity means "no match at
+    // all", filtered out by itemMatchRank's only caller below.
+    //
+    // Abbreviation hits (see initials() above) are folded in here too,
+    // scored as the best possible word-boundary tier (1) — as deliberate a
+    // query as landing on a real word boundary, just spelled out from
+    // initials instead of a substring. Never beats an actual tier-0 name
+    // prefix. Single-character queries are excluded: initials(name)[0] is
+    // always name[0], so a 1-char query would just re-derive the tier-0
+    // check above in a worse tier, for no benefit.
+    function itemMatchRank(item, q) {
+        let best = item.name.toLowerCase().includes(q) ? launcher.matchRank(item.name, q) : Infinity
+        for (const alias of (item.aliases || [])) {
+            if (!alias.toLowerCase().includes(q)) continue
+            const rank = launcher.matchRank(alias, q)
+            if (rank < best) best = rank
+        }
+        if (q.length > 1 && best > 1) {
+            if (launcher.initials(item.name).toLowerCase().startsWith(q)) best = 1
+            else if ((item.aliases || []).some(a => launcher.initials(a).toLowerCase().startsWith(q))) best = 1
+        }
+        return best
+    }
     readonly property var filtered: {
         const q = launcher.query.toLowerCase()
         if (!q) return launcher.currentItems
@@ -394,9 +455,9 @@ PanelWindow {
                 .map(e => e.item)
         if (launcher.mode === "appmenu" || launcher.mode === "folderpick" || launcher.mode === "newfoldername") return launcher.currentItems
         return launcher.allItems
-            .map((item, idx) => ({ item: item, idx: idx }))
-            .filter(e => e.item.name.toLowerCase().includes(q))
-            .sort((a, b) => launcher.matchRank(a.item.name, q) - launcher.matchRank(b.item.name, q) || a.idx - b.idx)
+            .map((item, idx) => ({ item: item, idx: idx, rank: launcher.itemMatchRank(item, q) }))
+            .filter(e => e.rank !== Infinity)
+            .sort((a, b) => a.rank - b.rank || a.idx - b.idx)
             .map(e => e.item)
     }
 
@@ -407,8 +468,8 @@ PanelWindow {
         if (m === "apps") return "Menu > Apps"
         if (m === "toggles") return "Menu > Toggles"
         if (m === "power") return "Menu > Power"
-        if (m === "autostart") return "Menu > Autostart"
-        if (m === "reload") return "Menu > Reload"
+        if (m === "autostart") return "Menu > Settings > Autostart"
+        if (m === "reload") return "Menu > Settings > Reload"
         if (m === "settings") return "Menu > Settings"
         if (m === "settings-bar") return "Menu > Settings > Bar Widgets"
         if (m === "settings-timeregion") return "Menu > Settings > Time & Region"
@@ -481,7 +542,8 @@ PanelWindow {
             launcher.mode = "settings-timeregion"
             launcher.query = ""
             launcher.selectedIndex = 0
-        } else if (launcher.mode === "settings-bar" || launcher.mode === "settings-timeregion") {
+        } else if (launcher.mode === "settings-bar" || launcher.mode === "settings-timeregion"
+                   || launcher.mode === "autostart" || launcher.mode === "reload") {
             launcher.mode = "settings"
             launcher.query = ""
             launcher.selectedIndex = 0
