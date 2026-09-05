@@ -1,4 +1,12 @@
 # Created by newuser for 5.9
+
+# Must come before anything below that shells out to a ~/.local/bin binary
+# (oh-my-posh) — antidote/omp don't add this themselves, so on a shell
+# where nothing else already put ~/.local/bin on PATH first (i.e. not
+# inherited from a parent process/session), the oh-my-posh eval below fails
+# with "command not found: oh-my-posh".
+export PATH="$HOME/.local/bin:$PATH"
+
 source ${ZDOTDIR:-~}/.antidote/antidote.zsh
 
 antidote load
