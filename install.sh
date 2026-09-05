@@ -790,11 +790,34 @@ if ! rpm -q sddm >/dev/null 2>&1; then
 else
     echo "    sddm already installed"
 fi
-if ! rpm -q cage >/dev/null 2>&1; then
-    echo "    installing cage (SDDM Wayland compositor)"
-    sudo dnf install -y cage
+CAGE_RELEASE="$(rpm -q --qf '%{RELEASE}' cage 2>/dev/null)"
+if [[ "$CAGE_RELEASE" == *sichos* ]]; then
+    echo "    cage already installed (patched build)"
 else
-    echo "    cage already installed"
+    echo "    installing cage (SDDM Wayland compositor), patched for multi-monitor logins"
+    # Stock cage always maximizes EVERY client toplevel to the union of every
+    # connected monitor's geometry (confirmed in its source, view.c's
+    # view_position(): wlr_output_layout_get_box(layout, NULL, box) — the
+    # NULL is unconditional, no per-output placement exists at all). SDDM's
+    # greeter creates one toplevel per screen and fullscreens each on its
+    # own QScreen's output (GreeterApp::addViewForScreen: setScreen() then
+    # showFullScreen(), which does send xdg_toplevel::set_fullscreen(output)
+    # with that specific output — confirmed via SDDM's own source) — but
+    # cage's xdg_shell.c ignores that per-output hint entirely, so on any
+    # multi-monitor machine the login screen ends up stretched across every
+    # display combined instead of each screen getting its own correctly
+    # cropped background. Patched in mdukhota/test1's `cage` package — built
+    # from https://github.com/themngn/cage (fork), branch
+    # fullscreen-per-output, cage.spec at that branch's root — see
+    # CLAUDE.md's "cage patch" section for the full writeup and
+    # cage/cage-fullscreen-per-output.patch (kept in this repo for
+    # reference/upstream-submission purposes; not used at install time,
+    # since the fork's source already has the fix applied directly).
+    # Version is pinned to 0.3.1 in that spec specifically so it sorts
+    # above stock Fedora's cage-0.3.1-1 — otherwise `dnf install` would
+    # never actually prefer it over an already-installed stock cage.
+    sudo dnf copr enable -y mdukhota/test1
+    sudo dnf install -y cage
 fi
 
 # The bare sddm package's own fallback look is not particularly polished.

@@ -149,6 +149,35 @@ A lightweight native C daemon (packaged via `mdukhota/test1` COPR as `sichos-gam
 - **In-Game Passthrough**: When the launcher is closed, gamepad events are released to pass through 100% untouched to games and emulators.
 - **Hotplugging**: Monitors `/dev/input` via inotify to automatically detect when controllers are plugged in or connected over Bluetooth.
 
+### cage patch (multi-monitor SDDM login)
+
+Stock `cage` (SDDM's Wayland greeter compositor, see above) always maximizes every client
+toplevel to the *union* of every connected monitor's geometry — confirmed in its source
+(`view.c`'s `view_position()`: `wlr_output_layout_get_box(layout, NULL, box)`, unconditionally,
+no per-output placement exists anywhere in cage). This breaks any client that fullscreens one
+toplevel per screen on its own output, which is exactly what SDDM's greeter does
+(`GreeterApp::addViewForScreen`: `setScreen()` then `showFullScreen()` — confirmed via SDDM's own
+source this *does* send `xdg_toplevel::set_fullscreen(output)` with that specific output). Result
+on a real multi-monitor machine: the login screen gets stretched across the combined resolution of
+every monitor instead of each screen showing its own correctly-cropped background — confirmed live
+across a 3-monitor L-shaped layout (two side by side, laptop panel below-left,
+`hypr/monitors.lua`), including a debug build that showed each of SDDM's own per-screen QML views
+only ever knows about *its own* screen (`screenModel` is deliberately scoped per-view — see SDDM's
+own `GreeterApp.cpp` comment — so no amount of QML/theme changes can work around this; it has to be
+fixed in the compositor).
+
+`cage/cage-fullscreen-per-output.patch` fixes this at the source — the smallest possible change
+(three files: `view.h`/`view.c`/`xdg_shell.c`) that makes `set_fullscreen()` actually read and
+remember the client-requested output (by name, not a cached pointer, to stay safe across output
+hotplug) and use *that* output's box instead of the union. `install.sh`'s `==> SDDM` step builds
+this fresh each time from whatever cage version Fedora currently ships (`dnf download --source
+cage`), rather than a version pinned in this repo, so it keeps working across Fedora version
+bumps without needing to be updated here — if the patch ever stops applying because upstream's
+`view.c`/`xdg_shell.c` changed structurally, the build fails loudly (visible `rpmbuild` error)
+rather than silently keeping an old, unpatched cage. No upstream fix exists as of this writing;
+the same commit also lives on a fork for reference: https://github.com/themngn/cage, branch
+`fullscreen-per-output`.
+
 ### Keyring / Electron apps
 
 A recurring theme across `install.sh`, `autostart.lua`, and `packages.txt`: Electron apps' `safeStorage`

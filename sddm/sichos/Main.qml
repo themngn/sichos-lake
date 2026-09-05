@@ -30,6 +30,22 @@ Rectangle {
     readonly property color textMuted: "#b4bbaa"
     readonly property string fontFamily: "JetBrainsMono Nerd Font Mono"
 
+    // cage (see 10-theme.conf's CompositorCommand) maximizes this whole
+    // greeter to the UNION of every connected monitor's geometry — there is
+    // no per-output placement in cage's `extend` mode (confirmed from its
+    // source: view_position() always uses wlr_output_layout_get_box(...,
+    // NULL, ...), the combined box, full stop). So `root` here is really
+    // one canvas spanning every screen, and the UI must be anchored to a
+    // specific screen's rect explicitly rather than to `parent` — otherwise
+    // it centers on the combined shape, which on an irregular multi-monitor
+    // layout can land right on the seam between two screens instead of on
+    // either one. screenModel (SDDM's own per-screen list model — see
+    // docs/THEMING.md in the sddm/sddm repo) still reports each physical
+    // monitor's real geometry correctly even though there's only one
+    // maximized surface, since cage still advertises each output as its own
+    // wl_output global.
+    readonly property rect primaryGeometry: screenModel.geometry(screenModel.primary)
+
     property int sessionIndex: sessionBox.index
 
     TextConstants { id: textConstants }
@@ -47,33 +63,52 @@ Rectangle {
         }
     }
 
-    // Background photo, blurred full-screen (Qt6-native MultiEffect — no
-    // GraphicalEffects/qt5compat needed) with a dark scrim for legibility,
-    // same DimBackgroundImage-style overlay Launcher.qml itself uses.
-    Image {
-        id: bg
-        anchors.fill: parent
-        source: "background.jpg"
-        fillMode: Image.PreserveAspectCrop
-        visible: false
-    }
-    MultiEffect {
-        anchors.fill: bg
-        source: bg
-        blurEnabled: true
-        blur: 0.6
-        blurMax: 48
-    }
-    Rectangle {
-        anchors.fill: parent
-        color: Qt.rgba(0, 0, 0, 0.35)
+    // Background photo, blurred, with a dark scrim for legibility — same
+    // DimBackgroundImage-style overlay Launcher.qml itself uses. One
+    // instance per physical screen (not one anchors.fill: parent image
+    // stretched across every screen's combined bounding box — see
+    // primaryGeometry's comment above for why that was wrong): each
+    // delegate's Image crops to its own screen's real aspect ratio instead
+    // of the combined one. Role access (`geometry` directly, not
+    // `model.geometry`) matches SDDM's own maya reference theme
+    // (data/themes/maya/Main.qml in the sddm/sddm repo).
+    Repeater {
+        model: screenModel
+
+        Item {
+            x: geometry.x
+            y: geometry.y
+            width: geometry.width
+            height: geometry.height
+            clip: true
+
+            Image {
+                id: bg
+                anchors.fill: parent
+                source: "background.jpg"
+                fillMode: Image.PreserveAspectCrop
+                visible: false
+            }
+            MultiEffect {
+                anchors.fill: bg
+                source: bg
+                blurEnabled: true
+                blur: 0.6
+                blurMax: 48
+            }
+            Rectangle {
+                anchors.fill: parent
+                color: Qt.rgba(0, 0, 0, 0.35)
+            }
+        }
     }
 
     // Clock, top-right — same "ddd dd  HH:mm" shape as quickshell's own
     // ClockWidget.qml (that one also respects a 12h/24h toggle via a
     // singleton this theme has no access to; hardcoded 24h here).
     Text {
-        anchors { top: parent.top; right: parent.right; margins: 24 }
+        x: primaryGeometry.x + primaryGeometry.width - width - 24
+        y: primaryGeometry.y + 24
         color: "white"
         font.family: fontFamily
         font.pixelSize: 16
@@ -91,7 +126,8 @@ Rectangle {
     // CalendarPopup/etc.).
     Rectangle {
         id: card
-        anchors.centerIn: parent
+        x: primaryGeometry.x + (primaryGeometry.width - width) / 2
+        y: primaryGeometry.y + (primaryGeometry.height - height) / 2
         width: 320
         color: cardBg
         border.color: accent
@@ -232,7 +268,8 @@ Rectangle {
     // the bottom edge (confirmed live). See SessionComboBox.qml's own
     // header comment for exactly what changed.
     Row {
-        anchors { left: parent.left; bottom: parent.bottom; margins: 24 }
+        x: primaryGeometry.x + 24
+        y: primaryGeometry.y + primaryGeometry.height - height - 24
         spacing: 8
         SessionComboBox {
             id: sessionBox

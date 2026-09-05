@@ -1,0 +1,136 @@
+Make cage's xdg_shell.c honor xdg_toplevel::set_fullscreen(output)'s
+requested output instead of always maximizing to the union of every
+connected monitor's geometry.
+
+Confirmed in cage 0.3.1's source: view.c's view_position() always calls
+wlr_output_layout_get_box(layout, NULL, box) — passing NULL means "the
+union of every output" unconditionally, with no per-output placement
+logic anywhere in cage. This breaks any client that fullscreens one
+toplevel per screen on its own output, which is exactly what SDDM's
+greeter does (GreeterApp::addViewForScreen: setScreen() then
+showFullScreen() — that does send set_fullscreen(output) with the
+specific output, confirmed in SDDM's own source). Without this patch, a
+multi-monitor SDDM login screen gets every one of those per-screen
+toplevels stretched across the combined resolution of ALL monitors
+instead of each appearing correctly on the one it actually asked for —
+see sichos-lake's install.sh (the "==> SDDM" section) for how this gets
+built and installed, and CLAUDE.md for the full investigation writeup.
+
+Upstream fork with this same commit: https://github.com/themngn/cage,
+branch fullscreen-per-output.
+
+diff -ru a/view.c b/view.c
+--- a/view.c	2026-06-30 21:51:00.000000000 +0300
++++ b/view.c	2026-09-05 18:50:07.391186195 +0300
+@@ -90,11 +90,31 @@
+ 	}
+ }
+ 
++/* Resolves view->fullscreen_output_name (if set) to the still-live
++ * wlr_output with that name, or NULL if unset or the output has since
++ * disappeared (falls back to the union-of-all-outputs box in that case,
++ * same as if no output had ever been requested). */
++static struct wlr_output *
++view_fullscreen_output(struct cg_view *view)
++{
++	if (!view->fullscreen_output_name) {
++		return NULL;
++	}
++
++	struct cg_output *output;
++	wl_list_for_each (output, &view->server->outputs, link) {
++		if (strcmp(output->wlr_output->name, view->fullscreen_output_name) == 0) {
++			return output->wlr_output;
++		}
++	}
++	return NULL;
++}
++
+ void
+ view_position(struct cg_view *view)
+ {
+ 	struct wlr_box layout_box;
+-	wlr_output_layout_get_box(view->server->output_layout, NULL, &layout_box);
++	wlr_output_layout_get_box(view->server->output_layout, view_fullscreen_output(view), &layout_box);
+ 
+ 	if (view_is_primary(view) || view_extends_output_layout(view, &layout_box)) {
+ 		view_maximize(view, &layout_box);
+@@ -207,6 +227,7 @@
+ 	view->server = server;
+ 	view->type = type;
+ 	view->impl = impl;
++	view->fullscreen_output_name = NULL;
+ }
+ 
+ struct cg_view *
+diff -ru a/view.h b/view.h
+--- a/view.h	2026-06-30 21:51:00.000000000 +0300
++++ b/view.h	2026-09-05 18:49:46.666590100 +0300
+@@ -30,6 +30,13 @@
+ 	/* The view has a position in layout coordinates. */
+ 	int lx, ly;
+ 
++	/* Non-NULL if the client requested fullscreen on a specific output
++	 * (xdg_toplevel::set_fullscreen(output)) — looked up by name rather
++	 * than cached as a wlr_output* to stay safe across output hotplug.
++	 * NULL means "no output preference", the original union-of-all-outputs
++	 * behavior. */
++	char *fullscreen_output_name;
++
+ 	enum cg_view_type type;
+ 	const struct cg_view_impl *impl;
+ 
+diff -ru a/xdg_shell.c b/xdg_shell.c
+--- a/xdg_shell.c	2026-06-30 21:51:00.000000000 +0300
++++ b/xdg_shell.c	2026-09-05 18:50:40.534958971 +0300
+@@ -6,9 +6,12 @@
+  * See the LICENSE file accompanying this file.
+  */
+ 
++#define _POSIX_C_SOURCE 200809L
++
+ #include <assert.h>
+ #include <stdbool.h>
+ #include <stdlib.h>
++#include <string.h>
+ #include <wayland-server-core.h>
+ #include <wlr/types/wlr_foreign_toplevel_management_v1.h>
+ #include <wlr/types/wlr_scene.h>
+@@ -181,6 +184,7 @@
+ destroy(struct cg_view *view)
+ {
+ 	struct cg_xdg_shell_view *xdg_shell_view = xdg_shell_view_from_view(view);
++	free(view->fullscreen_output_name);
+ 	free(xdg_shell_view);
+ }
+ 
+@@ -198,8 +202,28 @@
+ 	 * Certain clients do not like figuring out their own window geometry if they
+ 	 * display in fullscreen mode, so we set it here.
+ 	 */
++
++	/* xdg_toplevel::set_fullscreen(output) lets a client target a specific
++	 * output instead of "the whole display" — e.g. sddm-greeter creates one
++	 * toplevel per screen and fullscreens each on its own QScreen's output
++	 * (confirmed in sddm's GreeterApp::addViewForScreen: setScreen() then
++	 * showFullScreen()). Previously this was ignored outright (always NULL
++	 * = the union of every output), which is why any such client always got
++	 * stretched across the combined resolution of all monitors instead of
++	 * appearing correctly on the one it actually asked for. Remember the
++	 * requested output by name (view_position(), called later on
++	 * map/commit, needs the same box) so plain single-output fullscreen
++	 * requests (output == NULL) keep the original union-box behavior
++	 * unchanged.
++	 */
++	struct wlr_output *requested_output = xdg_shell_view->xdg_toplevel->requested.fullscreen_output;
++
++	free(xdg_shell_view->view.fullscreen_output_name);
++	xdg_shell_view->view.fullscreen_output_name =
++		requested_output && requested_output->name ? strdup(requested_output->name) : NULL;
++
+ 	struct wlr_box layout_box;
+-	wlr_output_layout_get_box(xdg_shell_view->view.server->output_layout, NULL, &layout_box);
++	wlr_output_layout_get_box(xdg_shell_view->view.server->output_layout, requested_output, &layout_box);
+ 	wlr_xdg_toplevel_set_size(xdg_shell_view->xdg_toplevel, layout_box.width, layout_box.height);
+ 	wlr_xdg_toplevel_set_fullscreen(xdg_shell_view->xdg_toplevel, fullscreen);
+ }
