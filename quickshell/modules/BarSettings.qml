@@ -26,6 +26,7 @@ QtObject {
         { id: "network", name: "Network" },
         { id: "volume", name: "Volume" },
         { id: "backlight", name: "Backlight" },
+        { id: "display", name: "Display" },
         { id: "powerprofile", name: "Power Profile" },
         { id: "battery", name: "Battery" }
     ]
@@ -103,7 +104,7 @@ QtObject {
             id: adapter
             property var disabled: ["claude-usage"]
             property var order: ["claude-usage", "tray", "language", "bluetooth", "network",
-                                  "volume", "backlight", "powerprofile", "battery", "notifications"]
+                                  "volume", "backlight", "display", "powerprofile", "battery", "notifications"]
         }
     }
 }

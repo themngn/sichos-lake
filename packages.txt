@@ -38,6 +38,11 @@ cage                      # SDDM Wayland greeter compositor (wlroots-based kiosk
                           # replaces weston to ensure mouse cursor visibility and wlr_cursor support)
 wireplumber              # provides wpctl, used in volume/mute keybinds
 brightnessctl
+ddcutil                  # external-monitor (DDC/CI) brightness for the bar's Display Settings
+                          # widget — brightnessctl only drives /sys/class/backlight (laptop
+                          # panels), which a desktop with only external monitors doesn't have.
+                          # Its udev rule needs a reload to grant /dev/i2c-* access (see
+                          # "==> ddcutil" in install.sh).
 playerctl
 NetworkManager
 NetworkManager-wifi      # wifi device plugin — without it NM treats wlan devices as

@@ -632,6 +632,7 @@ else
         "network",
         "volume",
         "backlight",
+        "display",
         "powerprofile",
         "battery",
         "notifications"
@@ -643,6 +644,22 @@ EOF
         echo "    battery/backlight hardware detected, leaving bar widget defaults as-is"
     fi
 fi
+
+echo "==> ddcutil (Display Settings widget: external monitor brightness)"
+
+# Fedora's ddcutil package gates /dev/i2c-* access via a udev rule
+# (60-ddcutil-i2c.rules, TAG+="uaccess") rather than a static group —
+# confirmed live there's no `i2c` group on this system at all. uaccess hands
+# out access dynamically through systemd-logind to whichever user owns the
+# active seat session, which is why this needs no usermod/relogin — but it
+# only applies to device nodes that existed *when the rule was last
+# (re)applied*. Confirmed live: right after `dnf install ddcutil`,
+# /dev/i2c-* were still root:root and `ddcutil detect` failed EACCES, until
+# reloading+retriggering udev picked up the newly-installed rule — which
+# then worked immediately in the same still-open session, no logout needed.
+sudo udevadm control --reload-rules
+sudo udevadm trigger --subsystem-match=i2c-dev
+echo "    reloaded udev rules so ddcutil's uaccess grant applies to /dev/i2c-*"
 
 echo "==> HyprQuickFrame (screenshot overlay, github.com/Ronin-CK/HyprQuickFrame)"
 

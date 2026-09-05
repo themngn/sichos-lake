@@ -81,6 +81,7 @@ PanelWindow {
     Component { id: networkComp; NetworkIndicator {} }
     Component { id: volumeComp; Volume {} }
     Component { id: backlightComp; Backlight {} }
+    Component { id: displayComp; DisplaySettings { screenName: bar.screen.name } }
     Component { id: powerProfileComp; PowerProfile {} }
     Component { id: batteryComp; Battery {} }
 
@@ -95,6 +96,7 @@ PanelWindow {
         case "network": return networkComp
         case "volume": return volumeComp
         case "backlight": return backlightComp
+        case "display": return displayComp
         case "powerprofile": return powerProfileComp
         case "battery": return batteryComp
         }
