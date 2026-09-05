@@ -569,6 +569,12 @@ elif [ "$DEFAULT_BROWSER" = "firefox" ]; then
     if command -v xdg-settings >/dev/null 2>&1; then
         xdg-settings set default-web-browser org.mozilla.firefox.desktop 2>/dev/null || true
     fi
+    # xdg-settings only sets text/html + the http(s) handlers, not
+    # application/pdf -- a Flatpak browser installed later (e.g. Chromium,
+    # confirmed live) happily registers itself as the PDF handler on its own
+    # and silently wins that mime association, so it has to be forced back
+    # explicitly rather than assumed to follow the default browser.
+    command -v xdg-mime >/dev/null 2>&1 && xdg-mime default org.mozilla.firefox.desktop application/pdf
     echo "    Firefox (default)"
 elif [ -n "${BROWSER_FLATPAK_ID[$DEFAULT_BROWSER]:-}" ]; then
     APP_ID="${BROWSER_FLATPAK_ID[$DEFAULT_BROWSER]}"
@@ -579,6 +585,7 @@ elif [ -n "${BROWSER_FLATPAK_ID[$DEFAULT_BROWSER]:-}" ]; then
     if command -v xdg-settings >/dev/null 2>&1; then
         xdg-settings set default-web-browser "$APP_ID.desktop" 2>/dev/null || true
     fi
+    command -v xdg-mime >/dev/null 2>&1 && xdg-mime default "$APP_ID.desktop" application/pdf
     echo "    set to $DEFAULT_BROWSER"
 else
     echo "    unrecognized DEFAULT_BROWSER=$DEFAULT_BROWSER, leaving Firefox as default"

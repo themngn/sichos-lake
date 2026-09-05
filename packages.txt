@@ -88,8 +88,14 @@ fuzzel                    # dmenu-style picker — only used as cliphist's SUPER
 btop                      # resource monitor, SUPER+B opens it in a floating kitty (window_rules.lua)
 gvfs-smb                  # SMB backend for Nautilus's "Connect to Server" — without it that dialog
                           # silently fails on any smb:// address
+gvfs-mtp                  # lets Nautilus mount Android phones over USB
+gvfs-gphoto2              # lets Nautilus mount PTP digital cameras over USB
 gnome-disk-utility        # "Disks" GUI — partition/SMART info, no equivalent existed before this
 gnome-firmware            # GUI for fwupd (already installed as a dependency) — firmware updates
+7zip                      # .7z support for Nautilus's extract/compress-here (successor to the
+                          # now-retired p7zip in Fedora 44)
+unrar                     # .rar extraction — from rpmfusion-nonfree (enabled unconditionally
+                          # above), since RAR's license keeps it out of Fedora/RPM Fusion free
 
 ## Optional / not needed
 # firefox — installed conditionally via install.sh's "==> Firefox" section
