@@ -57,6 +57,24 @@ PanelWindow {
                 body: notification.body,
                 urgency: notification.urgency
             })
+            // Connected here rather than from the toast popup delegate
+            // below: that delegate only exists while the toast is on
+            // screen, so a Connections{} living inside it depends on
+            // Repeater's (asynchronous) delegate instantiation racing the
+            // sender's D-Bus CloseNotification call. Connecting directly
+            // on the notification object itself, in the same tick it
+            // arrives, ties the listener to its actual D-Bus lifetime
+            // instead of to how long its popup happens to be rendered.
+            // Note this only ever catches a real sender-initiated
+            // withdrawal while the notification is still open — once our
+            // own expireTimer below calls notification.expire(), the id
+            // is dead server-side (confirmed live) and a subsequent
+            // CloseNotification for it is a no-op in any compliant
+            // daemon, not just this one; that case is unfixable here.
+            notification.closed.connect(reason => {
+                if (reason === NotificationCloseReason.CloseRequested)
+                    NotificationHistory.removeByNotifId(notification.id)
+            })
         }
     }
 
@@ -117,24 +135,6 @@ PanelWindow {
                     running: toast.timeout > 0
                     interval: toast.timeout
                     onTriggered: notification.expire()
-                }
-
-                // CloseRequested means the *sender* withdrew this
-                // notification (D-Bus CloseNotification — e.g. Telegram
-                // closing a message notification once it's read in-app),
-                // not the timeout expiring or the user dismissing it here —
-                // that's the one case worth also dropping the history
-                // entry for, since the app itself says it's no longer
-                // relevant. Connections (not an onClosed: handler directly
-                // on this Rectangle) because `notification` is a foreign
-                // QObject referenced via a property, not a type instantiated
-                // inline here.
-                Connections {
-                    target: notification
-                    function onClosed(reason) {
-                        if (reason === NotificationCloseReason.CloseRequested)
-                            NotificationHistory.removeByNotifId(notification.id)
-                    }
                 }
 
                 MouseArea {
