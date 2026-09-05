@@ -408,6 +408,30 @@ else
     echo "    nothing to install"
 fi
 
+echo "==> Multimedia codecs (RPM Fusion freeworld)"
+
+# Fedora's own ffmpeg-free/libavcodec-free (pulled in as vlc's dependency
+# above) are a patent-safe subset that can't decode HEVC or E-AC3 -- VLC pops
+# a "Codec not supported" dialog on any such file. RPM Fusion's freeworld
+# builds are drop-in replacements (same libavcodec.so.62 soname) with the
+# patent-encumbered decoders included; each Conflicts: its -free counterpart,
+# so this has to be a swap, not a plain install. Checked by current package
+# state rather than gated on vlc being in packages.txt, so this stays applied
+# even if vlc is ever removed from that list (anything else linking
+# libavcodec benefits too, e.g. mpv).
+if rpm -q ffmpeg-free >/dev/null 2>&1; then
+    echo "    swapping ffmpeg-free -> ffmpeg"
+    sudo dnf swap -y ffmpeg-free ffmpeg --allowerasing
+else
+    echo "    ffmpeg-free not installed, skipped"
+fi
+if rpm -q libavcodec-free >/dev/null 2>&1; then
+    echo "    swapping libavcodec-free -> libavcodec-freeworld"
+    sudo dnf swap -y libavcodec-free libavcodec-freeworld --allowerasing
+else
+    echo "    libavcodec-free not installed, skipped"
+fi
+
 echo "==> JetBrainsMono Nerd Font"
 
 if fc-list | grep -qi "JetBrainsMono Nerd Font Mono"; then
