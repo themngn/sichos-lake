@@ -43,6 +43,13 @@ console_title_template = '{{ .Shell }} in {{ .Folder }}'
   overflow = 'hidden'
 
   [[blocks.segments]]
+    type = 'text'
+    style = 'plain'
+    foreground = 'red'
+    background = 'transparent'
+    template = '{{ if ne .Code 0 }}{{ .Code }} {{ end }}'
+
+  [[blocks.segments]]
     type = 'executiontime'
     style = 'plain'
     foreground = 'yellow'
@@ -60,19 +67,13 @@ console_title_template = '{{ .Shell }} in {{ .Folder }}'
   [[blocks.segments]]
     type = 'text'
     style = 'plain'
-    foreground = 'red'
-    background = 'transparent'
-    template = '{{ if ne .Code 0 }}{{ .Code }} {{ end }}'
-
-  [[blocks.segments]]
-    type = 'text'
-    style = 'plain'
     background = 'transparent'
     template = '>'
 
 [transient_prompt]
   background = 'transparent'
-  template = '{{ if ne .Code 0 }}<red>{{ .Code }} </>{{ end }}> '
+  template = '> '
+  right_template = '{{ if ne .Code 0 }}<red>{{ .Code }}</>{{ end }}'
 
 [secondary_prompt]
   background = 'transparent'
