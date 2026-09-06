@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<service>
+  <short>LocalSend</short>
+  <description>LocalSend local network file sharing — HTTP API (TCP) and multicast peer discovery (UDP), both on the app's default port 53317.</description>
+  <port protocol="tcp" port="53317"/>
+  <port protocol="udp" port="53317"/>
+</service>

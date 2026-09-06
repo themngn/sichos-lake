@@ -141,6 +141,7 @@ declare -A ITEM_TARGET=(
     ["Proton Pass"]="FLATPAK:me.proton.Pass"
     ["Printing (CUPS)"]="SKIP_CUPS"
     ["Noise Suppression (EasyEffects)"]="SKIP_EASYEFFECTS"
+    ["Automatic Security Updates"]="SKIP_DNF_AUTOMATIC"
     ["Flatseal"]="FLATPAK:com.github.tchx84.Flatseal"
     ["GIMP"]="FLATPAK:org.gimp.GIMP"
     ["Inkscape"]="FLATPAK:org.inkscape.Inkscape"
@@ -153,6 +154,7 @@ declare -A ITEM_TARGET=(
     ["Nextcloud Desktop"]="FLATPAK:com.nextcloud.desktopclient.nextcloud"
     ["Dropbox"]="FLATPAK:com.dropbox.Client"
     ["Syncthing Tray"]="FLATPAK:io.github.martchus.syncthingtray"
+    ["LocalSend"]="FLATPAK:org.localsend.localsend_app"
 )
 declare -A ITEM_DESC=(
     ["Telegram"]="Telegram Desktop messaging app"
@@ -188,6 +190,7 @@ declare -A ITEM_DESC=(
     ["Proton Pass"]="Proton's password manager"
     ["Printing (CUPS)"]="Printer support/configuration GUI and document scanning (SANE)"
     ["Noise Suppression (EasyEffects)"]="GUI mic noise reduction (RNNoise) — enable it on your input device after install"
+    ["Automatic Security Updates"]="dnf-automatic applies security-only updates unattended (daily) — feature updates stay manual"
     ["Flatseal"]="GUI for reviewing/editing Flatpak app sandbox permissions"
     ["GIMP"]="Image editor"
     ["Inkscape"]="Vector graphics editor"
@@ -200,6 +203,7 @@ declare -A ITEM_DESC=(
     ["Nextcloud Desktop"]="Sync client for a Nextcloud server"
     ["Dropbox"]="Cloud file sync"
     ["Syncthing Tray"]="Tray GUI for Syncthing"
+    ["LocalSend"]="AirDrop-style local network file sharing — opens firewalld port 53317 (tcp+udp)"
 )
 # Groups items for display AND for a per-group "select all" row. Doesn't
 # change the install logic, which still just reads SELECTED per label.
@@ -222,6 +226,7 @@ declare -A ITEM_GROUP=(
     ["Proton Pass"]="Security"
     ["Printing (CUPS)"]="System"
     ["Noise Suppression (EasyEffects)"]="System"
+    ["Automatic Security Updates"]="System"
     ["Flatseal"]="System"
     ["GIMP"]="Creativity"
     ["Inkscape"]="Creativity"
@@ -234,6 +239,7 @@ declare -A ITEM_GROUP=(
     ["Nextcloud Desktop"]="Cloud & Sync"
     ["Dropbox"]="Cloud & Sync"
     ["Syncthing Tray"]="Cloud & Sync"
+    ["LocalSend"]="Cloud & Sync"
 )
 COMPONENT_ORDER=(
     "Telegram"
@@ -254,6 +260,7 @@ COMPONENT_ORDER=(
     "Proton Pass"
     "Printing (CUPS)"
     "Noise Suppression (EasyEffects)"
+    "Automatic Security Updates"
     "Flatseal"
     "GIMP"
     "Inkscape"
@@ -266,6 +273,7 @@ COMPONENT_ORDER=(
     "Nextcloud Desktop"
     "Dropbox"
     "Syncthing Tray"
+    "LocalSend"
 )
 # "Select all" per group is a toggle, not a one-way action: pressing it
 # snapshots each item's current on/off state in the group, then checks

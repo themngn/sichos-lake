@@ -71,7 +71,9 @@
 # SICHOS_TIMEZONE (an IANA zone like America/New_York), SICHOS_LANG (a
 # glibc locale like en_US.UTF-8), and SICHOS_LC_NUMERIC/SICHOS_LC_MONETARY/
 # SICHOS_LC_COLLATE (per-category overrides, same locale format) are all
-# blank = leave unchanged by default.
+# blank = leave unchanged by default. SKIP_DNF_AUTOMATIC=0 installs
+# dnf-automatic and enables it to apply security updates unattended
+# (default skipped, same opt-in-only default as SSHD/EasyEffects above).
 # ./sichos-setup.sh sets all of these for you interactively.
 
 set -euo pipefail
@@ -371,6 +373,32 @@ else
         NEED_DESKTOP_DB_UPDATE=1
     fi
 
+    # LocalSend needs inbound access on its default port 53317 (TCP for the
+    # HTTP file-transfer API, UDP for multicast peer discovery) — Fedora's
+    # default public zone drops unsolicited inbound, so without this the app
+    # never sees other devices on the LAN and never receives a send. Ships as
+    # a custom firewalld service (firewalld/localsend.xml) rather than inline
+    # port opens so it shows up as "LocalSend" in `firewall-cmd --list-services`
+    # instead of two bare port numbers. Only opened when the Flatpak is
+    # actually selected, same as the Proton Pass override above.
+    if flatpak info org.localsend.localsend_app >/dev/null 2>&1 \
+        && systemctl is-active --quiet firewalld; then
+        sudo mkdir -p /etc/firewalld/services
+        SVC_DEST=/etc/firewalld/services/localsend.xml
+        if ! cmp -s "$HERE/firewalld/localsend.xml" "$SVC_DEST" 2>/dev/null; then
+            sudo cp "$HERE/firewalld/localsend.xml" "$SVC_DEST"
+            sudo firewall-cmd --reload
+            echo "    installed localsend firewalld service"
+        fi
+        if sudo firewall-cmd --query-service=localsend >/dev/null 2>&1; then
+            echo "    firewall already allows localsend"
+        else
+            sudo firewall-cmd --permanent --add-service=localsend
+            sudo firewall-cmd --reload
+            echo "    opened localsend (tcp/udp 53317) in firewalld"
+        fi
+    fi
+
     if [ "${NEED_DESKTOP_DB_UPDATE:-0}" = "1" ]; then
         # Without this, ~/.local/share/applications/mimeinfo.cache never
         # gets created/refreshed, so the x-scheme-handler/element and
@@ -510,6 +538,30 @@ else
     fi
     sudo systemctl enable --now snapper-timeline.timer snapper-cleanup.timer >/dev/null 2>&1 || true
     echo "    installed, root snapshots scheduled"
+fi
+
+echo "==> dnf-automatic (unattended security updates)"
+
+if [ "${SKIP_DNF_AUTOMATIC:-1}" = "1" ]; then
+    echo "    skipped"
+else
+    if ! rpm -q dnf-automatic >/dev/null 2>&1; then
+        sudo dnf install -y dnf-automatic
+    fi
+    # security only, not upgrade_type=default -- feature/version bumps stay a
+    # deliberate action via gnome-software/install.sh, this only closes the gap
+    # for CVEs between those manual sessions. emit_via=stdio instead of the
+    # config's default email: no local MTA is set up on this box, so mail
+    # delivery would just fail silently. Sits right after the Btrfs snapshot
+    # step above on purpose -- snapper's timeline timer means an unattended
+    # update that breaks something is still one `snapper rollback` away.
+    sudo sed -i \
+        -e 's/^upgrade_type = .*/upgrade_type = security/' \
+        -e 's/^apply_updates = .*/apply_updates = yes/' \
+        -e 's/^emit_via = .*/emit_via = stdio/' \
+        /etc/dnf/automatic.conf
+    sudo systemctl enable --now dnf-automatic.timer
+    echo "    installed, security updates applied automatically (daily)"
 fi
 
 echo "==> JetBrainsMono Nerd Font"
