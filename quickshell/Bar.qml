@@ -52,10 +52,19 @@ PanelWindow {
 
     readonly property color opaqueBackground: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, 0.8)
     readonly property color fullyOpaqueBackground: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, 1.0)
+    // Confirmed live: on a bitdepth=10 (HDR, see HdrSettings.apply) output,
+    // any non-opaque bar surface bands/noises constantly — worse the closer
+    // its alpha sits to (but short of) fully transparent (tried alpha 1/255
+    // as a "still see-through" compromise; that was worse than plain
+    // "transparent", not better). Only alpha=1.0 was clean, so on an
+    // HDR-active monitor the bar just stays forced opaque, same as
+    // ShellState.transparencyOpaque, regardless of workspace state — this
+    // gives up the "floats over the wallpaper" look only where HDR is on.
+    readonly property bool hdrActiveHere: HdrSettings.active && bar.hyprMonitor && HdrSettings.isSelected(bar.hyprMonitor.name)
     // TransparencyToggle overrides the dynamic behavior above with a
     // constant solid backdrop, matching kitty's background_opacity going to
     // 1.0 at the same time (see ShellState.transparencyOpaque).
-    color: ShellState.transparencyOpaque
+    color: (ShellState.transparencyOpaque || bar.hdrActiveHere)
         ? bar.fullyOpaqueBackground
         : (bar.activeWorkspaceHasWindows ? bar.opaqueBackground : "transparent")
     Behavior on color {

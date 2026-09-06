@@ -43,7 +43,12 @@ hl.bind(mainMod .. " + SHIFT + Q", hl.dsp.exec_cmd("quickshell ipc call launcher
 hl.bind(mainMod .. " + SHIFT + H", hl.dsp.exec_cmd("quickshell ipc call hdr toggle")) -- toggle HDR (only on monitors picked in the bar's HDR popup, see HdrSettings.qml)
 hl.bind(mainMod .. " + P", hl.dsp.window.pseudo())
 hl.bind(mainMod .. " + J", hl.dsp.layout("togglesplit"))    -- dwindle only
-hl.bind(mainMod .. " + SPACE", hl.dsp.exec_cmd("hyprctl switchxkblayout current next")) -- cycle keyboard layout
+-- locked so it also works from the hyprlock screen (same reasoning as the
+-- playerctl bind above) -- hyprlock has no layout-switch bind of its own,
+-- but it does listen for the compositor's XKB group-change event and
+-- updates its $LAYOUT label / keystroke interpretation from that, so this
+-- bind firing while locked is enough to drive it.
+hl.bind(mainMod .. " + SPACE", hl.dsp.exec_cmd("hyprctl switchxkblayout current next"), { locked = true }) -- cycle keyboard layout
 hl.bind(mainMod .. " + CTRL + SHIFT + R", hl.dsp.exec_cmd("pkill quickshell; quickshell & disown")) -- reload quickshell bar
 hl.bind("CTRL + " .. mainMod .. " + I", hl.dsp.exec_cmd("hyprctl dispatch idleinhibit toggle")) -- toggle idle inhibitor
 hl.bind(mainMod .. " + C", hl.dsp.exec_cmd("hyprpicker -a")) -- color picker, autocopies hex to clipboard

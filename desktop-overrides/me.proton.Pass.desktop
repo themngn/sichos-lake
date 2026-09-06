@@ -1,0 +1,23 @@
+# SichOS override of Fedora's flatpak-exported desktop entry (normally at
+# /var/lib/flatpak/exports/share/applications/me.proton.Pass.desktop) — adds
+# --ozone-platform=x11, forcing the whole app onto XWayland instead of
+# native Wayland. Without it, copy-to-clipboard silently no-ops under
+# Hyprland (see install.sh's "Flatpak + Flathub" step for the full
+# root-cause writeup and https://github.com/flathub/me.proton.Pass/issues/37).
+# Needs the matching flatpak socket override (install.sh: --socket=x11
+# --nosocket=fallback-x11) to actually have an X server to render through.
+# Deployed by install.sh to ~/.local/share/applications, which XDG data dir
+# precedence puts ahead of the flatpak export dir.
+[Desktop Entry]
+Name=Proton Pass
+GenericName=Password Manager
+Comment=Securely store, share, and autofill your credentials.
+Exec=/usr/bin/flatpak run --branch=stable --arch=x86_64 --command=start-proton-pass --file-forwarding --socket=x11 me.proton.Pass --ozone-platform=x11 @@u %U @@
+Icon=me.proton.Pass
+Terminal=false
+Type=Application
+Categories=Utility;Security;
+Keywords=password;manager;vault;credentials;security;encryption;2fa;totp;login;proton;
+StartupWMClass=Proton Pass
+StartupNotify=true
+X-Flatpak=me.proton.Pass

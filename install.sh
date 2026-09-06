@@ -342,6 +342,35 @@ else
             NEED_DESKTOP_DB_UPDATE=1
         fi
     done
+    # Proton Pass copy-to-clipboard silently no-ops under Hyprland (shows a
+    # "copied" toast, nothing lands on the clipboard) — confirmed live,
+    # tracked upstream at https://github.com/flathub/me.proton.Pass/issues/37.
+    # Root cause per that thread: Proton Pass's Rust clipboard lib
+    # (arboard's wayland-data-control feature) talks to the compositor over
+    # wlr-data-control-v1, a protocol meant for privileged clipboard
+    # managers — access to it is gated for security-context-v1-tagged
+    # (i.e. Flatpak-sandboxed) clients on some compositors, Hyprland
+    # apparently included. Just adding an x11 socket override (tried first)
+    # does NOT fix it on its own: Electron still picks native Wayland
+    # rendering whenever WAYLAND_DISPLAY is present regardless of which
+    # sockets are granted, so it keeps hitting the same blocked path.
+    # Forcing the whole app onto XWayland with --ozone-platform=x11 (which
+    # needs the x11 socket override to actually have an X server to talk
+    # to) sidesteps this entirely — X11 clipboard access goes through
+    # XWayland's own clipboard bridge, a trusted/unsandboxed client from the
+    # compositor's point of view. Confirmed live: copy/paste works with
+    # this combination. (The XAUTHORITY dance some GNOME/mutter users in
+    # that thread needed is irrelevant here — Hyprland's Xwayland runs with
+    # no -auth flag at all, confirmed live, so there's no cookie to pass
+    # through.) Checked by current install state, same reasoning as the
+    # Element/Vesktop overrides above.
+    if flatpak info me.proton.Pass >/dev/null 2>&1; then
+        flatpak override --user --socket=x11 --nosocket=fallback-x11 me.proton.Pass
+        install_file "$HERE/desktop-overrides/me.proton.Pass.desktop" \
+            "$HOME/.local/share/applications/me.proton.Pass.desktop"
+        NEED_DESKTOP_DB_UPDATE=1
+    fi
+
     if [ "${NEED_DESKTOP_DB_UPDATE:-0}" = "1" ]; then
         # Without this, ~/.local/share/applications/mimeinfo.cache never
         # gets created/refreshed, so the x-scheme-handler/element and
@@ -1058,6 +1087,23 @@ elif rpm -q lutris >/dev/null 2>&1; then
     echo "    already installed"
 else
     sudo dnf install -y lutris
+fi
+
+echo "==> OBS Studio"
+
+# Native (Fedora's own repos, no RPM Fusion needed) rather than Flatpak:
+# the flatpak build's sandboxing gets in the way of hardware VAAPI encoders
+# (needs its own VAAPI extension + relies on the runtime's bundled Mesa
+# having patent-encumbered encode profiles enabled, separate from this
+# repo's own mesa-va-drivers-freeworld swap above, which only reaches
+# native apps) — native OBS just sees the host's VAAPI drivers directly,
+# same as mpv/Chrome do.
+if [ "${SKIP_OBS:-1}" = "1" ]; then
+    echo "    skipped"
+elif rpm -q obs-studio >/dev/null 2>&1; then
+    echo "    already installed"
+else
+    sudo dnf install -y obs-studio
 fi
 
 echo "==> LibreOffice"
