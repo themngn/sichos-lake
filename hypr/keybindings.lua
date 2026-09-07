@@ -6,24 +6,63 @@ local programs = require("programs")
 
 local mainMod = "SUPER" -- Sets "Windows" key as main modifier
 
--- Laptop lid switch handling. Closing the lid doesn't disconnect eDP-1 (the
--- near-universal kernel name for a built-in panel) the way unplugging a
--- monitor does, so Hyprland keeps treating it as a live output even though
--- nothing is visible. systemd-logind's own defaults already do the right
--- thing for suspend (HandleLidSwitch=suspend when undocked,
--- HandleLidSwitchDocked=ignore -- which per `man logind.conf` also covers
--- "more than one display connected", not just an actual docking station --
--- so a lid close with an external monitor attached doesn't suspend at all);
--- what's missing is Hyprland disabling the now-invisible internal panel in
--- that docked case, so windows/workspaces stop landing on it. Device
--- confirmed present as "Lid Switch" via `hyprctl devices` and the bind
--- syntax verified live via `hyprctl eval` before adding this. Harmless
+-- Laptop lid switch handling. Closing the lid doesn't disconnect the internal
+-- panel the way unplugging a monitor does, so Hyprland keeps treating it as a
+-- live output even though nothing is visible. systemd-logind's own defaults
+-- already do the right thing for suspend (HandleLidSwitch=suspend when
+-- undocked, HandleLidSwitchDocked=ignore -- which per `man logind.conf` also
+-- covers "more than one display connected", not just an actual docking
+-- station -- so a lid close with an external monitor attached doesn't
+-- suspend at all); what's missing is Hyprland disabling the now-invisible
+-- internal panel in that docked case, so windows/workspaces stop landing on
+-- it. Device confirmed present as "Lid Switch" via `hyprctl devices` and the
+-- bind syntax verified live via `hyprctl eval` before adding this. Harmless
 -- no-op on any machine without a lid switch (desktops).
+--
+-- Two things this got wrong the first time (confirmed live via journalctl
+-- after a real incident -- see git log for this comment's revision): (1) it
+-- disabled unconditionally, including the plain undocked case where the
+-- panel is the *only* output and the lid close just triggers a real suspend
+-- -- if the matching re-enable doesn't survive that suspend/resume cycle,
+-- the panel is left disabled with nothing else to show, i.e. permanently
+-- black until a reboot. Now the disable only fires when another monitor is
+-- actually active (docked). The re-enable stays unconditional on purpose --
+-- it's a harmless no-op on an already-enabled panel, whereas guarding it too
+-- would risk stranding a genuinely-disabled one forever (e.g. undocking
+-- while docked and closed, then opening). (2) it hardcoded "eDP-1" -- common
+-- but not universal (older/other laptops use LVDS-1 or DSI-1), so this now
+-- detects the internal panel once at load time by connector prefix instead,
+-- the same prefix set an earlier, since-reverted monitor-watch.py daemon
+-- used for the same purpose.
+local function detectInternalPanel()
+    for _, m in ipairs(hl.get_monitors()) do
+        if m.name:match("^eDP") or m.name:match("^LVDS") or m.name:match("^DSI") then
+            return m.name
+        end
+    end
+    return nil -- desktop, or a panel naming scheme this doesn't recognize
+end
+
+local INTERNAL_PANEL = detectInternalPanel()
+
+local function otherMonitorActive()
+    for _, m in ipairs(hl.get_monitors()) do
+        if m.name ~= INTERNAL_PANEL then
+            return true
+        end
+    end
+    return false
+end
+
 hl.bind("switch:on:Lid Switch", function()
-    hl.monitor({ output = "eDP-1", disabled = true })
+    if INTERNAL_PANEL and otherMonitorActive() then
+        hl.monitor({ output = INTERNAL_PANEL, disabled = true })
+    end
 end)
 hl.bind("switch:off:Lid Switch", function()
-    hl.monitor({ output = "eDP-1", disabled = false })
+    if INTERNAL_PANEL then
+        hl.monitor({ output = INTERNAL_PANEL, disabled = false })
+    end
 end)
 
 -- Example binds, see https://wiki.hypr.land/Configuring/Basics/Binds/ for more
