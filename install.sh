@@ -126,7 +126,7 @@ echo "==> Time & Region"
 
 # Also settable later from the quickshell launcher itself (Menu > Settings
 # > Time & Region — TimeRegion.qml), which calls timedatectl/localectl the
-# same way; both go through polkit (hyprpolkitagent, already autostarted)
+# same way; both go through polkit (the autostarted agent — see packages.txt)
 # rather than needing sudo here.
 CURRENT_TIMEZONE="$(timedatectl show -p Timezone --value 2>/dev/null || echo "")"
 TARGET_TIMEZONE="${SICHOS_TIMEZONE:-}"
@@ -621,17 +621,25 @@ if [ "$ALT" -eq 1 ]; then
     echo "    --alt: main modifier set to ALT in keybindings.lua"
 fi
 
-# hyprpolkitagent/hyprsunset/hypridle run as their packaged systemd --user
-# services rather than as plain background processes from autostart.lua —
-# see that file's opening comment for the full history/rationale. Only
-# takes effect if the SDDM session picked at login is the uwsm-managed
-# `hyprland-uwsm.desktop` entry (uwsm is what exports WAYLAND_DISPLAY into
-# systemd's user-manager environment, which these units require via
-# ConditionEnvironment) — under the plain `hyprland.desktop` entry this is a
-# harmless no-op, nothing starts. xdg-desktop-portal(-hyprland/-gtk) need no
-# enabling here: they're Type=dbus and activate on demand.
-systemctl --user enable hyprpolkitagent.service hyprsunset.service hypridle.service >/dev/null 2>&1
-echo "    enabled hyprpolkitagent/hyprsunset/hypridle systemd --user services"
+# hyprsunset/hypridle run as their packaged systemd --user services rather
+# than as plain background processes from autostart.lua — see that file's
+# opening comment for the full history/rationale. Only takes effect if the
+# SDDM session picked at login is the uwsm-managed `hyprland-uwsm.desktop`
+# entry (uwsm is what exports WAYLAND_DISPLAY into systemd's user-manager
+# environment, which these units require via ConditionEnvironment) — under
+# the plain `hyprland.desktop` entry this is a harmless no-op, nothing
+# starts. xdg-desktop-portal(-hyprland/-gtk) need no enabling here: they're
+# Type=dbus and activate on demand.
+systemctl --user enable hyprsunset.service hypridle.service >/dev/null 2>&1
+echo "    enabled hyprsunset/hypridle systemd --user services"
+
+# hyprpolkitagent is temporarily replaced by lxqt-policykit (packages.txt)
+# due to a Qt ABI break in its QML dialog — see autostart.lua's opening
+# comment. Disable it explicitly so it doesn't race lxqt-policykit-agent's
+# own XDG-autostart entry for the polkit registration; harmless no-op if
+# hyprpolkitagent isn't installed or was never enabled.
+systemctl --user disable --now hyprpolkitagent.service >/dev/null 2>&1
+echo "    disabled hyprpolkitagent.service (temporarily using lxqt-policykit instead)"
 
 echo "==> Firefox"
 

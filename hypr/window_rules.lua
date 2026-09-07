@@ -93,6 +93,28 @@ hl.window_rule({
     size   = "monitor_w*0.8 monitor_h*0.8",
 })
 
+-- Float Telegram's media viewer (opened by clicking a photo/video) instead
+-- of letting it tile. Confirmed via `hyprctl clients -j` it's a genuine
+-- separate toplevel (class "org.telegram.desktop", title "Media viewer") —
+-- it does request native fullscreen on its own (fullscreen:2), but while
+-- tiled Hyprland still reserves its tile slot underneath that, which is why
+-- the main Telegram window visibly shrank/reflowed (1280x1410 -> 1280x705)
+-- the instant the viewer opened, and reflows back on close. Floating removes
+-- it from the tiling grid entirely; size+center below make it cover the
+-- whole monitor so it still reads as fullscreen, and no_shadow drops the
+-- floating-window shadow that would otherwise ring it. (No "no_border" field
+-- exists on this Lua binding — confirmed against /usr/bin/Hyprland's own
+-- rule-field table; only no_shadow/no_blur/no_dim etc. are real.)
+hl.window_rule({
+    name  = "float-fullscreen-telegram-media-viewer",
+    match = { class = "org.telegram.desktop", title = "^Media viewer$" },
+
+    float     = true,
+    center    = true,
+    size      = "monitor_w monitor_h",
+    no_shadow = true,
+})
+
 -- Float, pin (stays visible across every workspace), and corner-position
 -- Firefox's video Picture-in-Picture popup, top-right with a small margin.
 hl.window_rule({

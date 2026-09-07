@@ -25,6 +25,31 @@ hl.on("hyprland.start", function ()
   -- again (e.g. picking the plain, non-uwsm `hyprland.desktop` entry at the
   -- SDDM prompt), these services simply won't start — that's the tradeoff
   -- for dropping the manual fallback.
+  -- hyprpolkitagent (from the same lionheartp/Hyprland COPR as Hyprland
+  -- itself) is temporarily NOT in that group of packaged units: as of
+  -- 2026-09-06 its QML dialog fails to load —
+  -- libhyprland-quick-style-impl.so throws an undefined-symbol error against
+  -- the then-current qt6-qtdeclarative 6.11.2 (Qt's QML/private ABI isn't
+  -- stable across point releases, and this COPR package hadn't been
+  -- rebuilt against it yet) — confirmed live: the polkit agent process was
+  -- up, but any polkit-gated action (e.g. unlocking a LUKS drive from
+  -- Nautilus) got no dialog at all and just hung, because the agent
+  -- couldn't render one. Swapped to `lxqt-policykit` instead (packages.txt),
+  -- a Qt *Widgets* agent immune to this specific QML/private-ABI breakage.
+  -- Its own `/etc/xdg/autostart/lxqt-policykit-agent.desktop` entry does get
+  -- a systemd unit generated (`systemd-xdg-autostart-generator`), but that
+  -- unit never actually starts under Hyprland — confirmed live: its
+  -- ExecCondition is `systemd-xdg-autostart-condition LXQt`, which checks
+  -- the desktop file's `OnlyShowIn=LXQt` against $XDG_CURRENT_DESKTOP
+  -- (=Hyprland here) and fails every time, unlike hyprpolkitagent/
+  -- hyprsunset/hypridle above, which have no such restriction in their own
+  -- units. So it's launched explicitly below instead, plain-background-
+  -- process style like sichos-gamepad/cliphist. install.sh explicitly
+  -- disables hyprpolkitagent.service so the two agents don't race for the
+  -- polkit registration. Once the COPR ships a rebuilt hyprpolkitagent,
+  -- this can be reverted: re-add hyprpolkitagent to the `systemctl --user
+  -- enable` line below, drop the disable, remove the exec_cmd below, and
+  -- swap lxqt-policykit back out of packages.txt.
   -- This used to be removed on the theory that SDDM's `/etc/pam.d/sddm`
   -- (which does list `pam_gnome_keyring.so` in both its `auth` and
   -- `session` stages) would auto-create+unlock a real-password "login"
@@ -83,6 +108,10 @@ hl.on("hyprland.start", function ()
   -- --password-store=basic, which is the actual weak/unencrypted fallback).
   hl.exec_cmd("gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'")
   hl.exec_cmd("gsettings set org.gnome.desktop.interface gtk-theme 'adw-gtk3-dark'")
+  -- Standing in for hyprpolkitagent (temporarily disabled — see this
+  -- function's opening comment); its own XDG-autostart entry won't fire
+  -- under Hyprland, so launched directly here instead.
+  hl.exec_cmd("/usr/libexec/lxqt-policykit-agent &")
   -- xdg-desktop-portal-gtk (Type=dbus, D-Bus-activates on demand — see this
   -- function's opening comment) is long-lived once started, and its own
   -- self-drawn dialogs (the GTK file-open/save chooser any app's "Open
