@@ -213,6 +213,10 @@ PanelWindow {
         spacing: 4
 
         Weather { screenName: bar.screen.name }
+        // User-local, not part of this repo — see CustomWidget.qml's own
+        // comment. Silently absent on any machine that doesn't have
+        // ~/.config/quickshell/custom/alert-widget/main.qml in place.
+        CustomWidget { name: "alert-widget" }
     }
 
     // Right section

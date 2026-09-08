@@ -705,6 +705,17 @@ while IFS= read -r -d '' f; do
 done < <(find "$HERE/quickshell" -type f -print0)
 echo "    installed to ~/.config/quickshell (hot-reloads automatically)"
 
+echo "==> quickshell custom widgets (user-local, not tracked by this repo)"
+
+# Sibling of our own config under ~/.config/quickshell, same trick as the
+# HyprQuickFrame clone below — the "quickshell config" step above only walks
+# files that exist in this repo's own quickshell/ tree, so it never touches
+# (and can never clobber) anything dropped in here directly. Just makes sure
+# the directory exists; CustomWidget.qml (loaded from Bar.qml) does the
+# actual per-widget loading, and quietly no-ops for any name that isn't
+# present on this particular machine.
+mkdir -p "$HOME/.config/quickshell/custom"
+
 echo "==> quickshell bar widget defaults"
 
 # bar-settings.json isn't part of this repo (BarSettings.qml explicitly treats
