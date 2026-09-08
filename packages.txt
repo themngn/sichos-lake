@@ -84,9 +84,10 @@ lxqt-policykit            # polkit auth agent (Qt Widgets, not QML) — without 
 
 ## Utilities
 hyprpicker                # color picker, SUPER+C in keybindings.lua (autocopies hex to clipboard)
-gamemode                  # Feral GameMode daemon — opt in per-game via Steam launch options
-                          # ("gamemoderun %command%") or Lutris's own GameMode toggle; nothing here
-                          # can inject that automatically, this just makes the daemon available
+gamemode                  # Feral GameMode daemon — on by default for every Steam game via
+                          # LD_PRELOAD=libgamemodeauto.so.0 in desktop-overrides/steam.desktop
+                          # (see install.sh's "==> Steam" step), no per-game "gamemoderun
+                          # %command%" needed; Lutris has its own separate GameMode toggle
 mangohud                  # Vulkan/OpenGL FPS/perf overlay — opt in per-game the same way
                           # (MANGOHUD=1 %command%, or Lutris's own MangoHud toggle)
 cliphist                  # clipboard history, SUPER+SHIFT+V in keybindings.lua — listener started

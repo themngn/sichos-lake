@@ -1,0 +1,61 @@
+# SichOS override of Fedora's packaged /usr/share/applications/steam.desktop —
+# adds LD_PRELOAD=libgamemodeauto.so.0 to Exec= so every game Steam launches
+# (native or Proton) auto-registers with the GameMode daemon on its own,
+# without needing "gamemoderun %command%" set per-game in Launch Options.
+# libgamemodeauto is a preload shim (ships with the gamemode package) whose
+# only job is calling gamemode_request_start()/_end() around the process
+# it's loaded into — safe to load into Steam itself too, since Steam isn't
+# a CPU-bound "game" process gamemode would meaningfully act on either way.
+# Applies whether Steam is launched from the app grid or via
+# autostart-launch.py (-silent), since both resolve this same desktop entry.
+# Only the main Exec= differs from upstream; translated Name/Comment strings
+# are dropped as noise, and the Desktop Actions are kept (English-only) so
+# right-click launcher entries (Big Picture, Friends, etc.) keep working.
+[Desktop Entry]
+Name=Steam
+Comment=Application for managing and playing games on Steam
+Exec=env LD_PRELOAD=/usr/lib64/libgamemodeauto.so.0 /usr/bin/steam %U
+Icon=steam
+Terminal=false
+Type=Application
+Categories=Network;FileTransfer;Game;
+MimeType=x-scheme-handler/steam;x-scheme-handler/steamlink;
+Actions=Store;Community;Library;Servers;Screenshots;News;Settings;BigPicture;Friends;
+PrefersNonDefaultGPU=true
+X-KDE-RunOnDiscreteGpu=true
+
+[Desktop Action Store]
+Name=Store
+Exec=/usr/bin/steam steam://store
+
+[Desktop Action Community]
+Name=Community
+Exec=/usr/bin/steam steam://url/CommunityHome/
+
+[Desktop Action Library]
+Name=Library
+Exec=/usr/bin/steam steam://open/games
+
+[Desktop Action Servers]
+Name=Servers
+Exec=/usr/bin/steam steam://open/servers
+
+[Desktop Action Screenshots]
+Name=Screenshots
+Exec=/usr/bin/steam steam://open/screenshots
+
+[Desktop Action News]
+Name=News
+Exec=/usr/bin/steam steam://openurl/https://store.steampowered.com/news
+
+[Desktop Action Settings]
+Name=Settings
+Exec=/usr/bin/steam steam://open/settings
+
+[Desktop Action BigPicture]
+Name=Big Picture
+Exec=/usr/bin/steam steam://open/bigpicture
+
+[Desktop Action Friends]
+Name=Friends
+Exec=/usr/bin/steam steam://open/friends
