@@ -170,8 +170,13 @@ Pill {
                                     // No `image` field here (unlike the live toast) — history
                                     // never stores it; see the comment where NotificationHistory.add()
                                     // is called for why it can't survive being persisted anyway.
+                                    // Falls back to the same bundled plain-bell asset as the
+                                    // live toast in Notifications.qml, for senders that gave
+                                    // no app_icon hint -- see its comment for why this is a
+                                    // bundled SVG rather than a system icon-theme lookup.
                                     source: {
-                                        if (!entryItem.modelData.appIcon) return ""
+                                        if (!entryItem.modelData.appIcon)
+                                            return Qt.resolvedUrl("../assets/notification-default.svg")
                                         return entryItem.modelData.appIcon.startsWith("/")
                                             ? "file://" + entryItem.modelData.appIcon
                                             : Quickshell.iconPath(entryItem.modelData.appIcon, true)

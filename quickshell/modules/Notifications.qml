@@ -169,9 +169,23 @@ PanelWindow {
                             visible: source !== ""
                             width: visible ? 22 : 0
                             height: 22
+                            // Falls back to a bundled plain-bell asset
+                            // (assets/notification-default.svg) rather than
+                            // leaving the row icon-less -- senders that skip
+                            // both `image` and app_icon hints (e.g. some CLI
+                            // notify-send calls) otherwise collapsed this
+                            // Image to 0 width and left the summary text
+                            // with no visual anchor. Bundled rather than a
+                            // system icon-theme lookup: Adwaita's only
+                            // notification-shaped icons are a
+                            // gear-badged "settings" bell
+                            // (preferences-system-notifications-symbolic) or
+                            // a slashed "disabled" bell -- neither reads as
+                            // a plain notification icon.
                             source: {
                                 if (notification.image) return notification.image
-                                if (!notification.appIcon) return ""
+                                if (!notification.appIcon)
+                                    return Qt.resolvedUrl("../assets/notification-default.svg")
                                 return notification.appIcon.startsWith("/")
                                     ? "file://" + notification.appIcon
                                     : Quickshell.iconPath(notification.appIcon, true)
