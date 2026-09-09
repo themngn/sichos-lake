@@ -29,12 +29,12 @@ Pill {
             color: root.charging ? Theme.success : root.critical ? Theme.critical : Theme.text
         }
 
-        Text {
+        BarIcon {
             id: batteryIcon
-            anchors.verticalCenter: parent.verticalCenter
-            text: root.charging ? "" : root.icon()
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize * 1.5
+            glyph: root.charging ? "" : root.icon()
+            // Font Awesome battery glyphs ink 334/1000em (fontTools glyf
+            // bbox) -- scaled up to the shared bar icon target.
+            pixelSize: Theme.barIconInkHeight * 1000 / 334
             color: root.charging ? Theme.success : root.critical ? Theme.critical : Theme.text
 
             property real blinkOpacity: 1

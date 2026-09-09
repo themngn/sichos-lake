@@ -48,11 +48,11 @@ Pill {
     Row {
         spacing: 4
 
-        Text {
-            anchors.verticalCenter: parent.verticalCenter
-            text: root.icon()
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize * 1.5
+        BarIcon {
+            glyph: root.icon()
+            // Material Design brightness glyphs ink ~600/1000em (fontTools
+            // glyf bbox) -- scaled to the shared bar icon target.
+            pixelSize: Theme.barIconInkHeight * 1000 / 600
             color: Theme.text
         }
     }

@@ -70,8 +70,8 @@ Pill {
 
         Item {
             anchors.verticalCenter: parent.verticalCenter
-            width: Theme.fontSize * 1.5
-            height: Theme.fontSize * 1.5
+            width: Theme.fontSize * 1.5 * Theme.barIconScale
+            height: Theme.fontSize * 1.5 * Theme.barIconScale
 
             Text {
                 // Left-aligned, not centered: see VolumeOSD.qml — these
@@ -84,7 +84,7 @@ Pill {
                 }
                 text: root.icon()
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize * 1.5 * root.iconScale()
+                font.pixelSize: Theme.fontSize * 1.5 * Theme.barIconScale * root.iconScale()
                 color: root.sink && root.sink.audio && root.sink.audio.muted ? Theme.textDim : Theme.text
             }
         }

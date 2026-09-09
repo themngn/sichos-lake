@@ -167,12 +167,12 @@ Pill {
     readonly property var weeklyTimeProgress: root._timeProgress(root.activeWeeklyResetsAt, 7 * 24 * 60 * 60)
 
     // Pill Bar Content - strictly equal width across all values
-    Text {
-        anchors.verticalCenter: parent.verticalCenter
+    BarIcon {
         visible: root.haveData
-        text: root.sliceIcon
-        font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize * 1.5
+        glyph: root.sliceIcon
+        // nf-md circle-slice glyphs ink 600/1000em (fontTools glyf bbox) --
+        // scaled to the shared bar icon target.
+        pixelSize: Theme.barIconInkHeight * 1000 / 600
         color: Theme.text
     }
 

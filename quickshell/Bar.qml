@@ -82,17 +82,25 @@ PanelWindow {
     // without Bar.qml hardcoding a fixed declaration order. Night Light,
     // Stay Awake, and the transparency toggle below aren't part of this —
     // they're a fixed trio, not covered by BarSettings.
-    Component { id: trayComp; Tray {} }
-    Component { id: aiModelUsageComp; AiModelUsage { screenName: bar.screen.name } }
-    Component { id: notificationCenterComp; NotificationCenter { screen: bar.screen; screenName: bar.screen.name } }
-    Component { id: languageComp; Language {} }
-    Component { id: bluetoothComp; BluetoothIndicator { screenName: bar.screen.name } }
-    Component { id: networkComp; NetworkIndicator {} }
-    Component { id: volumeComp; Volume {} }
-    Component { id: backlightComp; Backlight {} }
-    Component { id: displayComp; DisplaySettings { screenName: bar.screen.name } }
-    Component { id: powerProfileComp; PowerProfile {} }
-    Component { id: batteryComp; Battery {} }
+    //
+    // horizontalPadding: 4 (down from Pill's default 8) on every one of
+    // these -- paired with this Row's spacing: 0 below, that reproduces the
+    // original ~8px visual gap between icons (4 + 0 + 4) without the
+    // negative-Row-spacing hack that used to cause it (see that comment).
+    // Center-group Pills (SunsetToggle/HdrToggle/IdleToggle/
+    // TransparencyToggle, Weather, CustomWidget) aren't touched -- they
+    // keep Pill's real default.
+    Component { id: trayComp; Tray { horizontalPadding: 4 } }
+    Component { id: aiModelUsageComp; AiModelUsage { screenName: bar.screen.name; horizontalPadding: 4 } }
+    Component { id: notificationCenterComp; NotificationCenter { screen: bar.screen; screenName: bar.screen.name; horizontalPadding: 4 } }
+    Component { id: languageComp; Language { horizontalPadding: 4 } }
+    Component { id: bluetoothComp; BluetoothIndicator { screenName: bar.screen.name; horizontalPadding: 4 } }
+    Component { id: networkComp; NetworkIndicator { horizontalPadding: 4 } }
+    Component { id: volumeComp; Volume { horizontalPadding: 4 } }
+    Component { id: backlightComp; Backlight { horizontalPadding: 4 } }
+    Component { id: displayComp; DisplaySettings { screenName: bar.screen.name; horizontalPadding: 4 } }
+    Component { id: powerProfileComp; PowerProfile { horizontalPadding: 4 } }
+    Component { id: batteryComp; Battery { horizontalPadding: 4 } }
 
     function componentFor(id) {
         switch (id) {
@@ -229,18 +237,27 @@ PanelWindow {
     }
 
     // Right section
-    // Each Pill already carries 8px horizontalPadding on both sides, so two
-    // adjacent pills stack 16px of padding between their icons before any
-    // Row spacing is added. Tray's own icons (inside one Pill) sit exactly
-    // 8px apart with no padding doubling — matching that here means
-    // cancelling the doubled padding with negative spacing (8 - 8 - 8 = -8).
+    // Zero, not negative, spacing: negative spacing here used to make
+    // adjacent Pills' Items physically overlap by the same amount, and
+    // since each Pill's MouseArea is anchors.fill: parent, the overlapping
+    // strip was claimed by both — the right-hand Pill always won (later Row
+    // sibling), so every pill had 8px of dead click-through on its left
+    // edge that silently fired its right neighbor's handler instead (this
+    // is exactly what BluetoothIndicator.qml's old fixed-width comment was
+    // papering over). Zero spacing tiles pills edge-to-edge with zero
+    // overlap; each BarIcon (see modules/BarIcon.qml) now also reports an
+    // accurate, identical-width implicitWidth. The visual gap this used to
+    // fake via negative spacing (8px, matching Tray's own inter-icon
+    // spacing) comes instead from each widget's horizontalPadding: 4 below
+    // (4 + 0 + 4 = 8) — a real non-overlapping gap rather than a
+    // padding-cancellation hack.
     Row {
         anchors {
             right: parent.right
             rightMargin: 2
             verticalCenter: parent.verticalCenter
         }
-        spacing: -8
+        spacing: 0
 
         Repeater {
             model: BarSettings.orderedIds()

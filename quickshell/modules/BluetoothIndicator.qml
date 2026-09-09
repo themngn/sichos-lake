@@ -115,20 +115,13 @@ Pill {
     onHoveredChanged: _updateHoverState()
     onPopupHoveredChanged: _updateHoverState()
 
-    Text {
-        text: ""
-        font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
-        // The glyph itself renders fine at normal size — the actual bug:
-        // this font's advance width for it undercounts its true rendered
-        // ink extent, so Pill's implicitWidth (based on that advance
-        // width) came out too narrow, and the Network pill's hitbox
-        // started before this glyph visually ended — clicking the right
-        // part of a still-visible Bluetooth icon fired Network's handler.
-        // Reserving extra width (centered) keeps the glyph's own position
-        // unchanged but pushes Network's pill start past its real edge.
-        width: Theme.fontSize * 1.6
-        horizontalAlignment: Text.AlignHCenter
+    BarIcon {
+        glyph: ""
+        // Ink 802/1000em (fontTools glyf bbox) -- scaled to the shared bar
+        // icon target (previously a flat Theme.fontSize plus a one-off
+        // fixed width to paper over the resulting hitbox misalignment; both
+        // are now handled generically by BarIcon.qml).
+        pixelSize: Theme.barIconInkHeight * 1000 / 802
         color: !root.btEnabled ? Theme.critical
             : root.connectedDevices.length > 0 ? Theme.accent : Theme.text
     }

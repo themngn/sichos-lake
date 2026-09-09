@@ -17,12 +17,14 @@ Pill {
                 id: trayItem
                 required property var modelData
 
-                width: 16
-                height: 16
+                // 16px base, scaled with the rest of the bar's icons
+                // (Theme.barIconScale).
+                width: Math.round(16 * Theme.barIconScale)
+                height: Math.round(16 * Theme.barIconScale)
 
                 Image {
                     anchors.fill: parent
-                    sourceSize: Qt.size(16, 16)
+                    sourceSize: Qt.size(trayItem.width, trayItem.height)
                     source: trayItem.modelData.icon.includes("://")
                         ? trayItem.modelData.icon
                         : Quickshell.iconPath(trayItem.modelData.icon)

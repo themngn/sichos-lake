@@ -31,10 +31,11 @@ Pill {
 
     readonly property bool anyVrrOn: Object.keys(popup.vrrEnabled).some(k => popup.vrrEnabled[k])
 
-    Text {
-        text: "󰍹"
-        font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+    BarIcon {
+        glyph: "󰍹"
+        // Ink 544/1000em (fontTools glyf bbox) -- scaled to the shared bar
+        // icon target.
+        pixelSize: Theme.barIconInkHeight * 1000 / 544
         color: root.anyVrrOn ? Theme.accent : Theme.text
     }
 

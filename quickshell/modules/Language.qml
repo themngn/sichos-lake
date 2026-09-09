@@ -54,15 +54,16 @@ Pill {
 
     onClicked: Quickshell.execDetached(["hyprctl", "switchxkblayout", "current", "next"])
 
-    Text {
-        text: {
+    BarIcon {
+        glyph: {
             const n = root.layoutName.toLowerCase()
             if (n.includes("ukrain")) return "🇺🇦"
             if (n.includes("english") || n.includes("us")) return "🇬🇧"
             return root.layoutName.substring(0, 2).toUpperCase()
         }
-        font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        // Not a Nerd Font glyph (flag emoji / plain text), so no ink-height
+        // correction -- fixed box width alone is enough for even spacing.
+        pixelSize: Theme.fontSize * Theme.barIconScale
         color: Theme.text
     }
 }

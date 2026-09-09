@@ -28,4 +28,30 @@ QtObject {
     readonly property int fontSize: 13
 
     readonly property int barHeight: 30
+
+    // Requested 33% size bump across every bar-right icon (glyphs, Volume,
+    // Tray, Language) -- one shared multiplier so they all grow together
+    // and stay mutually consistent rather than drifting apart again.
+    readonly property real barIconScale: 1.00
+
+    // Shared visual-height target (px) that every right-section bar icon
+    // (BarIcon.qml) scales its own glyph's measured ink to, regardless of
+    // that glyph's own font-design proportions -- Nerd Font icons don't
+    // share a consistent ink-to-em ratio (confirmed via fontTools glyf
+    // bbox: e.g. battery glyphs sit at 334 units/1000em, bluetooth at 802),
+    // so matching pixelSize alone left icons looking visibly different
+    // sizes. Base value (before barIconScale) == Volume.qml's own
+    // pre-existing mute-icon ink height (508 units/1000em @ pixelSize
+    // fontSize*1.5) -- kept rather than picking a new number so
+    // Volume.qml's already-correct icons don't need to move independently.
+    readonly property real barIconInkHeight: fontSize * 1.5 * 0.508 * barIconScale
+    // Fixed box width every BarIcon renders into. Must clear the widest
+    // glyph's resulting ink width once scaled to barIconInkHeight -- battery
+    // glyphs are the extreme case (334-unit-tall ink but 601-unit-wide, so
+    // scaling height up to match taller glyphs blows their width out to
+    // ~17.8px pre-scale, ~23.7px at barIconScale). Identical width on every
+    // icon (not just matching pixelSize) is what makes adjacent Pills'
+    // implicitWidth-driven hitboxes tile with an even gap instead of a
+    // size-dependent one.
+    readonly property int barIconBoxWidth: Math.round(22 * barIconScale)
 }

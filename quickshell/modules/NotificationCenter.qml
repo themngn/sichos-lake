@@ -22,14 +22,20 @@ Pill {
     tooltipText: root.count > 0 ? root.count + " notification" + (root.count === 1 ? "" : "s") : "No notifications"
     onClicked: ShellState.notificationCenterScreen = root.panelOpen ? "" : root.screenName
 
-    Text {
+    // Ink heights (fontTools glyf bbox, units/1000em): bell-badge 700,
+    // plain bell 684 -- close enough that a shared correction covers both,
+    // but kept per-state so a future glyph swap doesn't silently drift.
+    function iconInkUnits() {
+        return root.count > 0 ? 700 : 684
+    }
+
+    BarIcon {
         // Presence-only indicator (no count) — a number badge kept
         // leaving an awkward fixed-width gap when empty; the glyph
         // switch (plain bell -> bell-badge) plus accent color together
         // say "there's something to see" instead.
-        text: root.count > 0 ? "󱅫" : ""
-        font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        glyph: root.count > 0 ? "󱅫" : ""
+        pixelSize: Theme.barIconInkHeight * 1000 / root.iconInkUnits()
         color: root.count > 0 ? Theme.accent : Theme.text
     }
 

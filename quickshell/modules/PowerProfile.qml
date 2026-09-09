@@ -34,17 +34,21 @@ Pill {
         default: return Theme.perfBalanced
         }
     }
+    // Ink heights (fontTools glyf bbox, units/1000em): Performance 802,
+    // Power Saver 572, Balanced 482 -- scaled individually so all three
+    // states render at the same visual height instead of drifting with
+    // the flat pixelSize this used before.
+    function iconInkUnits() {
+        switch (PowerProfiles.profile) {
+        case PowerProfile.Performance: return 802
+        case PowerProfile.PowerSaver: return 572
+        default: return 482
+        }
+    }
 
-    Text {
-        // Fixed width (same approach as BluetoothIndicator's icon) so the
-        // pill doesn't shift the rest of the bar when the profile's glyph
-        // changes — different icons have different font-advance widths even
-        // at the same pixel size.
-        width: Theme.fontSize * 1.6
-        horizontalAlignment: Text.AlignHCenter
-        text: root.icon()
-        font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize + 2
+    BarIcon {
+        glyph: root.icon()
+        pixelSize: Theme.barIconInkHeight * 1000 / root.iconInkUnits()
         color: root.iconColor()
     }
 }
