@@ -214,9 +214,18 @@ PanelWindow {
 
         Weather { screenName: bar.screen.name }
         // User-local, not part of this repo — see CustomWidget.qml's own
-        // comment. Silently absent on any machine that doesn't have
-        // ~/.config/quickshell/custom/alert-widget/main.qml in place.
-        CustomWidget { name: "alert-widget" }
+        // comment and CustomWidgets.qml. One entry per
+        // ~/.config/quickshell/custom/<id>/main.qml found on this machine,
+        // installed/removed from the launcher's Settings > Custom Plugins
+        // folder (or by hand, same as the original alert-widget precedent).
+        Repeater {
+            model: CustomWidgets.widgets
+
+            delegate: CustomWidget {
+                required property var modelData
+                name: modelData.id
+            }
+        }
     }
 
     // Right section

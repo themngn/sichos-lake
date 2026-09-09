@@ -50,7 +50,7 @@ PanelWindow {
     }
     color: launcher.activeWorkspaceHasWindows ? Qt.rgba(0, 0, 0, 0.35) : "transparent"
 
-    property string mode: "root" // "root" | "apps" | "toggles" | "power" | "autostart" | "reload" | "settings" | "settings-bar" | "settings-timeregion" | "picklist:<field>" | "folder:<id>" | "folderpick" | "newfoldername" | "appmenu"
+    property string mode: "root" // "root" | "apps" | "toggles" | "power" | "autostart" | "reload" | "settings" | "settings-bar" | "settings-plugins" | "settings-timeregion" | "picklist:<field>" | "folder:<id>" | "folderpick" | "newfoldername" | "pluginsource" | "appmenu"
     property string query: ""
     property int selectedIndex: 0
     // Which folder to return to when backing out of the app submenu.
@@ -85,10 +85,35 @@ PanelWindow {
 
     readonly property var settingsItems: [
         { type: "folder", id: "settings-bar", name: "Bar Widgets", icon: "" },
+        { type: "folder", id: "settings-plugins", name: "Custom Plugins", icon: "" },
         { type: "folder", id: "settings-timeregion", name: "Time & Region", icon: "" },
         { type: "folder", id: "autostart", name: "Autostart", icon: "" },
         { type: "folder", id: "reload", name: "Reload", icon: "" }
     ]
+
+    // ~/.config/quickshell/custom/<id>/main.qml entries (CustomWidgets.qml),
+    // plus a trailing action row that doubles as status: its label reflects
+    // an install/remove in flight or the last one’s error, same idea as
+    // "+ New Folder" above but for a background script instead of an
+    // instant local edit. See CustomWidgets.qml’s own comment for why no
+    // quickshell restart is needed after activating either row below —
+    // confirmed live, unlike CustomWidget.qml’s per-widget hot-reload note.
+    readonly property var pluginItems: {
+        const items = CustomWidgets.widgets.map(w => ({ type: "plugin", id: w.id, name: w.label, icon: "" }))
+        items.push({
+            type: "action", id: "addplugin",
+            name: CustomWidgets.busy ? "Installing…" : (CustomWidgets.lastError ? "⚠ " + CustomWidgets.lastError : "+ Add Plugin")
+        })
+        return items
+    }
+    function createPluginFromQuery() {
+        const source = launcher.query.trim()
+        if (!source || CustomWidgets.busy) return
+        CustomWidgets.install(source)
+        launcher.mode = "settings-plugins"
+        launcher.query = ""
+        launcher.selectedIndex = 0
+    }
 
     readonly property var powerItems: [
         { type: "power", id: "logout", name: "Logout", danger: false, aliases: ["log out", "sign out", "exit"] },
@@ -355,6 +380,8 @@ PanelWindow {
         if (launcher.mode === "reload") return launcher.reloadItems
         if (launcher.mode === "settings") return launcher.settingsItems
         if (launcher.mode === "settings-bar") return launcher.barWidgetItems
+        if (launcher.mode === "settings-plugins") return launcher.pluginItems
+        if (launcher.mode === "pluginsource") return []
         if (launcher.mode === "settings-timeregion") return launcher.timeRegionItems
         if (launcher.mode.indexOf("picklist:") === 0) return launcher.pickListItems(launcher.mode.slice(9))
         if (launcher.mode.indexOf("folder:") === 0) return launcher.folderApps(launcher.mode.slice(7))
@@ -453,7 +480,7 @@ PanelWindow {
                 .filter(e => e.item.name.toLowerCase().includes(q))
                 .sort((a, b) => launcher.matchRank(a.item.name, q) - launcher.matchRank(b.item.name, q) || a.idx - b.idx)
                 .map(e => e.item)
-        if (launcher.mode === "appmenu" || launcher.mode === "folderpick" || launcher.mode === "newfoldername") return launcher.currentItems
+        if (launcher.mode === "appmenu" || launcher.mode === "folderpick" || launcher.mode === "newfoldername" || launcher.mode === "pluginsource") return launcher.currentItems
         return launcher.allItems
             .map((item, idx) => ({ item: item, idx: idx, rank: launcher.itemMatchRank(item, q) }))
             .filter(e => e.rank !== Infinity)
@@ -472,6 +499,7 @@ PanelWindow {
         if (m === "reload") return "Menu > Settings > Reload"
         if (m === "settings") return "Menu > Settings"
         if (m === "settings-bar") return "Menu > Settings > Bar Widgets"
+        if (m === "settings-plugins") return "Menu > Settings > Custom Plugins"
         if (m === "settings-timeregion") return "Menu > Settings > Time & Region"
         if (m.indexOf("picklist:") === 0) return "Menu > Settings > Time & Region > " + launcher.pickListLabel(m.slice(9))
         if (m.indexOf("folder:") === 0) return "Menu > Apps > " + launcher.folderName(m.slice(7))
@@ -481,6 +509,7 @@ PanelWindow {
     readonly property string title: launcher.mode === "appmenu" ? launcher.breadcrumb(launcher.returnMode) + " > " + launcher.contextApp.name
         : launcher.mode === "folderpick" ? launcher.breadcrumb(launcher.returnMode) + " > " + launcher.contextApp.name + " > Add to Folder"
         : launcher.mode === "newfoldername" ? launcher.breadcrumb(launcher.returnMode) + " > " + launcher.contextApp.name + " > Add to Folder > New Folder"
+        : launcher.mode === "pluginsource" ? launcher.breadcrumb("settings-plugins") + " > Add Plugin"
         : launcher.mode.indexOf("picklist:") === 0 ? launcher.breadcrumb(launcher.mode)
         : launcher.query.length > 0 ? "Search"
         : launcher.breadcrumb(launcher.mode)
@@ -530,6 +559,10 @@ PanelWindow {
             launcher.mode = "folderpick"
             launcher.query = ""
             launcher.selectedIndex = 0
+        } else if (launcher.mode === "pluginsource") {
+            launcher.mode = "settings-plugins"
+            launcher.query = ""
+            launcher.selectedIndex = 0
         } else if (launcher.mode === "folderpick") {
             launcher.mode = "appmenu"
             launcher.query = ""
@@ -542,7 +575,7 @@ PanelWindow {
             launcher.mode = "settings-timeregion"
             launcher.query = ""
             launcher.selectedIndex = 0
-        } else if (launcher.mode === "settings-bar" || launcher.mode === "settings-timeregion"
+        } else if (launcher.mode === "settings-bar" || launcher.mode === "settings-plugins" || launcher.mode === "settings-timeregion"
                    || launcher.mode === "autostart" || launcher.mode === "reload") {
             launcher.mode = "settings"
             launcher.query = ""
@@ -593,6 +626,10 @@ PanelWindow {
         }
         if (item.type === "bar-widget") {
             BarSettings.toggle(item.id)
+            return
+        }
+        if (item.type === "plugin") {
+            CustomWidgets.remove(item.id)
             return
         }
         if (item.type === "folder-toggle") {
@@ -675,6 +712,11 @@ PanelWindow {
                 launcher.selectedIndex = 0
             } else if (item.id === "newfolder") {
                 launcher.mode = "newfoldername"
+                launcher.query = ""
+                launcher.selectedIndex = 0
+            } else if (item.id === "addplugin") {
+                if (CustomWidgets.busy) return
+                launcher.mode = "pluginsource"
                 launcher.query = ""
                 launcher.selectedIndex = 0
             } else if (item.id === "edit-timezone") {
@@ -866,10 +908,12 @@ PanelWindow {
                     }
                     Keys.onReturnPressed: {
                         if (launcher.mode === "newfoldername") launcher.createFolderFromQuery()
+                        else if (launcher.mode === "pluginsource") launcher.createPluginFromQuery()
                         else launcher.activate(launcher.filtered[launcher.selectedIndex])
                     }
                     Keys.onEnterPressed: {
                         if (launcher.mode === "newfoldername") launcher.createFolderFromQuery()
+                        else if (launcher.mode === "pluginsource") launcher.createPluginFromQuery()
                         else launcher.activate(launcher.filtered[launcher.selectedIndex])
                     }
                 }
@@ -992,7 +1036,7 @@ PanelWindow {
                     }
 
                     Text {
-                        visible: !row.isToggleLike && row.modelData.type !== "action"
+                        visible: !row.isToggleLike && row.modelData.type !== "action" && row.modelData.type !== "plugin"
                         anchors {
                             right: parent.right
                             rightMargin: 8
@@ -1002,6 +1046,22 @@ PanelWindow {
                         color: row.index === launcher.selectedIndex ? Theme.accent : Theme.textMuted
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontSize + 3
+                    }
+
+                    // Enter/click on a plugin row removes it outright (no
+                    // on/off state to toggle, unlike bar-widget rows) — this
+                    // just labels that so it isn't mistaken for a ">" submenu.
+                    Text {
+                        visible: row.modelData.type === "plugin"
+                        anchors {
+                            right: parent.right
+                            rightMargin: 8
+                            verticalCenter: parent.verticalCenter
+                        }
+                        text: "Remove"
+                        color: row.index === launcher.selectedIndex ? Theme.critical : Theme.textMuted
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSize - 2
                     }
 
                     Rectangle {
