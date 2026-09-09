@@ -83,24 +83,26 @@ PanelWindow {
     // Stay Awake, and the transparency toggle below aren't part of this —
     // they're a fixed trio, not covered by BarSettings.
     //
-    // horizontalPadding: 4 (down from Pill's default 8) on every one of
-    // these -- paired with this Row's spacing: 0 below, that reproduces the
-    // original ~8px visual gap between icons (4 + 0 + 4) without the
-    // negative-Row-spacing hack that used to cause it (see that comment).
+    // horizontalPadding: 4 * Theme.barIconSpacingScale (down from Pill's
+    // default 8) on every one of these -- paired with this Row's spacing: 0
+    // below, that reproduces the original ~8px visual gap between icons
+    // (4 + 0 + 4, before the scale) without the negative-Row-spacing hack
+    // that used to cause it (see that comment). Theme.barIconSpacingScale
+    // tunes that gap globally without touching each Component's own value.
     // Center-group Pills (SunsetToggle/HdrToggle/IdleToggle/
     // TransparencyToggle, Weather, CustomWidget) aren't touched -- they
     // keep Pill's real default.
-    Component { id: trayComp; Tray { horizontalPadding: 4 } }
-    Component { id: aiModelUsageComp; AiModelUsage { screenName: bar.screen.name; horizontalPadding: 4 } }
-    Component { id: notificationCenterComp; NotificationCenter { screen: bar.screen; screenName: bar.screen.name; horizontalPadding: 4 } }
-    Component { id: languageComp; Language { horizontalPadding: 4 } }
-    Component { id: bluetoothComp; BluetoothIndicator { screenName: bar.screen.name; horizontalPadding: 4 } }
-    Component { id: networkComp; NetworkIndicator { horizontalPadding: 4 } }
-    Component { id: volumeComp; Volume { horizontalPadding: 4 } }
-    Component { id: backlightComp; Backlight { horizontalPadding: 4 } }
-    Component { id: displayComp; DisplaySettings { screenName: bar.screen.name; horizontalPadding: 4 } }
-    Component { id: powerProfileComp; PowerProfile { horizontalPadding: 4 } }
-    Component { id: batteryComp; Battery { horizontalPadding: 4 } }
+    Component { id: trayComp; Tray { horizontalPadding: 4 * Theme.barIconSpacingScale } }
+    Component { id: aiModelUsageComp; AiModelUsage { screenName: bar.screen.name; horizontalPadding: 4 * Theme.barIconSpacingScale } }
+    Component { id: notificationCenterComp; NotificationCenter { screen: bar.screen; screenName: bar.screen.name; horizontalPadding: 4 * Theme.barIconSpacingScale } }
+    Component { id: languageComp; Language { horizontalPadding: 4 * Theme.barIconSpacingScale } }
+    Component { id: bluetoothComp; BluetoothIndicator { screenName: bar.screen.name; horizontalPadding: 4 * Theme.barIconSpacingScale } }
+    Component { id: networkComp; NetworkIndicator { horizontalPadding: 4 * Theme.barIconSpacingScale } }
+    Component { id: volumeComp; Volume { horizontalPadding: 4 * Theme.barIconSpacingScale } }
+    Component { id: backlightComp; Backlight { horizontalPadding: 4 * Theme.barIconSpacingScale } }
+    Component { id: displayComp; DisplaySettings { screenName: bar.screen.name; horizontalPadding: 4 * Theme.barIconSpacingScale } }
+    Component { id: powerProfileComp; PowerProfile { horizontalPadding: 4 * Theme.barIconSpacingScale } }
+    Component { id: batteryComp; Battery { horizontalPadding: 4 * Theme.barIconSpacingScale } }
 
     function componentFor(id) {
         switch (id) {

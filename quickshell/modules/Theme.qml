@@ -54,4 +54,10 @@ QtObject {
     // implicitWidth-driven hitboxes tile with an even gap instead of a
     // size-dependent one.
     readonly property int barIconBoxWidth: Math.round(22 * barIconScale)
+
+    // Multiplies the right-section Pills' horizontalPadding (Bar.qml) to
+    // tune the gap between adjacent bar-right icons without touching each
+    // Component's own padding value -- see Bar.qml's comment above those
+    // Components for why the gap comes from padding rather than Row spacing.
+    readonly property real barIconSpacingScale: 0.75
 }
