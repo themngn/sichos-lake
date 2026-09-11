@@ -75,12 +75,6 @@ google-noto-color-emoji-fonts   # renders flag emoji in quickshell/modules/Langu
 xdg-desktop-portal
 xdg-desktop-portal-gtk    # Settings portal backend — needed for GTK4/libadwaita dark-mode signal
 xdg-desktop-portal-hyprland
-lxqt-policykit            # polkit auth agent (Qt Widgets, not QML) — without one, polkit-gated
-                          # actions (e.g. mounting a LUKS drive from Nautilus) fail with "Not
-                          # authorized". Standing in for hyprpolkitagent as of 2026-09-06: that
-                          # package's QML dialog crashes against current qt6-qtdeclarative (Qt
-                          # private-ABI break, COPR package not yet rebuilt) — see autostart.lua's
-                          # opening comment for the full story and revert instructions.
 
 ## Utilities
 hyprpicker                # color picker, SUPER+C in keybindings.lua (autocopies hex to clipboard)

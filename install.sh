@@ -630,16 +630,8 @@ fi
 # the plain `hyprland.desktop` entry this is a harmless no-op, nothing
 # starts. xdg-desktop-portal(-hyprland/-gtk) need no enabling here: they're
 # Type=dbus and activate on demand.
-systemctl --user enable hyprsunset.service hypridle.service >/dev/null 2>&1
-echo "    enabled hyprsunset/hypridle systemd --user services"
-
-# hyprpolkitagent is temporarily replaced by lxqt-policykit (packages.txt)
-# due to a Qt ABI break in its QML dialog — see autostart.lua's opening
-# comment. Disable it explicitly so it doesn't race lxqt-policykit-agent's
-# own XDG-autostart entry for the polkit registration; harmless no-op if
-# hyprpolkitagent isn't installed or was never enabled.
-systemctl --user disable --now hyprpolkitagent.service >/dev/null 2>&1
-echo "    disabled hyprpolkitagent.service (temporarily using lxqt-policykit instead)"
+systemctl --user enable hyprpolkitagent.service hyprsunset.service hypridle.service >/dev/null 2>&1
+echo "    enabled hyprpolkitagent/hyprsunset/hypridle systemd --user services"
 
 echo "==> Firefox"
 
