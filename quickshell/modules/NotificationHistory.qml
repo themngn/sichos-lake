@@ -22,17 +22,27 @@ QtObject {
 
     readonly property int maxEntries: 50
 
-    // A quickshell restart (reboot, or a dev hot-reload that doesn't
-    // preserve the NotificationServer) resets D-Bus notification ids back
-    // to a small counter, so the first notifications of a new session can
-    // reuse a notifId that's still sitting, unwithdrawn, in the history
-    // persisted from a previous session. Namespacing every stored/looked-up
-    // notifId with a token generated fresh each time this singleton is
-    // constructed keeps add()'s replace-dedup below and removeByNotifId()'s
-    // withdrawal matching scoped to the current session only, so a stale
-    // entry from a prior boot can never be silently merged with, or deleted
-    // by, an unrelated new notification that happens to reuse the same id.
-    readonly property string sessionId: Date.now() + "-" + Math.floor(Math.random() * 1e6)
+    // A genuine quickshell restart (crash+relaunch, reboot) resets D-Bus
+    // notification ids back to a small counter, so the first notifications
+    // of a new process can reuse a notifId that's still sitting, unwithdrawn,
+    // in the history persisted from a previous process. Namespacing every
+    // stored/looked-up notifId with a token scoped to the current process
+    // keeps add()'s replace-dedup below and removeByNotifId()'s withdrawal
+    // matching from silently merging with, or deleting, an unrelated new
+    // notification that happens to reuse the same id after a restart.
+    // Deliberately Quickshell.processId, not a value regenerated fresh here
+    // (e.g. Date.now()) -- this singleton itself gets torn down and rebuilt
+    // on every QML hot-reload (confirmed live: a plain content-edit save
+    // changes this object's construction, not just the touched file), while
+    // the underlying NotificationServer and its D-Bus id counter survive
+    // that same reload untouched (NotificationServer.keepOnReload, default
+    // true). A token that changed on every reload made removeByNotifId()
+    // fail for anything added before the last reload -- i.e. real
+    // withdrawal was broken by the exact case (editing this repo) this
+    // machine spends the most time in. processId is stable across reload
+    // and still changes on the restarts this is actually meant to guard
+    // against.
+    readonly property string sessionId: String(Quickshell.processId)
 
     function add(entry) {
         const notifId = entry.notifId !== undefined ? root.sessionId + ":" + entry.notifId : undefined
@@ -77,6 +87,18 @@ QtObject {
         path: Quickshell.env("HOME") + "/.config/quickshell/notification-history.json"
         watchChanges: true
         printErrors: false
+        // Without this, a notification still open across a hot-reload (see
+        // sessionId above) fires onNotification -> add() -> writeAdapter()
+        // as soon as this singleton is reconstructed, which can race the
+        // FileView's own async initial read: if the write lands first, it
+        // overwrites the on-disk file with just that one entry before the
+        // real persisted history was ever loaded into adapter.entries --
+        // confirmed live, this silently discarded the entire history file
+        // down to 1-2 entries. blockLoading forces the JsonAdapter's initial
+        // population to finish before anything else in this file's
+        // Component.onCompleted-equivalent (i.e. before any add() from a
+        // reload-carried-over notification) can run.
+        blockLoading: true
         onAdapterUpdated: writeAdapter()
 
         adapter: JsonAdapter {

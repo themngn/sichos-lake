@@ -42,21 +42,51 @@ PanelWindow {
         actionsSupported: true
         onNotification: notification => {
             notification.tracked = true
-            // Not notification.image: for a sender like Telegram that's
-            // often an "image://qsimage/<id>/<gen>" reference into
-            // Quickshell's own in-process image cache, valid only while
-            // the live Notification object exists — persisted into
-            // history, it's already a broken image the moment this
-            // notification itself closes, let alone after a restart.
-            NotificationHistory.add({
-                notifId: notification.id,
-                time: Date.now(),
-                appName: notification.appName,
-                appIcon: notification.appIcon,
-                summary: notification.summary,
-                body: notification.body,
-                urgency: notification.urgency
-            })
+
+            // lastGeneration notifications are the same still-open
+            // notification being re-announced after a hot-reload
+            // (NotificationServer.keepOnReload, default true, re-emits
+            // everything still tracked so a freshly rebuilt QML tree can
+            // resync) — not a new arrival. Re-running add() for it would
+            // stamp today's reload time over its real arrival time in the
+            // Notification Center every time a file gets saved.
+            //
+            // transient is the sender explicitly saying this is a
+            // throwaway status blip, not worth a persistent record --
+            // GNOME and KDE both honor it the same way (popup only, never
+            // logged). Still gets a toast below like anything else; only
+            // the history entry is skipped.
+            if (!notification.lastGeneration && !notification.transient) {
+                // Not notification.image: for a sender like Telegram that's
+                // often an "image://qsimage/<id>/<gen>" reference into
+                // Quickshell's own in-process image cache, valid only while
+                // the live Notification object exists — persisted into
+                // history, it's already a broken image the moment this
+                // notification itself closes, let alone after a restart.
+                NotificationHistory.add({
+                    notifId: notification.id,
+                    time: Date.now(),
+                    appName: notification.appName,
+                    appIcon: notification.appIcon,
+                    summary: notification.summary,
+                    body: notification.body,
+                    urgency: notification.urgency
+                })
+            }
+
+            // Gives the sender a real window to withdraw this notification
+            // (D-Bus CloseNotification — e.g. Telegram closing a message
+            // notification once it's read in the app) even after its toast
+            // has visually disappeared. Skipped for Critical, which never
+            // auto-hides in the first place (see defaultTimeout below) and
+            // so has no need of a backstop. Rooted on `root`, not the toast
+            // delegate below: that delegate is destroyed the moment the
+            // toast hides (or on any hot-reload), which would silently
+            // cancel the grace period along with it.
+            const graceTimer = notification.urgency !== NotificationUrgency.Critical
+                ? graceTimerComponent.createObject(root, { notification })
+                : null
+
             // Connected here rather than from the toast popup delegate
             // below: that delegate only exists while the toast is on
             // screen, so a Connections{} living inside it depends on
@@ -65,16 +95,42 @@ PanelWindow {
             // on the notification object itself, in the same tick it
             // arrives, ties the listener to its actual D-Bus lifetime
             // instead of to how long its popup happens to be rendered.
-            // Note this only ever catches a real sender-initiated
-            // withdrawal while the notification is still open — once our
-            // own expireTimer below calls notification.expire(), the id
-            // is dead server-side (confirmed live) and a subsequent
-            // CloseNotification for it is a no-op in any compliant
-            // daemon, not just this one; that case is unfixable here.
+            // This is reconnected on every re-emission (including
+            // lastGeneration ones) since a hot-reload tears down this
+            // whole PanelWindow, and with it whatever was connected here
+            // before — without reconnecting, a real withdrawal arriving
+            // after even one save-triggered reload would go unnoticed.
             notification.closed.connect(reason => {
                 if (reason === NotificationCloseReason.CloseRequested)
                     NotificationHistory.removeByNotifId(notification.id)
+                if (graceTimer) graceTimer.destroy()
             })
+        }
+    }
+
+    // See the onNotification comment above for why this exists instead of
+    // just calling notification.expire() from the toast's own hide timer.
+    Component {
+        id: graceTimerComponent
+        Timer {
+            id: graceTimer
+            required property var notification
+            // 10 minutes: long enough to plausibly cover "glance at the
+            // toast, then open the chat app a bit later and read it",
+            // short enough not to accumulate live Notification objects
+            // (and their images/actions) indefinitely for the far more
+            // common case of a sender that never explicitly withdraws
+            // (VPN connect/disconnect, battery, volume, etc.). A real
+            // CloseNotification arriving after this fires is still a
+            // no-op in any compliant daemon, not just this one -- that
+            // residual case is unfixable here, this just shrinks it from
+            // "always, past ~5s" to "only past 10 minutes".
+            interval: 10 * 60 * 1000
+            running: true
+            onTriggered: {
+                if (notification.tracked) notification.expire()
+                destroy()
+            }
         }
     }
 
@@ -115,33 +171,48 @@ PanelWindow {
                 // filtered the same way for any other sender doing this.
                 readonly property var visibleActions: notification.actions.filter(
                     a => a.identifier !== "default" && a.text.trim().length > 0)
+                // Purely a local display flag now -- see hideTimer below.
+                // Defaults to already-hidden for a notification carried
+                // over from before a hot-reload (lastGeneration): it's had
+                // its on-screen time already (however much of it), and
+                // without this every still-open notification would pop
+                // back on screen the moment any quickshell file gets saved,
+                // since the Repeater rebuilds this delegate from scratch
+                // (confirmed live -- with the 3-5s window this used to be
+                // too brief to notice, but the grace window in
+                // onNotification above keeps notifications open for up to
+                // 10 minutes, long enough that hitting a reload while one
+                // is still pending is routine, not a corner case).
+                property bool hidden: notification.lastGeneration
 
                 width: column.width
                 height: content.height + 20
+                visible: !toast.hidden
                 color: Theme.background
                 border.color: critical ? Theme.critical : Theme.accent
                 border.width: 2
 
-                // No onClosed -> tracked = false handler here: the server
-                // already drops a closed notification (expired, dismissed,
-                // CloseNotification over the bus, replaced by a same-id one)
-                // out of trackedNotifications on its own. Setting tracked
-                // false from inside that same closed signal reenters the
-                // server while it's still tearing the notification down and
-                // reliably crashed the scene graph with a JS "Maximum call
-                // stack size exceeded" the moment any toast closed.
+                // Only ever hides the toast popup -- does not touch the
+                // underlying notification (no expire()/dismiss()/tracked
+                // write). That's now handled separately by the grace timer
+                // in onNotification above, specifically so a real
+                // CloseNotification from the sender can still arrive after
+                // this toast disappears and be honored. Setting `tracked`
+                // false here (the old approach) is equivalent to
+                // dismiss() (confirmed against quickshell's source) and
+                // would retire the id immediately, defeating that.
                 Timer {
-                    id: expireTimer
+                    id: hideTimer
                     running: toast.timeout > 0
                     interval: toast.timeout
-                    onTriggered: notification.expire()
+                    onTriggered: toast.hidden = true
                 }
 
                 MouseArea {
                     anchors.fill: parent
                     hoverEnabled: true
-                    onEntered: expireTimer.stop()
-                    onExited: { if (toast.timeout > 0) expireTimer.restart() }
+                    onEntered: hideTimer.stop()
+                    onExited: { if (toast.timeout > 0) hideTimer.restart() }
                     onClicked: {
                         const defaultAction = notification.actions.find(a => a.identifier === "default")
                         if (defaultAction) defaultAction.invoke()
