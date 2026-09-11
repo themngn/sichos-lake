@@ -258,6 +258,51 @@ else
     echo "    bluez not installed, skipped"
 fi
 
+echo "==> amdgpu: disable Panel Replay + PSR (eDP resume glitch workarounds)"
+
+# On AMD Ryzen "HawkPoint"/Ryzen AI laptops with an eDP panel (this
+# machine's an ASUS Zenbook 14 UM3406, kernel 7.1.13), amdgpu's resume path
+# always has to fully disable+modeset the internal panel after an s2idle
+# suspend — confirmed via hyprland.log: "Connector eDP-1 enabledState
+# changed true -> false", then "Modesetting eDP-1 ...", then "false ->
+# true", on every single resume, regardless of this flag. Started at
+# amdgpu.dcdebugmask=0x400 (disable Panel Replay only), the documented
+# workaround for eDP resume glitches on this hardware class per the ArchWiki
+# ASUS Zenbook UM5606 page (a near-identical 2024 Ryzen AI Zenbook) — but
+# live testing on 2026-09-10 was inconsistent with just that bit (one resume
+# blinked, another didn't), and separately a "works for a second, then
+# fades to black, then recovers" symptom kept showing up. That second
+# symptom's *actual* root cause turned out to be unrelated to amdgpu
+# entirely (dpms-restore-after-resume.sh was toggling an already-on display
+# back off — see that script's own header), but PSR (Panel Self-Refresh,
+# left enabled by 0x400 alone) is also independently documented on this
+# exact ArchWiki page as causing its own resume/startup hangs, with
+# amdgpu.dcdebugmask=0x600 as the fix — moved to 0x600 on that basis. Same
+# caveat as before: applied because it's documented for this hardware
+# class, not because every symptom it might touch has been proven to trace
+# back to it here. Cheap and reversible (`grubby --update-kernel=ALL
+# --remove-args=...`) either way. Gated on amdgpu actually being the loaded
+# GPU driver and an eDP panel actually being present (i.e. this specific
+# class of laptop) — a desktop or an Intel/Nvidia machine has no reason to
+# pay Panel Replay/PSR's battery-saving cost for a workaround that may not
+# even be doing anything for them.
+if lsmod | grep -q '^amdgpu' && ls /sys/class/drm/*-eDP-1 >/dev/null 2>&1; then
+    CMDLINE_FILE=/etc/kernel/cmdline
+    if [ -f "$CMDLINE_FILE" ] && grep -q "amdgpu\.dcdebugmask=0x600" "$CMDLINE_FILE"; then
+        echo "    already set in $CMDLINE_FILE"
+    elif [ -f "$CMDLINE_FILE" ] && grep -q "amdgpu\.dcdebugmask" "$CMDLINE_FILE"; then
+        sudo grubby --update-kernel=ALL --remove-args="amdgpu.dcdebugmask=0x400" --args="amdgpu.dcdebugmask=0x600"
+        AMDGPU_DCDEBUGMASK_APPLIED=1
+        echo "    updated amdgpu.dcdebugmask to 0x600 on the kernel command line (needs a reboot)"
+    else
+        sudo grubby --update-kernel=ALL --args="amdgpu.dcdebugmask=0x600"
+        AMDGPU_DCDEBUGMASK_APPLIED=1
+        echo "    added amdgpu.dcdebugmask=0x600 to the kernel command line (needs a reboot)"
+    fi
+else
+    echo "    not an AMD+eDP laptop, skipped"
+fi
+
 echo "==> RPM Fusion (free + nonfree)"
 
 if ! rpm -q rpmfusion-free-release >/dev/null 2>&1; then
@@ -1372,7 +1417,9 @@ cat <<EOF
 Nothing here restarted sddm, quickshell, or rebooted for you:
   - reboot (or \`sudo systemctl restart sddm\`) to pick up the SDDM/
     Plymouth changes$([ "$VM" -eq 1 ] && echo "/env.lua render overrides (env vars are only read at Hyprland startup, so a reboot is the reliable way)")
-  - Hyprland and quickshell config changes are already live$([ "$ALT" -eq 1 ] && echo " (except the --alt modifier swap, which needs the reboot above too)")
+  - Hyprland and quickshell config changes are already live$([ "$ALT" -eq 1 ] && echo " (except the --alt modifier swap, which needs the reboot above too)")$([ "${AMDGPU_DCDEBUGMASK_APPLIED:-0}" = "1" ] && echo "
+  - amdgpu Panel Replay disabled (eDP resume blink workaround): needs the
+    reboot above too — it's a kernel command-line change")
   - restart kitty for its config change to take effect
   - the hostname change (if applied) is live system-wide already; open a new
     terminal to see it reflected in your shell prompt and fastfetch$([ "${SHELL_CHANGED:-0}" = "1" ] && echo "
