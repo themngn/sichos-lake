@@ -50,7 +50,7 @@ PanelWindow {
     }
     color: launcher.activeWorkspaceHasWindows ? Qt.rgba(0, 0, 0, 0.35) : "transparent"
 
-    property string mode: "root" // "root" | "apps" | "toggles" | "power" | "autostart" | "reload" | "settings" | "settings-bar" | "settings-plugins" | "settings-timeregion" | "picklist:<field>" | "folder:<id>" | "folderpick" | "newfoldername" | "pluginsource" | "appmenu" | "pluginmenu"
+    property string mode: "root" // "root" | "apps" | "toggles" | "power" | "autostart" | "reload" | "settings" | "settings-bar" | "settings-plugins" | "settings-timeregion" | "picklist:<field>" | "folder:<id>" | "folderpick" | "newfoldername" | "pluginsource" | "pluginaddtype" | "pluginfolderpick" | "appmenu" | "pluginmenu"
     property string query: ""
     property int selectedIndex: 0
     // Which folder to return to when backing out of the app submenu.
@@ -127,6 +127,89 @@ PanelWindow {
         launcher.mode = "settings-plugins"
         launcher.query = ""
         launcher.selectedIndex = 0
+    }
+    // "+ Add Plugin" opens this chooser first rather than going straight to
+    // the git-URL text prompt — a raw path typed by hand is exactly what
+    // the folder picker below exists to avoid.
+    readonly property var pluginAddTypeItems: [
+        { type: "action", id: "addplugin-git", name: "Git URL" },
+        { type: "action", id: "addplugin-folder", name: "Local Folder" }
+    ]
+
+    // Primitive (yazi-lite) folder picker for the "Local Folder" choice
+    // above: list-dir.py enumerates one directory at a time rather than
+    // walking the whole tree, so browsing stays cheap no matter how big
+    // $HOME is. pluginDirEntries/pluginDirHasMainQml/pluginDirError are
+    // populated by pluginDirProc below each time pluginBrowsePath changes.
+    property string pluginBrowsePath: ""
+    property var pluginDirEntries: []
+    property bool pluginDirHasMainQml: false
+    property string pluginDirError: ""
+    // Guards an empty pluginBrowsePath (only possible before the picker's
+    // ever been opened) from reaching list-dir.py as a blank argv, which
+    // Python would resolve to quickshell's own CWD rather than failing
+    // loudly. running = false before true (not just true, a no-op/restart
+    // depending on build) forces a fresh run even mid-flight — fast
+    // Enter-Enter-Enter navigation would otherwise risk pluginDirEntries
+    // still reflecting a directory or two back by the time it lands.
+    function refreshPluginDir() {
+        if (!launcher.pluginBrowsePath) return
+        pluginDirProc.running = false
+        pluginDirProc.command = ["python3", Quickshell.env("HOME") + "/.config/quickshell/scripts/list-dir.py", launcher.pluginBrowsePath]
+        pluginDirProc.running = true
+    }
+    // Shared by the ".." row (activate()) and goBack() (Left-arrow/Escape/
+    // Backspace-on-empty all route through it) — Left-arrow in particular
+    // fires constantly while browsing, since the query box sits empty most
+    // of the time, so it has to mean the same "go up" as clicking ".."
+    // rather than bailing out of the picker and losing pluginBrowsePath.
+    function pluginDirUp() {
+        const base = launcher.pluginBrowsePath.replace(/\/+$/, "") || "/"
+        const idx = base.lastIndexOf("/")
+        launcher.pluginBrowsePath = idx > 0 ? base.slice(0, idx) : "/"
+        launcher.query = ""
+        launcher.selectedIndex = 0
+        launcher.refreshPluginDir()
+    }
+    function pluginDirDown(name) {
+        const base = launcher.pluginBrowsePath.replace(/\/+$/, "") || "/"
+        launcher.pluginBrowsePath = (base === "/" ? "" : base) + "/" + name
+        launcher.query = ""
+        launcher.selectedIndex = 0
+        launcher.refreshPluginDir()
+    }
+    Process {
+        id: pluginDirProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const result = JSON.parse(text)
+                    launcher.pluginDirEntries = result.entries || []
+                    launcher.pluginDirHasMainQml = !!result.selfHasMainQml
+                    launcher.pluginDirError = result.error || ""
+                } catch (e) {
+                    launcher.pluginDirEntries = []
+                    launcher.pluginDirHasMainQml = false
+                    launcher.pluginDirError = "failed to list directory"
+                }
+            }
+        }
+    }
+    // "Use This Folder" always leads (reachable the instant you land
+    // somewhere worth installing, e.g. $HOME itself, without scrolling
+    // past every subdirectory first) and is labelled up front when the
+    // current directory has no main.qml — custom-widget.py would reject it
+    // outright, so surface that before the user tries rather than after.
+    readonly property var pluginFolderItems: {
+        const items = [{
+            type: "action", id: "selectfolder",
+            name: launcher.pluginDirHasMainQml ? "✓ Use This Folder" : "✓ Use This Folder (no main.qml)"
+        }]
+        if (launcher.pluginBrowsePath !== "/")
+            items.push({ type: "plugin-dir", id: "..", name: ".." })
+        for (const e of launcher.pluginDirEntries)
+            items.push({ type: "plugin-dir", id: e.name, name: e.name + "/" })
+        return items
     }
     // The "Enable"/"Disable" + "Remove" submenu for whichever plugin is in
     // contextPlugin, opened via the right-arrow (enter()) — the plugin
@@ -409,6 +492,8 @@ PanelWindow {
         if (launcher.mode === "settings-bar") return launcher.barWidgetItems
         if (launcher.mode === "settings-plugins") return launcher.pluginItems
         if (launcher.mode === "pluginsource") return []
+        if (launcher.mode === "pluginaddtype") return launcher.pluginAddTypeItems
+        if (launcher.mode === "pluginfolderpick") return launcher.pluginFolderItems
         if (launcher.mode === "settings-timeregion") return launcher.timeRegionItems
         if (launcher.mode.indexOf("picklist:") === 0) return launcher.pickListItems(launcher.mode.slice(9))
         if (launcher.mode.indexOf("folder:") === 0) return launcher.folderApps(launcher.mode.slice(7))
@@ -508,7 +593,13 @@ PanelWindow {
                 .filter(e => e.item.name.toLowerCase().includes(q))
                 .sort((a, b) => launcher.matchRank(a.item.name, q) - launcher.matchRank(b.item.name, q) || a.idx - b.idx)
                 .map(e => e.item)
-        if (launcher.mode === "appmenu" || launcher.mode === "pluginmenu" || launcher.mode === "folderpick" || launcher.mode === "newfoldername" || launcher.mode === "pluginsource") return launcher.currentItems
+        // Same local-filter idea as picklist above, but "Use This Folder"
+        // and ".." stay pinned regardless of the typed substring — they're
+        // navigation, not something to search away by typing a directory
+        // name.
+        if (launcher.mode === "pluginfolderpick")
+            return launcher.currentItems.filter(item => item.id === "selectfolder" || item.id === ".." || item.name.toLowerCase().includes(q))
+        if (launcher.mode === "appmenu" || launcher.mode === "pluginmenu" || launcher.mode === "pluginaddtype" || launcher.mode === "folderpick" || launcher.mode === "newfoldername" || launcher.mode === "pluginsource") return launcher.currentItems
         return launcher.allItems
             .map((item, idx) => ({ item: item, idx: idx, rank: launcher.itemMatchRank(item, q) }))
             .filter(e => e.rank !== Infinity)
@@ -537,7 +628,9 @@ PanelWindow {
     readonly property string title: launcher.mode === "appmenu" ? launcher.breadcrumb(launcher.returnMode) + " > " + launcher.contextApp.name
         : launcher.mode === "folderpick" ? launcher.breadcrumb(launcher.returnMode) + " > " + launcher.contextApp.name + " > Add to Folder"
         : launcher.mode === "newfoldername" ? launcher.breadcrumb(launcher.returnMode) + " > " + launcher.contextApp.name + " > Add to Folder > New Folder"
-        : launcher.mode === "pluginsource" ? launcher.breadcrumb("settings-plugins") + " > Add Plugin"
+        : launcher.mode === "pluginaddtype" ? launcher.breadcrumb("settings-plugins") + " > Add Plugin"
+        : launcher.mode === "pluginsource" ? launcher.breadcrumb("settings-plugins") + " > Add Plugin > Git URL"
+        : launcher.mode === "pluginfolderpick" ? launcher.breadcrumb("settings-plugins") + " > Add Plugin > " + launcher.pluginBrowsePath + (launcher.pluginDirError ? " (⚠ " + launcher.pluginDirError + ")" : "")
         : launcher.mode === "pluginmenu" ? launcher.breadcrumb("settings-plugins") + " > " + launcher.contextPlugin.name
         : launcher.mode.indexOf("picklist:") === 0 ? launcher.breadcrumb(launcher.mode)
         : launcher.query.length > 0 ? "Search"
@@ -588,7 +681,16 @@ PanelWindow {
             launcher.mode = "folderpick"
             launcher.query = ""
             launcher.selectedIndex = 0
-        } else if (launcher.mode === "pluginsource") {
+        } else if (launcher.mode === "pluginfolderpick" && launcher.pluginBrowsePath !== "/") {
+            // Left-arrow/Backspace-on-empty land here constantly while
+            // browsing (see pluginDirUp's own comment) — only leave the
+            // picker once there's nowhere further up to go.
+            launcher.pluginDirUp()
+        } else if (launcher.mode === "pluginsource" || launcher.mode === "pluginfolderpick") {
+            launcher.mode = "pluginaddtype"
+            launcher.query = ""
+            launcher.selectedIndex = 0
+        } else if (launcher.mode === "pluginaddtype") {
             launcher.mode = "settings-plugins"
             launcher.query = ""
             launcher.selectedIndex = 0
@@ -663,6 +765,16 @@ PanelWindow {
         }
         if (item.type === "plugin") {
             CustomWidgets.toggle(item.id)
+            return
+        }
+        // Folder picker row (Settings > Custom Plugins > Add Plugin > Local
+        // Folder): click/Enter navigates straight in, same as a "folder"
+        // row above — no separate submenu needed since there's nothing
+        // else to do with a directory here besides enter it or (via
+        // "selectfolder", a plain action row, not this type) install it.
+        if (item.type === "plugin-dir") {
+            if (item.id === "..") launcher.pluginDirUp()
+            else launcher.pluginDirDown(item.id)
             return
         }
         if (item.type === "folder-toggle") {
@@ -749,7 +861,23 @@ PanelWindow {
                 launcher.selectedIndex = 0
             } else if (item.id === "addplugin") {
                 if (CustomWidgets.busy) return
+                launcher.mode = "pluginaddtype"
+                launcher.query = ""
+                launcher.selectedIndex = 0
+            } else if (item.id === "addplugin-git") {
                 launcher.mode = "pluginsource"
+                launcher.query = ""
+                launcher.selectedIndex = 0
+            } else if (item.id === "addplugin-folder") {
+                launcher.pluginBrowsePath = Quickshell.env("HOME")
+                launcher.mode = "pluginfolderpick"
+                launcher.query = ""
+                launcher.selectedIndex = 0
+                launcher.refreshPluginDir()
+            } else if (item.id === "selectfolder") {
+                if (CustomWidgets.busy) return
+                CustomWidgets.install(launcher.pluginBrowsePath)
+                launcher.mode = "settings-plugins"
                 launcher.query = ""
                 launcher.selectedIndex = 0
             } else if (item.id === "plugin-toggle") {
