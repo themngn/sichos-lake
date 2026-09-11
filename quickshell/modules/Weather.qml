@@ -100,8 +100,18 @@ Pill {
         return ""
     }
 
+    // Measured live (grim + pixel-row analysis) against the bar's other
+    // center-section glyphs (clock/toggles, which sit correctly centered):
+    // this pill's whole content -- icon and temp label alike, they move
+    // together -- renders ~3px above the bar's true vertical center
+    // regardless of the icon glyph's own box height (confirmed by varying
+    // it), so this is Pill's fixed-height "layout" Row not lining up with
+    // this specific pill's content for a reason that didn't trace to
+    // anything fixable from here -- compensated directly rather than
+    // chasing it further.
     Text {
         anchors.verticalCenter: parent.verticalCenter
+        anchors.verticalCenterOffset: 3
         visible: root.haveData
         text: root.haveData ? root.iconFor(root.code, root.isDay) : ""
         font.family: Theme.fontFamily
@@ -113,6 +123,7 @@ Pill {
     }
     Text {
         anchors.verticalCenter: parent.verticalCenter
+        anchors.verticalCenterOffset: 3
         text: root.haveData ? Math.round(root.tempC) + "°C" : "—"
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize
