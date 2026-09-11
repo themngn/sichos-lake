@@ -1,20 +1,31 @@
-# SichOS override of Fedora's packaged /usr/share/applications/steam.desktop —
-# adds LD_PRELOAD=libgamemodeauto.so.0 to Exec= so every game Steam launches
-# (native or Proton) auto-registers with the GameMode daemon on its own,
-# without needing "gamemoderun %command%" set per-game in Launch Options.
-# libgamemodeauto is a preload shim (ships with the gamemode package) whose
-# only job is calling gamemode_request_start()/_end() around the process
-# it's loaded into — safe to load into Steam itself too, since Steam isn't
-# a CPU-bound "game" process gamemode would meaningfully act on either way.
-# Applies whether Steam is launched from the app grid or via
-# autostart-launch.py (-silent), since both resolve this same desktop entry.
-# Only the main Exec= differs from upstream; translated Name/Comment strings
-# are dropped as noise, and the Desktop Actions are kept (English-only) so
-# right-click launcher entries (Big Picture, Friends, etc.) keep working.
+# SichOS override of Fedora's packaged /usr/share/applications/steam.desktop.
+# Used to also set LD_PRELOAD=libgamemodeauto.so.0 on Exec= so every game
+# Steam launches would auto-register with the GameMode daemon without a
+# per-game "gamemoderun %command%" — reverted 2026-09-11. That preload
+# lands on the *whole* Steam process tree, not just games: steamwebhelper
+# (Steam's own CEF-based UI) is a child of the main steam process too, and
+# it runs sandboxed inside Valve's pressure-vessel/Steam Linux Runtime
+# container. Confirmed live: with the preload in place, every webhelper
+# subprocess (zygotes, renderers, the network service) logged
+# "gamemodeauto: dlopen failed - libgamemode.so: cannot open shared object
+# file" on every spawn, and the client's local WebUITransport loopback
+# handshake never completed — "WebUITransport: Connection rejected" in
+# transport_client.txt/transport_steamui.txt, "Transport SendMsg: socket
+# not ready" in cef_log.txt — reproducing Steam's "Unexpected Transport
+# Error (0x3008)" dialog on every single launch. Confirmed the preload was
+# the cause (not the Sep 11 client self-update that coincided with it, not
+# htmlcache state — both were ruled out first): `env -u LD_PRELOAD
+# /usr/bin/steam` launched clean. GameMode is opt-in per game again via
+# "gamemoderun %command%" in Launch Options (see packages.txt's gamemode
+# entry) until a way to reach only the actual game process — not
+# steamwebhelper — is found. Only the main Exec= differs from upstream;
+# translated Name/Comment strings are dropped as noise, and the Desktop
+# Actions are kept (English-only) so right-click launcher entries (Big
+# Picture, Friends, etc.) keep working.
 [Desktop Entry]
 Name=Steam
 Comment=Application for managing and playing games on Steam
-Exec=env LD_PRELOAD=/usr/lib64/libgamemodeauto.so.0 /usr/bin/steam %U
+Exec=/usr/bin/steam %U
 Icon=steam
 Terminal=false
 Type=Application

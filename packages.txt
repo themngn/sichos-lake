@@ -78,10 +78,10 @@ xdg-desktop-portal-hyprland
 
 ## Utilities
 hyprpicker                # color picker, SUPER+C in keybindings.lua (autocopies hex to clipboard)
-gamemode                  # Feral GameMode daemon — on by default for every Steam game via
-                          # LD_PRELOAD=libgamemodeauto.so.0 in desktop-overrides/steam.desktop
-                          # (see install.sh's "==> Steam" step), no per-game "gamemoderun
-                          # %command%" needed; Lutris has its own separate GameMode toggle
+gamemode                  # Feral GameMode daemon — opt in per game via "gamemoderun %command%"
+                          # in Launch Options (see desktop-overrides/steam.desktop's header
+                          # comment for why a global LD_PRELOAD-on-Steam-itself approach was
+                          # tried and reverted); Lutris has its own separate GameMode toggle
 mangohud                  # Vulkan/OpenGL FPS/perf overlay — opt in per-game the same way
                           # (MANGOHUD=1 %command%, or Lutris's own MangoHud toggle)
 cliphist                  # clipboard history, SUPER+SHIFT+V in keybindings.lua — listener started
