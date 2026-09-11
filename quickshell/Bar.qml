@@ -226,14 +226,16 @@ PanelWindow {
         // User-local, not part of this repo — see CustomWidget.qml's own
         // comment and CustomWidgets.qml. One entry per
         // ~/.config/quickshell/custom/<id>/main.qml found on this machine,
-        // installed/removed from the launcher's Settings > Custom Plugins
-        // folder (or by hand, same as the original alert-widget precedent).
+        // installed/removed (and reordered/toggled) from the launcher's
+        // Settings > Custom Plugins folder (or by hand, same as the
+        // original alert-widget precedent) — orderedIds() rather than
+        // `widgets` directly so a drag-reorder there is reflected here too.
         Repeater {
-            model: CustomWidgets.widgets
+            model: CustomWidgets.orderedIds()
 
             delegate: CustomWidget {
-                required property var modelData
-                name: modelData.id
+                required property string modelData
+                name: modelData
             }
         }
     }

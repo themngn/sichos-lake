@@ -50,13 +50,15 @@ PanelWindow {
     }
     color: launcher.activeWorkspaceHasWindows ? Qt.rgba(0, 0, 0, 0.35) : "transparent"
 
-    property string mode: "root" // "root" | "apps" | "toggles" | "power" | "autostart" | "reload" | "settings" | "settings-bar" | "settings-plugins" | "settings-timeregion" | "picklist:<field>" | "folder:<id>" | "folderpick" | "newfoldername" | "pluginsource" | "appmenu"
+    property string mode: "root" // "root" | "apps" | "toggles" | "power" | "autostart" | "reload" | "settings" | "settings-bar" | "settings-plugins" | "settings-timeregion" | "picklist:<field>" | "folder:<id>" | "folderpick" | "newfoldername" | "pluginsource" | "appmenu" | "pluginmenu"
     property string query: ""
     property int selectedIndex: 0
     // Which folder to return to when backing out of the app submenu.
     property string returnMode: "apps"
     // The app the submenu (Launch/Hide/Unhide) is currently open for.
     property var contextApp: null
+    // The plugin the submenu (Enable/Disable/Remove) is currently open for.
+    property var contextPlugin: null
 
     readonly property var toggleItems: {
         const items = [
@@ -98,8 +100,20 @@ PanelWindow {
     // instant local edit. See CustomWidgets.qml’s own comment for why no
     // quickshell restart is needed after activating either row below —
     // confirmed live, unlike CustomWidget.qml’s per-widget hot-reload note.
+    function _pluginLabel(id) {
+        for (const w of CustomWidgets.widgets) {
+            if (w.id === id) return w.label
+        }
+        return id
+    }
+    // Reflects the user's current order (not CustomWidgets.widgets' own,
+    // install-time order) — drag-reordered in the ListView delegate below,
+    // same as barWidgetItems.
     readonly property var pluginItems: {
-        const items = CustomWidgets.widgets.map(w => ({ type: "plugin", id: w.id, name: w.label, icon: "" }))
+        const items = CustomWidgets.orderedIds().map(id => ({
+            type: "plugin", id: id, name: launcher._pluginLabel(id), icon: "",
+            active: CustomWidgets.isEnabled(id)
+        }))
         items.push({
             type: "action", id: "addplugin",
             name: CustomWidgets.busy ? "Installing…" : (CustomWidgets.lastError ? "⚠ " + CustomWidgets.lastError : "+ Add Plugin")
@@ -113,6 +127,19 @@ PanelWindow {
         launcher.mode = "settings-plugins"
         launcher.query = ""
         launcher.selectedIndex = 0
+    }
+    // The "Enable"/"Disable" + "Remove" submenu for whichever plugin is in
+    // contextPlugin, opened via the right-arrow (enter()) — the plugin
+    // row's own click/Enter still toggles on/off directly, same as a
+    // bar-widget row, so this only needs to offer the one action (removal)
+    // that doesn't fit there.
+    readonly property var pluginMenuItems: {
+        if (!launcher.contextPlugin) return []
+        const enabled = CustomWidgets.isEnabled(launcher.contextPlugin.id)
+        return [
+            { type: "action", id: "plugin-toggle", name: enabled ? "Disable" : "Enable" },
+            { type: "action", id: "plugin-remove", name: "Remove", danger: true }
+        ]
     }
 
     readonly property var powerItems: [
@@ -388,6 +415,7 @@ PanelWindow {
         if (launcher.mode === "folderpick") return launcher.folderPickItems
         if (launcher.mode === "newfoldername") return []
         if (launcher.mode === "appmenu") return launcher.appMenuItems
+        if (launcher.mode === "pluginmenu") return launcher.pluginMenuItems
         return launcher.rootItems
     }
 
@@ -480,7 +508,7 @@ PanelWindow {
                 .filter(e => e.item.name.toLowerCase().includes(q))
                 .sort((a, b) => launcher.matchRank(a.item.name, q) - launcher.matchRank(b.item.name, q) || a.idx - b.idx)
                 .map(e => e.item)
-        if (launcher.mode === "appmenu" || launcher.mode === "folderpick" || launcher.mode === "newfoldername" || launcher.mode === "pluginsource") return launcher.currentItems
+        if (launcher.mode === "appmenu" || launcher.mode === "pluginmenu" || launcher.mode === "folderpick" || launcher.mode === "newfoldername" || launcher.mode === "pluginsource") return launcher.currentItems
         return launcher.allItems
             .map((item, idx) => ({ item: item, idx: idx, rank: launcher.itemMatchRank(item, q) }))
             .filter(e => e.rank !== Infinity)
@@ -510,6 +538,7 @@ PanelWindow {
         : launcher.mode === "folderpick" ? launcher.breadcrumb(launcher.returnMode) + " > " + launcher.contextApp.name + " > Add to Folder"
         : launcher.mode === "newfoldername" ? launcher.breadcrumb(launcher.returnMode) + " > " + launcher.contextApp.name + " > Add to Folder > New Folder"
         : launcher.mode === "pluginsource" ? launcher.breadcrumb("settings-plugins") + " > Add Plugin"
+        : launcher.mode === "pluginmenu" ? launcher.breadcrumb("settings-plugins") + " > " + launcher.contextPlugin.name
         : launcher.mode.indexOf("picklist:") === 0 ? launcher.breadcrumb(launcher.mode)
         : launcher.query.length > 0 ? "Search"
         : launcher.breadcrumb(launcher.mode)
@@ -571,6 +600,10 @@ PanelWindow {
             launcher.mode = launcher.returnMode
             launcher.query = ""
             launcher.selectedIndex = 0
+        } else if (launcher.mode === "pluginmenu") {
+            launcher.mode = "settings-plugins"
+            launcher.query = ""
+            launcher.selectedIndex = 0
         } else if (launcher.mode.indexOf("picklist:") === 0) {
             launcher.mode = "settings-timeregion"
             launcher.query = ""
@@ -629,7 +662,7 @@ PanelWindow {
             return
         }
         if (item.type === "plugin") {
-            CustomWidgets.remove(item.id)
+            CustomWidgets.toggle(item.id)
             return
         }
         if (item.type === "folder-toggle") {
@@ -719,6 +752,16 @@ PanelWindow {
                 launcher.mode = "pluginsource"
                 launcher.query = ""
                 launcher.selectedIndex = 0
+            } else if (item.id === "plugin-toggle") {
+                CustomWidgets.toggle(launcher.contextPlugin.id)
+                launcher.mode = "settings-plugins"
+                launcher.query = ""
+                launcher.selectedIndex = 0
+            } else if (item.id === "plugin-remove") {
+                CustomWidgets.remove(launcher.contextPlugin.id)
+                launcher.mode = "settings-plugins"
+                launcher.query = ""
+                launcher.selectedIndex = 0
             } else if (item.id === "edit-timezone") {
                 launcher.mode = "picklist:timezone"
                 launcher.query = ""
@@ -745,13 +788,21 @@ PanelWindow {
 
     // Right arrow: "enter" the item. Folders/toggles/power actions behave
     // the same as activate(); an app opens its Launch/Hide submenu instead
-    // of launching straight away.
+    // of launching straight away, and a plugin opens its Enable/Disable +
+    // Remove submenu instead of toggling straight away.
     function enter(item) {
         if (!item) return
         if (item.type === "app") {
             launcher.contextApp = item
             launcher.returnMode = launcher.mode
             launcher.mode = "appmenu"
+            launcher.query = ""
+            launcher.selectedIndex = 0
+            return
+        }
+        if (item.type === "plugin") {
+            launcher.contextPlugin = item
+            launcher.mode = "pluginmenu"
             launcher.query = ""
             launcher.selectedIndex = 0
             return
@@ -944,12 +995,15 @@ PanelWindow {
                     required property int index
                     // "toggle" (idle/wifi/bluetooth) and "autostart-app" both
                     // render as an On/Off pill instead of the ">" submenu arrow.
-                    readonly property bool isToggleLike: row.modelData.type === "toggle" || row.modelData.type === "autostart-app" || row.modelData.type === "bar-widget" || row.modelData.type === "folder-toggle" || row.modelData.type === "keepinroot-toggle"
-                    // A search query can mix bar-widget rows in among
+                    // "plugin" gets both: the pill reflects/toggles enabled
+                    // state directly (click/Enter), and ">" (enter()) still
+                    // opens its Enable/Disable + Remove submenu.
+                    readonly property bool isToggleLike: row.modelData.type === "toggle" || row.modelData.type === "autostart-app" || row.modelData.type === "bar-widget" || row.modelData.type === "folder-toggle" || row.modelData.type === "keepinroot-toggle" || row.modelData.type === "plugin"
+                    // A search query can mix bar-widget/plugin rows in among
                     // apps/toggles/power results (search spans everything),
                     // which breaks the index math dragging relies on — only
                     // draggable when the list is the plain, unfiltered folder.
-                    readonly property bool isDraggable: row.modelData.type === "bar-widget" && launcher.query.length === 0
+                    readonly property bool isDraggable: (row.modelData.type === "bar-widget" || row.modelData.type === "plugin") && launcher.query.length === 0
                     // Search results get a dim second line (see pathFor)
                     // showing where the result actually lives — every row
                     // that can appear in a search comes from allItems
@@ -1021,7 +1075,7 @@ PanelWindow {
 
                             Text {
                                 text: row.modelData.name
-                                color: row.modelData.type === "power" && row.modelData.danger ? Theme.critical : Theme.text
+                                color: (row.modelData.type === "power" || row.modelData.type === "action") && row.modelData.danger ? Theme.critical : Theme.text
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.fontSize + 3
                             }
@@ -1036,9 +1090,15 @@ PanelWindow {
                     }
 
                     Text {
-                        visible: !row.isToggleLike && row.modelData.type !== "action" && row.modelData.type !== "plugin"
+                        id: arrowText
+                        // A plugin row is toggle-like (see isToggleLike) but
+                        // still needs this arrow, unlike every other
+                        // toggle-like type — it's the only one with a
+                        // further submenu (Enable/Disable + Remove) behind
+                        // right-arrow/Enter-to-enter.
+                        visible: (!row.isToggleLike || row.modelData.type === "plugin") && row.modelData.type !== "action"
                         anchors {
-                            right: parent.right
+                            right: row.modelData.type === "plugin" ? onOffPill.left : parent.right
                             rightMargin: 8
                             verticalCenter: parent.verticalCenter
                         }
@@ -1046,22 +1106,6 @@ PanelWindow {
                         color: row.index === launcher.selectedIndex ? Theme.accent : Theme.textMuted
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontSize + 3
-                    }
-
-                    // Enter/click on a plugin row removes it outright (no
-                    // on/off state to toggle, unlike bar-widget rows) — this
-                    // just labels that so it isn't mistaken for a ">" submenu.
-                    Text {
-                        visible: row.modelData.type === "plugin"
-                        anchors {
-                            right: parent.right
-                            rightMargin: 8
-                            verticalCenter: parent.verticalCenter
-                        }
-                        text: "Remove"
-                        color: row.index === launcher.selectedIndex ? Theme.critical : Theme.textMuted
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize - 2
                     }
 
                     Rectangle {
@@ -1109,7 +1153,11 @@ PanelWindow {
                     Text {
                         visible: row.isDraggable
                         anchors {
-                            right: onOffPill.left
+                            // A plugin row also shows the ">" arrow (see
+                            // arrowText above) between this handle and the
+                            // on/off pill — sit left of that instead of the
+                            // pill directly so the two don't overlap.
+                            right: row.modelData.type === "plugin" ? arrowText.left : onOffPill.left
                             rightMargin: 8
                             verticalCenter: parent.verticalCenter
                         }
@@ -1129,12 +1177,13 @@ PanelWindow {
                             drag.maximumY: (list.count - 1) * row.height
 
                             onReleased: {
+                                const mover = row.modelData.type === "plugin" ? CustomWidgets : BarSettings
                                 const targetIndex = Math.max(0, Math.min(list.count - 1, Math.round(row.y / row.height)))
                                 const delta = targetIndex - row.index
                                 if (delta > 0) {
-                                    for (let s = 0; s < delta; s++) BarSettings.moveDown(row.modelData.id)
+                                    for (let s = 0; s < delta; s++) mover.moveDown(row.modelData.id)
                                 } else if (delta < 0) {
-                                    for (let s = 0; s < -delta; s++) BarSettings.moveUp(row.modelData.id)
+                                    for (let s = 0; s < -delta; s++) mover.moveUp(row.modelData.id)
                                 } else {
                                     row.y = row.index * row.height
                                 }

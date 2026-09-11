@@ -9,7 +9,9 @@ import Quickshell
 // a widget nobody wants in sichos-lake proper (too personal, not ready to
 // publish, machine-specific) still survives `install.sh` re-runs and full
 // reinstalls untouched. Enabling one is just dropping/symlinking its
-// directory into place; removing it disables it — no separate config file.
+// directory into place; removing it uninstalls it outright — toggling it
+// off from the launcher (CustomWidgets.isEnabled/toggle) is the separate,
+// non-destructive way to silence one without losing its files.
 // Confirmed live: this Loader only resolves its source once — it doesn't
 // watch that file the way quickshell watches this repo's own tree, so
 // installing/removing a widget needs a full quickshell restart (`pkill
@@ -23,11 +25,13 @@ Loader {
     required property string name
 
     source: "file://" + Quickshell.env("HOME") + "/.config/quickshell/custom/" + name + "/main.qml"
-    active: true
+    // Toggling this off/on (rather than just hiding a loaded instance)
+    // actually tears the widget's QML down — no background timers/processes
+    // a merely-hidden Item would keep running.
+    active: CustomWidgets.isEnabled(root.name)
     // Hides cleanly (zero width/height, so it doesn't leave a gap in
     // whatever Row it's placed in) when the widget isn't installed on this
-    // machine at all — the common case for every machine except the one(s)
-    // it was actually written for.
+    // machine at all, or is installed but toggled off.
     visible: status === Loader.Ready
 
     onStatusChanged: {

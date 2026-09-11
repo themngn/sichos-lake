@@ -84,5 +84,68 @@ QtObject {
         installer.running = true
     }
 
+    // Enabled/disabled + display-order state, same pattern as BarSettings —
+    // a plugin left installed but toggled off just stops CustomWidget.qml's
+    // Loader from activating (see that file), no uninstall/reinstall needed
+    // to temporarily silence one; order is separate from `widgets` (which
+    // reflects list-custom-widgets.py's own, install-time ordering) so
+    // dragging one in the launcher survives a refresh()/quickshell restart.
+    function isEnabled(id) {
+        return settingsAdapter.disabled.indexOf(id) === -1
+    }
+    function enable(id) {
+        settingsAdapter.disabled = settingsAdapter.disabled.filter(n => n !== id)
+    }
+    function disable(id) {
+        if (root.isEnabled(id)) settingsAdapter.disabled = settingsAdapter.disabled.concat([id])
+    }
+    function toggle(id) {
+        if (root.isEnabled(id)) root.disable(id)
+        else root.enable(id)
+    }
+
+    // All installed widget ids in the user's chosen order — any id missing
+    // from the saved order (a widget installed since the user's last
+    // reorder) is appended at the end in `widgets`' own order; any saved id
+    // no longer installed (removed) is silently dropped.
+    function orderedIds() {
+        const allIds = root.widgets.map(w => w.id)
+        const known = settingsAdapter.order.filter(id => allIds.indexOf(id) !== -1)
+        const uniqueKnown = known.filter((id, index) => known.indexOf(id) === index)
+        const missing = allIds.filter(id => uniqueKnown.indexOf(id) === -1)
+        return uniqueKnown.concat(missing)
+    }
+    function moveUp(id) {
+        const ids = root.orderedIds()
+        const i = ids.indexOf(id)
+        if (i <= 0) return
+        const tmp = ids[i - 1]
+        ids[i - 1] = ids[i]
+        ids[i] = tmp
+        settingsAdapter.order = ids
+    }
+    function moveDown(id) {
+        const ids = root.orderedIds()
+        const i = ids.indexOf(id)
+        if (i === -1 || i >= ids.length - 1) return
+        const tmp = ids[i + 1]
+        ids[i + 1] = ids[i]
+        ids[i] = tmp
+        settingsAdapter.order = ids
+    }
+
+    property FileView settingsView: FileView {
+        path: Quickshell.env("HOME") + "/.config/quickshell/custom-widgets-settings.json"
+        watchChanges: true
+        printErrors: false
+        onAdapterUpdated: writeAdapter()
+
+        adapter: JsonAdapter {
+            id: settingsAdapter
+            property var disabled: []
+            property var order: []
+        }
+    }
+
     Component.onCompleted: refresh()
 }
