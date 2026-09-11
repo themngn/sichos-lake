@@ -17,7 +17,7 @@ Pill {
     Text {
         text: ""
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.fontSize * Theme.barIconScale
         color: root.opaque ? Theme.text : Theme.textMuted
     }
 }

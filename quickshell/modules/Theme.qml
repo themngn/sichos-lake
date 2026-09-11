@@ -27,12 +27,12 @@ QtObject {
     readonly property string fontFamily: "JetBrainsMono Nerd Font Mono"
     readonly property int fontSize: 13
 
-    readonly property int barHeight: 30
+    readonly property int barHeight: 24
 
     // Requested 33% size bump across every bar-right icon (glyphs, Volume,
     // Tray, Language) -- one shared multiplier so they all grow together
     // and stay mutually consistent rather than drifting apart again.
-    readonly property real barIconScale: 1.00
+    readonly property real barIconScale: 1.1
 
     // Shared visual-height target (px) that every right-section bar icon
     // (BarIcon.qml) scales its own glyph's measured ink to, regardless of

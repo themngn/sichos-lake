@@ -9,8 +9,13 @@ ShellRoot {
         Bar {}
     }
 
+    Variants {
+        model: Quickshell.screens
+
+        NowPlaying {}
+    }
+
     Launcher {}
     VolumeOSD {}
     Notifications {}
-    NowPlaying {}
 }

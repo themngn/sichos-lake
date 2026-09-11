@@ -89,7 +89,7 @@ Pill {
     Text {
         text: "\uf186"
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
+        font.pixelSize: Theme.fontSize * Theme.barIconScale
         color: root.active ? Theme.text : Theme.textMuted
     }
 

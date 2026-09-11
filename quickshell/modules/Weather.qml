@@ -105,7 +105,10 @@ Pill {
         visible: root.haveData
         text: root.haveData ? root.iconFor(root.code, root.isDay) : ""
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize * 2
+        // Same barIconScale every other bar icon (BarIcon.qml, Tray.qml,
+        // Volume.qml, the toggle glyphs) grows/shrinks with, so this one
+        // moves together with the rest instead of drifting independently.
+        font.pixelSize: Theme.fontSize * 2 * Theme.barIconScale
         color: Theme.text
     }
     Text {
