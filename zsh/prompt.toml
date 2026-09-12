@@ -14,14 +14,14 @@ console_title_template = '{{ .Shell }} in {{ .Folder }}'
     style = 'plain'
     background = 'transparent'
     foreground = '#676f71'
-    template = '{{ if .SSHSession }} {{ .UserName }}@{{ .HostName }} {{ end }}'
+    template = '{{ if .SSHSession }}  {{ .UserName }}@{{ .HostName }} {{ end }}'
 
   [[blocks.segments]]
     type = 'path'
     style = 'plain'
     background = 'transparent'
     foreground = '#698b85'
-    template = ' {{ .Path }}'
+    template = '  {{ .Path }}'
 
     [blocks.segments.properties]
       style = 'full'
@@ -47,14 +47,14 @@ console_title_template = '{{ .Shell }} in {{ .Folder }}'
     style = 'plain'
     foreground = '#a9b495'
     background = 'transparent'
-    template = '{{ if ne .Code 0 }} {{ .Code }} {{ end }}'
+    template = '{{ if ne .Code 0 }}  {{ .Code }} {{ end }}'
 
   [[blocks.segments]]
     type = 'executiontime'
     style = 'plain'
     foreground = '#a5ac97'
     background = 'transparent'
-    template = ' {{ .FormattedMs }}'
+    template = '  {{ .FormattedMs }}'
 
     [blocks.segments.properties]
       threshold = 5000
