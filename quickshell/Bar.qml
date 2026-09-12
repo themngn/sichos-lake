@@ -92,7 +92,11 @@ PanelWindow {
     // Center-group Pills (SunsetToggle/HdrToggle/IdleToggle/
     // TransparencyToggle, Weather, CustomWidget) aren't touched -- they
     // keep Pill's real default.
-    Component { id: trayComp; Tray { horizontalPadding: 4 * Theme.barIconSpacingScale } }
+    // Extra margin (double every other widget's) on the tray specifically --
+    // it reads as a distinct cluster of app icons rather than a single
+    // glyph like its neighbors, so it wants more breathing room on both
+    // sides than the uniform 4 * barIconSpacingScale everything else gets.
+    Component { id: trayComp; Tray { horizontalPadding: 12 * Theme.barIconSpacingScale } }
     Component { id: aiModelUsageComp; AiModelUsage { screenName: bar.screen.name; horizontalPadding: 4 * Theme.barIconSpacingScale } }
     Component { id: notificationCenterComp; NotificationCenter { screen: bar.screen; screenName: bar.screen.name; horizontalPadding: 4 * Theme.barIconSpacingScale } }
     Component { id: languageComp; Language { horizontalPadding: 4 * Theme.barIconSpacingScale } }
