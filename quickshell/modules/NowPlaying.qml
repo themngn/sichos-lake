@@ -16,7 +16,11 @@ PanelWindow {
     required property var modelData
     screen: modelData
 
-    color: Theme.background
+    // Transparent window, not Theme.background — only the strip Rectangle
+    // below paints the bar-colored band, so growing the window taller to
+    // fit the album art doesn't turn the whole thing into a bigger bar; the
+    // art alone pokes out past the strip against the desktop underneath.
+    color: "transparent"
     exclusiveZone: 0
     visible: NowPlayingState.visible
 
@@ -37,19 +41,27 @@ PanelWindow {
     // explicitly to actually land flush at y=0, overlapping the bar.
     margins.top: -Theme.barHeight
 
-    implicitHeight: Theme.barHeight
+    // Tall enough to hold the 128px album art, which pokes out past the
+    // bar's own 24px strip rather than being cropped down to fit it.
+    readonly property int coverSize: 128
+    implicitHeight: cover.visible ? coverSize : Theme.barHeight
+
+    Rectangle {
+        width: parent.width
+        height: Theme.barHeight
+        color: Theme.background
+    }
 
     Image {
         id: cover
         readonly property string artUrl: NowPlayingState.spotify ? (NowPlayingState.spotify.trackArtUrl || "") : ""
         visible: artUrl !== ""
         anchors {
+            top: parent.top
             left: parent.left
-            leftMargin: 8
-            verticalCenter: parent.verticalCenter
         }
-        width: visible ? Theme.barHeight - 8 : 0
-        height: Theme.barHeight - 8
+        width: visible ? root.coverSize : 0
+        height: root.coverSize
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
         source: artUrl
@@ -59,7 +71,8 @@ PanelWindow {
         anchors {
             left: cover.visible ? cover.right : parent.left
             leftMargin: 8
-            verticalCenter: parent.verticalCenter
+            top: parent.top
+            topMargin: (Theme.barHeight - height) / 2
         }
         text: NowPlayingState.shownPrefix + NowPlayingState.shownAnimated
         font.family: Theme.fontFamily
