@@ -1,0 +1,24 @@
+#!/usr/bin/bash
+# SichOS GRUB branding. /usr/lib/kernel/install.d/20-grub.install's mkbls()
+# bakes the raw /etc/os-release NAME straight into every BLS entry's title
+# ("Fedora Linux (kernelver) VERSION" - confirmed by reading mkbls() there
+# and matching it against a live /boot/loader/entries/*.conf) with no rename
+# hook of its own. Renaming NAME/PRETTY_NAME in /etc/os-release instead would
+# rebrand the whole system (fastfetch, GNOME About, anything else that reads
+# distro identity), not just the GRUB menu, so this drop-in runs right after
+# 20-grub.install (kernel-install merges /etc and /usr/lib/kernel/install.d
+# and sorts by filename, so "21" always follows "20") and just retitles the
+# entry that script already wrote.
+set -e
+
+COMMAND="$1"
+KERNEL_VERSION="$2"
+
+[ "$COMMAND" = add ] || exit 0
+[ -n "$KERNEL_INSTALL_MACHINE_ID" ] || exit 0
+[ -f /etc/os-release ] && . /etc/os-release
+
+BLS_TARGET="/boot/loader/entries/${KERNEL_INSTALL_MACHINE_ID}-${KERNEL_VERSION}.conf"
+[ -f "$BLS_TARGET" ] || exit 0
+
+sed -i "s/^title ${NAME} /title SichOS /" "$BLS_TARGET"

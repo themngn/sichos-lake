@@ -19,6 +19,9 @@
 #   - the kitty config (~/.config/kitty)
 #   - qt6ct with a dark color scheme, so Qt6 apps (Telegram) pick up dark
 #     window chrome/dialogs via QT_QPA_PLATFORMTHEME=qt6ct (set in env.lua)
+#   - a kernel-install drop-in that retitles GRUB boot entries to "SichOS"
+#     (a kernel-install.d/*.install file, not a change to /etc/os-release, so
+#     it doesn't rebrand fastfetch/GNOME About/etc — see its header comment)
 #   - the "unlock" Plymouth theme (black bg, purple lock/entry, SignOS logo)
 #   - SDDM as the login screen/display manager, with the real modern Plasma 6
 #     Breeze theme (sddm-breeze + kde-settings-sddm — not sddm's own bare
@@ -1025,6 +1028,35 @@ else
     echo "    already installed"
 fi
 
+echo "==> GRUB boot-menu branding (SichOS, not Fedora)"
+
+# See kernel-install.d/21-sichos-grub-brand.install's header comment for why
+# this retitles existing BLS entries in place instead of renaming
+# /etc/os-release. Only future `kernel-install add` runs (kernel updates) go
+# through the drop-in below, so existing entries are fixed up here too.
+sudo mkdir -p /etc/kernel/install.d
+GRUB_BRAND_DEST=/etc/kernel/install.d/21-sichos-grub-brand.install
+if ! cmp -s "$HERE/kernel-install.d/21-sichos-grub-brand.install" "$GRUB_BRAND_DEST" 2>/dev/null; then
+    sudo cp "$HERE/kernel-install.d/21-sichos-grub-brand.install" "$GRUB_BRAND_DEST"
+    sudo chmod +x "$GRUB_BRAND_DEST"
+    echo "    installed to $GRUB_BRAND_DEST"
+else
+    echo "    drop-in already up to date"
+fi
+
+. /etc/os-release
+# /boot/loader/entries is mode 0700, so the glob has to expand inside the
+# root shell too (a plain `sudo sed ... /boot/loader/entries/*.conf` fails
+# silently: the glob expands as this script's own user first and finds
+# nothing, since only sed itself would have run as root).
+sudo bash -c "
+for entry in /boot/loader/entries/*.conf; do
+    [ -f \"\$entry\" ] || continue
+    sed -i 's/^title ${NAME} /title SichOS /' \"\$entry\"
+done
+"
+echo "    retitled existing boot entries"
+
 echo "==> Plymouth 'unlock' theme"
 
 if ! rpm -q plymouth-plugin-script >/dev/null 2>&1; then
@@ -1447,6 +1479,8 @@ cat <<EOF
 ==> Done.
 
 Nothing here restarted sddm, quickshell, or rebooted for you:
+  - reboot to see the GRUB menu read "SichOS" instead of "Fedora" (the boot
+    loader itself only reads /boot/loader/entries at boot time)
   - reboot (or \`sudo systemctl restart sddm\`) to pick up the SDDM/
     Plymouth changes$([ "$VM" -eq 1 ] && echo "/env.lua render overrides (env vars are only read at Hyprland startup, so a reboot is the reliable way)")
   - Hyprland and quickshell config changes are already live$([ "$ALT" -eq 1 ] && echo " (except the --alt modifier swap, which needs the reboot above too)")$([ "${AMDGPU_DCDEBUGMASK_APPLIED:-0}" = "1" ] && echo "

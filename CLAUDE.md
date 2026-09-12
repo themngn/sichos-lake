@@ -57,7 +57,9 @@ places — the repo file (what `install.sh` ships to every future machine) and t
   `sddm/sysconfig-sddm` → `/etc/sysconfig/sddm` (XCURSOR_THEME/SIZE and WLR_NO_HARDWARE_CURSORS
   for cursor rendering). SDDM's Wayland greeter compositor is `cage` (`cage -s -d` in
   `10-theme.conf` — wlroots-based kiosk compositor with full native cursor support, replacing
-  the upstream weston kiosk default which had no cursor rendering).
+  the upstream weston kiosk default which had no cursor rendering). `kernel-install.d/*.install` →
+  `/etc/kernel/install.d/` (GRUB boot-menu branding — see its own header comment for why this
+  retitles existing BLS entries in `/boot/loader/entries` instead of renaming `/etc/os-release`).
 
 ## Deploying / testing changes
 
