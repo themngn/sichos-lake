@@ -37,6 +37,18 @@ Pill {
                 // designed with margin for tray size -- at the same box
                 // size. Inset just that case to compensate.
                 readonly property bool rawPixmap: trayItem.modelData.icon.includes("image://qspixmap/")
+                // Spotify's own "com.spotify.Client-symbolic" *is* a proper
+                // themed icon (not a qspixmap), but its SVG's ink bounding
+                // box is the full 0-16/0-16 viewBox with zero built-in
+                // margin -- confirmed by rasterizing it and Telegram's own
+                // symbolic icon at the same size and comparing getbbox():
+                // Spotify covers the entire canvas edge to edge while
+                // Telegram's ink sits well inset (~7-57 of 64). Same
+                // oversized-vs-Telegram symptom as OBS's rawPixmap case
+                // despite going through the normal named-icon path, so it
+                // needs the same inset.
+                readonly property bool noMarginIcon: trayItem.rawPixmap
+                    || trayItem.modelData.icon.toLowerCase().includes("spotify")
                 // Math.round, not a bare fraction: confirmed live (raw
                 // pixmap dumped straight from D-Bus and compared pixel-row
                 // by pixel-row against the rendered bar icon) that OBS's
@@ -46,7 +58,7 @@ Pill {
                 // which centerIn + a raster image rounds asymmetrically
                 // (loses a row of antialiasing at the bottom edge only).
                 // Whole-pixel sizes rendered symmetrically in every test.
-                readonly property int iconSize: rawPixmap
+                readonly property int iconSize: noMarginIcon
                     ? Math.round(trayItem.width * 0.75)
                     : trayItem.width
 
