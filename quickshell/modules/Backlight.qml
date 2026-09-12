@@ -35,7 +35,7 @@ Pill {
         while (Math.abs(root.wheelAccum) >= 120) {
             const goingUp = root.wheelAccum < 0
             root.wheelAccum -= (root.wheelAccum > 0 ? 120 : -120)
-            Quickshell.execDetached(["brightnessctl", "set", goingUp ? "+2%" : "2%-"])
+            Quickshell.execDetached(["brightnessctl", "set", goingUp ? "+10%" : "10%-"])
         }
     }
 

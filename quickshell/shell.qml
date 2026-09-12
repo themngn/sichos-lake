@@ -17,5 +17,6 @@ ShellRoot {
 
     Launcher {}
     VolumeOSD {}
+    BacklightOSD {}
     Notifications {}
 }
