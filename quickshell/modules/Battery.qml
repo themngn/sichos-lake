@@ -31,14 +31,26 @@ Pill {
     })
     readonly property string fullyChargedIcon: "󰂄" // nf-md-battery_charging, plugged in and topped off
 
+    // Whether the icon currently shown is one of the bolted chargingIcons
+    // glyphs (used below to pick the right ink-ratio for sizing) -- true
+    // only while actively charging and not yet genuinely at 100%, since
+    // icon() substitutes the boltless fullyChargedIcon once it is.
+    readonly property bool boltIcon: dev && dev.state === UPowerDeviceState.Charging && Math.round(dev.percentage * 100) < 100
+
     function icon() {
         if (!dev) return ""
         if (dev.state === UPowerDeviceState.FullyCharged) return root.fullyChargedIcon
         const bucket = Math.max(10, Math.min(100, Math.round(dev.percentage * 100 / 10) * 10))
-        // Some devices report Charging (not FullyCharged) right at 100% --
-        // e.g. trickle-charging to stay topped off -- so treat that as the
-        // same "plugged in, done" icon rather than the animated-100% one.
-        if (dev.state === UPowerDeviceState.Charging) return bucket === 100 ? root.fullyChargedIcon : root.chargingIcons[bucket]
+        if (dev.state === UPowerDeviceState.Charging) {
+            // Some devices report Charging (not FullyCharged) right at
+            // genuine 100% -- e.g. trickle-charging to stay topped off --
+            // so treat that as the same "plugged in, done" icon rather than
+            // the animated bolt one. Checked against the actual (unbucketed)
+            // percentage, not the 10%-bucket, so e.g. 98% while still
+            // charging correctly keeps showing a bolt icon instead of
+            // jumping to "done" just because it rounds into the 100 bucket.
+            return root.boltIcon ? root.chargingIcons[bucket] : root.fullyChargedIcon
+        }
         if (root.critical) return root.alertIcon
         return bucket === 100 ? root.fullIcon : root.dischargeIcons[bucket]
     }
@@ -67,8 +79,11 @@ Pill {
             // instead of the usual 928/1000em -- confirmed via fontTools
             // glyf bbox on JetBrainsMonoNerdFontMono-Regular.ttf specifically.
             // nf-md-battery_charging (fullyChargedIcon, no bolt, same width
-            // as the plain icons) is unaffected and uses the normal ratio.
-            pixelSize: Theme.barIconInkHeight * 1000 / (root.charging ? 570 : 928)
+            // as the plain icons) is unaffected and uses the normal ratio --
+            // keyed off root.boltIcon (which glyph is actually shown), not
+            // root.charging (raw state), since Charging-at-100% also shows
+            // the boltless fullyChargedIcon and needs the normal ratio too.
+            pixelSize: Theme.barIconInkHeight * 1000 / (root.boltIcon ? 570 : 928)
             color: root.charging ? Theme.success : root.critical ? Theme.critical : Theme.text
 
             property real blinkOpacity: 1
