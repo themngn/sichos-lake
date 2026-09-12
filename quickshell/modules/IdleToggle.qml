@@ -8,10 +8,28 @@ Pill {
     id: root
     property bool active: false
     property string screenName: ""
+    // Whether the bar has revealed the toggle row (hover/popup-open) --
+    // set externally by Bar.qml. Only matters while inactive: an active
+    // toggle always stays shown regardless, so its on/off state is never
+    // hidden from a glance at the bar.
+    property bool revealed: true
     signal toggle()
     signal settingsSaved()
 
-    opacity: root.active ? 1 : 0.5
+    readonly property bool shown: root.active || root.revealed
+    opacity: root.shown ? (root.active ? 1 : 0.5) : 0
+    Behavior on opacity {
+        NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
+    }
+    // Collapses the pill's own width to 0 when hidden (rather than just
+    // fading it out) so Bar.qml's toggleRow -- sized by its children's real
+    // widths -- closes the gap and the remaining visible pills slide flush
+    // together instead of leaving dead space where this one used to sit.
+    clip: true
+    width: root.shown ? root.implicitWidth : 0
+    Behavior on width {
+        NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
+    }
 
     // --- Hover Management with Trigger Delay, Immediate Switch & Stay on Hover ---
     readonly property string popupId: "idle"
