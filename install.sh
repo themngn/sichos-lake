@@ -917,6 +917,51 @@ else
     echo "    login shell already zsh"
 fi
 
+echo "==> zsh for root"
+
+# root gets the same shell/prompt/plugins as the primary user, so `sudo -i`/
+# `sudo su -` drops into the familiar antidote+oh-my-posh setup instead of
+# Fedora's bare default. Everything under /root needs sudo — can't reuse
+# install_file() as-is since it shells out to plain cp/cmp/mkdir that can't
+# read or write into another user's home.
+if sudo test -d /root/.antidote; then
+    echo "    antidote already installed for root"
+else
+    sudo git clone --depth=1 https://github.com/mattmc3/antidote.git /root/.antidote
+    echo "    cloned antidote to /root/.antidote"
+fi
+
+if sudo test -x /root/.local/bin/oh-my-posh; then
+    echo "    oh-my-posh already installed for root"
+else
+    # Unlike $HOME/.local/bin (already created earlier by the VS Code CLI
+    # wrapper step), /root/.local/bin doesn't exist yet on a fresh system —
+    # the installer script errors out ("does not exist") instead of
+    # creating it.
+    sudo mkdir -p /root/.local/bin
+    curl -s https://ohmyposh.dev/install.sh | sudo bash -s -- -d /root/.local/bin
+    echo "    installed oh-my-posh to /root/.local/bin"
+fi
+
+sudo mkdir -p /root/.config
+for pair in ".zshrc:.zshrc" ".zsh_plugins.txt:.zsh_plugins.txt" "prompt.toml:.config/prompt.toml"; do
+    src="$HERE/zsh/${pair%%:*}"
+    dest="/root/${pair##*:}"
+    if sudo test -f "$dest" && ! sudo cmp -s "$src" "$dest"; then
+        sudo cp "$dest" "$dest.bak"
+        echo "    backed up existing root $(basename "$dest") to $(basename "$dest").bak"
+    fi
+    sudo cp "$src" "$dest"
+done
+echo "    installed /root/.zshrc, /root/.zsh_plugins.txt, /root/.config/prompt.toml"
+
+if [ "$(getent passwd root | cut -d: -f7)" != "$ZSH_BIN" ]; then
+    sudo usermod -s "$ZSH_BIN" root
+    echo "    set root's login shell to $ZSH_BIN (takes effect on next login)"
+else
+    echo "    root's login shell already zsh"
+fi
+
 echo "==> pavucontrol-dark GTK4 theme"
 
 # A *named* theme under ~/.local/share/themes, not ~/.config/gtk-4.0/gtk.css:

@@ -13,15 +13,15 @@ console_title_template = '{{ .Shell }} in {{ .Folder }}'
     type = 'session'
     style = 'plain'
     background = 'transparent'
-    foreground = 'p:grey'
-    template = '{{ if .SSHSession }}{{ .UserName }}@{{ .HostName }} {{ end }}'
+    foreground = '#676f71'
+    template = '{{ if .SSHSession }} {{ .UserName }}@{{ .HostName }} {{ end }}'
 
   [[blocks.segments]]
     type = 'path'
     style = 'plain'
     background = 'transparent'
-    foreground = 'blue'
-    template = '{{ .Path }}'
+    foreground = '#698b85'
+    template = ' {{ .Path }}'
 
     [blocks.segments.properties]
       style = 'full'
@@ -29,12 +29,12 @@ console_title_template = '{{ .Shell }} in {{ .Folder }}'
   [[blocks.segments]]
     type = 'git'
     style = 'plain'
-    foreground = 'p:grey'
+    foreground = '#b4bbaa'
     background = 'transparent'
-    template = ' {{ .HEAD }}{{ if or (.Working.Changed) (.Staging.Changed) }}*{{ end }} <cyan>{{ if gt .Behind 0 }}⇣{{ end }}{{ if gt .Ahead 0 }}⇡{{ end }}</>'
+    template = ' {{ .HEAD }}{{ if or (.Working.Changed) (.Staging.Changed) }}<#a5ac97>*</>{{ end }} <#77a29b>{{ if gt .Behind 0 }}⇣{{ end }}{{ if gt .Ahead 0 }}⇡{{ end }}</>'
 
     [blocks.segments.properties]
-      branch_icon = ''
+      branch_icon = ' '
       commit_icon = '@'
       fetch_status = true
 
@@ -45,16 +45,16 @@ console_title_template = '{{ .Shell }} in {{ .Folder }}'
   [[blocks.segments]]
     type = 'text'
     style = 'plain'
-    foreground = 'red'
+    foreground = '#a9b495'
     background = 'transparent'
-    template = '{{ if ne .Code 0 }}{{ .Code }} {{ end }}'
+    template = '{{ if ne .Code 0 }} {{ .Code }} {{ end }}'
 
   [[blocks.segments]]
     type = 'executiontime'
     style = 'plain'
-    foreground = 'yellow'
+    foreground = '#a5ac97'
     background = 'transparent'
-    template = '{{ .FormattedMs }}'
+    template = ' {{ .FormattedMs }}'
 
     [blocks.segments.properties]
       threshold = 5000
@@ -68,13 +68,13 @@ console_title_template = '{{ .Shell }} in {{ .Folder }}'
     type = 'text'
     style = 'plain'
     background = 'transparent'
-    template = '>'
+    template = '{{ if .Root }}<#ff5555>#</>{{ else }}<#698b85>$</>{{ end }} {{ if eq .Code 0 }}<#b2cfb8>❯</>{{ else }}<#a9b495>❯</>{{ end }}'
 
 [transient_prompt]
   background = 'transparent'
-  template = '> '
-  right_template = '{{ if ne .Code 0 }}<red>{{ .Code }}</>{{ end }}'
+  template = '{{ if .Root }}<#ff5555>#</>{{ else }}<#698b85>$</>{{ end }} {{ if eq .Code 0 }}<#b2cfb8>❯</>{{ else }}<#a9b495>❯</>{{ end }} '
+  right_template = '{{ if ne .Code 0 }}<#a9b495>{{ .Code }}</>{{ end }}'
 
 [secondary_prompt]
   background = 'transparent'
-  template = '>> '
+  template = '{{ if .Root }}<#ff5555>#</>{{ else }}<#698b85>$</>{{ end }} <#676f71>❯❯</> '
