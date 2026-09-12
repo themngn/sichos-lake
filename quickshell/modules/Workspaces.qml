@@ -74,6 +74,80 @@ Pill {
         return t.lastIpcObject ? t.lastIpcObject.class : ""
     }
 
+    // Nerd Font glyphs for kitty windows whose foreground process is a known
+    // CLI agent, keyed by kitty-cli-icons.py's icon-key output. Real brand
+    // glyphs (Codicons' cod-claude/cod-openai, confirmed present in
+    // JetBrainsMono Nerd Font's cmap via fontTools) rather than AiModelUsage's
+    // generic md-robot/md-robot_excited placeholders, which render as an
+    // unrecognizable blob at 12px. No Google/Antigravity-branded glyph exists
+    // in this font, so agy falls back to the plain Google "G" (dev-google).
+    //
+    // `size` is each glyph pre-scaled (targeting ~12px ink height, same as
+    // the 12x12 app-icon Image box below) to its own measured glyph ink
+    // ratio (fontTools glyf yMax-yMin / unitsPerEm: ~0.6 for claude/chatgpt,
+    // 0.614 for agy, 0.72 for nvim) -- Nerd Font glyphs don't share a
+    // consistent ink-to-em ratio, so one flat pixelSize renders them at
+    // visibly different sizes (same technique as Theme.barIconInkHeight /
+    // BarIcon.qml elsewhere in this bar). `color` is each tool's own brand
+    // color rather than Theme.text, since the whole point is to tell these
+    // apart from each other (and from a plain shell) at a glance.
+    readonly property var cliIcons: ({
+        "claude": { glyph: "", size: 18, color: "#D97757" },
+        "agy": { glyph: "", size: 17, color: "#4285F4" },
+        "chatgpt": { glyph: "", size: 18, color: "#10A37F" },
+        "nvim": { glyph: "", size: 15, color: "#57A143" },
+    })
+
+    // kitty pid (string) -> icon key, refreshed periodically by polling each
+    // open kitty window's own remote-control socket for its foreground
+    // process (see kitty-cli-icons.py's header comment for why the window
+    // title isn't used instead).
+    property var kittyCliMap: ({})
+
+    function cliIconForToplevel(t) {
+        const cls = root.classForToplevel(t)
+        if (cls.toLowerCase() !== "kitty") return null
+        const pid = t.lastIpcObject ? t.lastIpcObject.pid : null
+        if (!pid) return null
+        const key = root.kittyCliMap[String(pid)]
+        return key ? (root.cliIcons[key] || null) : null
+    }
+
+    Process {
+        id: kittyCliProc
+        command: ["python3", Quickshell.env("HOME") + "/.config/quickshell/scripts/kitty-cli-icons.py"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                // Merge, don't replace: kitty-cli-icons.py omits a pid
+                // whose query failed this tick (socket briefly not ready,
+                // timeout) rather than reporting it idle, specifically so a
+                // transient failure doesn't flicker that window's icon back
+                // to the generic kitty one for a tick before the next poll
+                // recovers it.
+                try {
+                    const parsed = JSON.parse(text)
+                    const merged = Object.assign({}, root.kittyCliMap)
+                    for (const pid in parsed) merged[pid] = parsed[pid]
+                    root.kittyCliMap = merged
+                } catch (e) {
+                    // Keep the previous map on a parse failure.
+                }
+            }
+        }
+    }
+
+    Timer {
+        interval: 1000
+        running: true
+        repeat: true
+        triggeredOnStart: true
+        // Guard against pile-up: each tick spawns `kitty @ ls` per open
+        // kitty window, so if that ever takes longer than the 1s interval
+        // (many windows, a stuck kitty socket) this skips the tick instead
+        // of stacking overlapping Process runs.
+        onTriggered: if (!kittyCliProc.running) kittyCliProc.running = true
+    }
+
     // Special workspaces sort after normal ones, id-ascending within each group
     readonly property var sortedWorkspaces: {
         const list = Hyprland.workspaces.values.slice()
@@ -142,17 +216,32 @@ Pill {
                         Repeater {
                             model: wsItem.windows
 
-                            delegate: Image {
+                            delegate: Item {
                                 id: appIcon
                                 required property var modelData
+                                readonly property var cliIcon: root.cliIconForToplevel(modelData)
                                 readonly property string resolved: DesktopIcons.iconPathForClass(root.classForToplevel(modelData))
 
-                                visible: resolved.length > 0
-                                source: resolved
                                 width: 12
                                 height: 12
-                                sourceSize: Qt.size(12, 12)
-                                fillMode: Image.PreserveAspectFit
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    visible: appIcon.cliIcon !== null
+                                    text: appIcon.cliIcon ? appIcon.cliIcon.glyph : ""
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: appIcon.cliIcon ? appIcon.cliIcon.size : 12
+                                    color: appIcon.cliIcon ? appIcon.cliIcon.color : Theme.text
+                                }
+
+                                Image {
+                                    visible: appIcon.cliIcon === null && appIcon.resolved.length > 0
+                                    source: appIcon.cliIcon === null ? appIcon.resolved : ""
+                                    width: 12
+                                    height: 12
+                                    sourceSize: Qt.size(12, 12)
+                                    fillMode: Image.PreserveAspectFit
+                                }
                             }
                         }
                     }
