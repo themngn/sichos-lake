@@ -3,18 +3,20 @@ import Quickshell
 import Quickshell.Io
 
 // Warm Light / Night Light popup panel for SunsetToggle.qml.
-// Hover-driven with persistent hover: allows smooth interaction with mode switch,
-// 100K warmth slider, and schedule editor without focus grabs.
+// Hover-driven with persistent hover: allows smooth interaction with the
+// On/Off force switch, the independent "Follow schedule" checkbox, the
+// 100K warmth slider, and the schedule time editor without focus grabs.
 PopupWindow {
     id: popup
 
     required property Item anchorItem
-    property string mode: "schedule" // "schedule" | "on" | "off" — mirrors ShellState.sunsetMode
-    property int kelvin: 2500 // last manually-set warmth, independent of mode
-    property bool scheduleWarm: false
+    property bool active: false // mirrors ShellState.sunsetWarm
+    property bool scheduleFollow: true // mirrors ShellState.sunsetScheduleFollow, fully independent of active
+    property int kelvin: 2500 // last manually-set warmth
 
-    signal modeSelected(string mode)
+    signal setWarm(bool warm)
     signal setTemperature(int kelvin)
+    signal setScheduleFollow(bool follow)
     signal scheduleSaved()
 
     anchor.item: anchorItem
@@ -117,20 +119,22 @@ PopupWindow {
                 }
             }
 
-            // Mode switch
+            // Force on/off switch -- always reflects/sets popup.active
+            // directly. Fully independent of the "Follow schedule" switch
+            // below: clicking either of these never touches scheduleFollow.
             Row {
                 width: 220
                 spacing: 6
 
                 Repeater {
                     model: [
-                        { id: "schedule", label: "Schedule" },
-                        { id: "off", label: "Off" }
+                        { on: true, label: "On" },
+                        { on: false, label: "Off" }
                     ]
                     delegate: Rectangle {
                         id: modeButton
                         required property var modelData
-                        readonly property bool active: popup.mode === modelData.id
+                        readonly property bool active: popup.active === modelData.on
                         width: 107
                         height: 26
                         radius: 4
@@ -148,9 +152,35 @@ PopupWindow {
 
                         MouseArea {
                             anchors.fill: parent
-                            onClicked: popup.modeSelected(modeButton.modelData.id)
+                            onClicked: popup.setWarm(modeButton.modelData.on)
                         }
                     }
+                }
+            }
+
+            // Independent "Follow schedule" switch -- deliberately not a
+            // third option in the On/Off row above, and stored as its own
+            // property rather than a shared mode enum. Checking or
+            // unchecking it never changes popup.active/the light itself
+            // (see ShellState.setScheduleFollow) -- it only changes who
+            // gets to decide going forward, so forcing on/off here never
+            // knocks this switch off the way an earlier version did.
+            Item {
+                width: 220
+                height: scheduleText.implicitHeight
+
+                Text {
+                    id: scheduleText
+                    text: (popup.scheduleFollow ? "[x] " : "[ ] ") + "Follow schedule"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontSize - 1
+                    color: scheduleArea.containsMouse ? Theme.text : Theme.textMuted
+                }
+                MouseArea {
+                    id: scheduleArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: popup.setScheduleFollow(!popup.scheduleFollow)
                 }
             }
 
@@ -172,7 +202,7 @@ PopupWindow {
                     Text {
                         anchors.right: parent.right
                         text: popup.kelvin + "K"
-                        color: popup.mode === "on" ? Theme.accent : Theme.textDim
+                        color: popup.active && !popup.scheduleFollow ? Theme.accent : Theme.textDim
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontSize - 2
                     }
@@ -184,7 +214,7 @@ PopupWindow {
                     height: 8
                     radius: 0
                     color: Qt.rgba(1, 1, 1, 0.12)
-                    opacity: popup.mode === "on" ? 1 : 0.5
+                    opacity: popup.active && !popup.scheduleFollow ? 1 : 0.5
 
                     readonly property real fraction: (popup.kelvin - popup.minKelvin) / (popup.maxKelvin - popup.minKelvin)
 

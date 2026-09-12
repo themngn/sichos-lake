@@ -10,7 +10,7 @@ import Quickshell.Hyprland
 // opt-in per monitor rather than the pill being a single switch that hits
 // every screen — toggling it on only drives whichever monitors are checked
 // here. `monitors` persists (JsonAdapter, same pattern as BarSettings);
-// `active` doesn't, same as ShellState.idleActive/sunsetMode — resets to off
+// `active` doesn't, same as ShellState.idleActive/sunsetWarm — resets to off
 // on every quickshell restart rather than risking HDR silently staying on
 // for a monitor the user meant to leave off.
 QtObject {

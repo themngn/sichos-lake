@@ -150,34 +150,89 @@ PanelWindow {
             verticalCenter: parent.verticalCenter
         }
     }
+    // Whether any of this row's own popups (Sunset/Hdr/Idle) is currently
+    // open on THIS screen -- TransparencyToggle has no popup. Keeps the row
+    // revealed while a popup is open even after the pointer leaves the row's
+    // own bounds for the popup below it (its own window, outside toggleRow's
+    // geometry, so toggleRowHover alone would otherwise drop to unhovered
+    // and fade the row out from under an still-open popup).
+    readonly property bool toggleRowPopupOpen: ["sunset", "hdr", "idle"].includes(ShellState.activePopup)
+        && ShellState.activePopupScreen === bar.screen.name
+
+    // Fixed invisible hover target used only to bootstrap the very first
+    // reveal from a fully-collapsed row (width 0 everywhere has no area to
+    // hover into otherwise). Its exact size doesn't need to precisely match
+    // the pills' real footprint -- once growth has begun, `anyToggleHovered`
+    // below (each pill's own real, geometry-accurate MouseArea) takes over
+    // and keeps the row open, which is what actually matters: a fixed zone
+    // sized to the pills' *collapsed* state will always undershoot their
+    // *expanded* one, so hovering squarely on a fully-grown icon (outside
+    // this zone) used to read as "not hovered" and collapse the row out
+    // from under the pointer -- which re-entered the zone and grew again,
+    // producing a rapid open/close flicker. Renders nothing.
+    Item {
+        id: toggleHoverZone
+        anchors {
+            right: clock.left
+            rightMargin: 4
+            verticalCenter: parent.verticalCenter
+        }
+        width: 180
+        height: Theme.barHeight
+
+        HoverHandler { id: toggleRowHover }
+    }
+
+    // Once any pill has grown enough to be hovered directly, its own
+    // MouseArea (real, geometry-accurate, unlike the fixed bootstrap zone
+    // above) keeps the whole row revealed -- see toggleHoverZone's comment.
+    readonly property bool anyToggleHovered: sunsetToggle.hovered || hdrToggle.hovered
+        || idleToggle.hovered || transparencyToggle.hovered
+    readonly property bool toggleRowRevealed: toggleRowHover.hovered || bar.toggleRowPopupOpen || bar.anyToggleHovered
+
     Row {
+        id: toggleRow
         anchors {
             right: clock.left
             rightMargin: 4
             verticalCenter: parent.verticalCenter
         }
         spacing: 4
+        // Row is anchored by its right edge only (above), so as children
+        // collapse and its total width shrinks, the row naturally contracts
+        // toward the clock rather than leaving a gap on that side. No
+        // separate `move: Transition` here -- each pill's own width
+        // Behavior already changes smoothly every frame, and Row recomputes
+        // every sibling's x live off of that same continuously-changing
+        // value, so motion is already smooth. Layering a positioner `move`
+        // transition on top made it chase a constantly-shifting target
+        // (retargeted every frame while widths were mid-animation) instead
+        // of a single fixed destination -- suspected cause of the hover
+        // flicker that kept a pill's popup from ever settling open; removed
+        // rather than tuned since it was redundant with the width Behavior.
 
         SunsetToggle {
+            id: sunsetToggle
             screenName: bar.screen.name
+            revealed: bar.toggleRowRevealed
             active: ShellState.sunsetWarm
-            mode: ShellState.sunsetMode
+            scheduleFollow: ShellState.sunsetScheduleFollow
             kelvin: ShellState.sunsetKelvin
-            scheduleWarm: ShellState.sunsetWarm
-            onModeSelected: (mode) => {
-                // Re-clicking the already-active mode would still fire a
-                // real gamma push (stutters the cursor for a frame) for
-                // zero actual change — skip it.
-                if (mode === ShellState.sunsetMode) return
-                ShellState.sunsetMode = mode
-                if (mode === "schedule") Quickshell.execDetached(["hyprctl", "hyprsunset", "reset"])
-                else if (mode === "off") Quickshell.execDetached(["hyprctl", "hyprsunset", "identity"])
-            }
-            // Dragging the warmth slider always implies manual "on" mode —
-            // ShellState.setSunsetKelvin owns the mode switch plus the
+            // Pill click and the popup's On/Off buttons both land here —
+            // ShellState.forceSunsetWarm owns the dedup-guard, the state
+            // write, and the matching hyprctl push, and deliberately never
+            // touches sunsetScheduleFollow.
+            onSetWarm: (warm) => ShellState.forceSunsetWarm(warm)
+            // Dragging the warmth slider only presets the kelvin value —
+            // it deliberately does NOT force the light on or touch
+            // "Follow schedule". ShellState.setSunsetKelvin owns the
             // debounced disk write + hyprctl push (see its own comment for
             // why that's debounced rather than firing per pixel).
             onSetTemperature: (k) => ShellState.setSunsetKelvin(k)
+            // The popup's "Follow schedule" checkbox — ShellState.
+            // setScheduleFollow owns the dedup-guard and, when re-enabling,
+            // the immediate resync to whatever the schedule currently says.
+            onSetScheduleFollow: (follow) => ShellState.setScheduleFollow(follow)
             onScheduleSaved: {
                 // hyprsunset only reads its config at startup — no live-reload
                 // IPC exists — so the edited profile times only take effect
@@ -191,15 +246,19 @@ PanelWindow {
                 // dance required. Only actually restarts anything under the
                 // uwsm-managed session — see that same autostart.lua comment
                 // for why a non-uwsm session leaves this a silent no-op.
-                ShellState.sunsetMode = "schedule"
+                ShellState.setScheduleFollow(true)
                 Quickshell.execDetached(["systemctl", "--user", "restart", "hyprsunset.service"])
             }
         }
         HdrToggle {
+            id: hdrToggle
             screenName: bar.screen.name
+            revealed: bar.toggleRowRevealed
         }
         IdleToggle {
+            id: idleToggle
             screenName: bar.screen.name
+            revealed: bar.toggleRowRevealed
             active: ShellState.idleActive
             onToggle: ShellState.idleActive = !ShellState.idleActive
             onSettingsSaved: {
@@ -210,6 +269,8 @@ PanelWindow {
             }
         }
         TransparencyToggle {
+            id: transparencyToggle
+            revealed: bar.toggleRowRevealed
             opaque: ShellState.transparencyOpaque
             onToggle: {
                 ShellState.transparencyOpaque = !ShellState.transparencyOpaque

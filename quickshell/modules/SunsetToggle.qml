@@ -1,21 +1,44 @@
 import QtQuick
 
 // Warm Light / Night Light indicator and settings toggle (SunsetToggle.qml).
-// Left click toggles between schedule and off. Hover (with 250ms initial delay,
-// or immediate switch if another menu is already open) opens SunsetPopup.qml,
-// staying open while hovered over the popup card.
+// Left click force-toggles the warm filter on/off directly, based on its
+// current on-screen appearance (root.active). "Follow schedule" is a
+// separate, independent property/switch (root.scheduleFollow, edited from
+// SunsetPopup.qml's checkbox) -- clicking here never touches it, and
+// checking/unchecking it never goes through this click path. Hover (with
+// 250ms initial delay, or immediate switch if another menu is already
+// open) opens SunsetPopup.qml, staying open while hovered over the popup
+// card.
 Pill {
     id: root
     property bool active: false
-    property string mode: "schedule"
+    property bool scheduleFollow: true
     property int kelvin: 2500
-    property bool scheduleWarm: false
     property string screenName: ""
-    signal modeSelected(string mode)
+    // Whether the bar has revealed the toggle row (hover/popup-open) --
+    // set externally by Bar.qml. Only matters while inactive: an active
+    // toggle always stays shown regardless, so its on/off state is never
+    // hidden from a glance at the bar.
+    property bool revealed: true
+    signal setWarm(bool warm)
     signal setTemperature(int kelvin)
+    signal setScheduleFollow(bool follow)
     signal scheduleSaved()
 
-    opacity: root.active ? 1 : 0.5
+    readonly property bool shown: root.active || root.revealed
+    opacity: root.shown ? (root.active ? 1 : 0.5) : 0
+    Behavior on opacity {
+        NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
+    }
+    // Collapses the pill's own width to 0 when hidden (rather than just
+    // fading it out) so Bar.qml's toggleRow -- sized by its children's real
+    // widths -- closes the gap and the remaining visible pills slide flush
+    // together instead of leaving dead space where this one used to sit.
+    clip: true
+    width: root.shown ? root.implicitWidth : 0
+    Behavior on width {
+        NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
+    }
 
     // --- Hover Management with Trigger Delay, Immediate Switch & Stay on Hover ---
     readonly property string popupId: "sunset"
@@ -78,11 +101,7 @@ Pill {
                 ShellState.activePopupScreen = root.screenName
             }
         } else {
-            if (root.mode === "off") {
-                root.modeSelected("schedule")
-            } else {
-                root.modeSelected("off")
-            }
+            root.setWarm(!root.active)
         }
     }
 
@@ -97,11 +116,12 @@ Pill {
         id: popup
         anchorItem: root
         visible: root.popupOpen
-        mode: root.mode
+        active: root.active
+        scheduleFollow: root.scheduleFollow
         kelvin: root.kelvin
-        scheduleWarm: root.scheduleWarm
-        onModeSelected: (m) => root.modeSelected(m)
+        onSetWarm: (w) => root.setWarm(w)
         onSetTemperature: (k) => root.setTemperature(k)
+        onSetScheduleFollow: (f) => root.setScheduleFollow(f)
         onScheduleSaved: root.scheduleSaved()
     }
 }

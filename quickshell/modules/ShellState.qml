@@ -48,39 +48,76 @@ QtObject {
         root.transparencyOpaque = m ? (+m[1] >= 1.0) : false
     }
 
-    // User's chosen sunset mode, from SunsetToggle's popup: "schedule"
-    // (follow hyprsunset.conf's day/night profiles), "on" (a warm filter
-    // forced on, whatever kelvin), or "off" (identity forced, no filter).
+    // Whether the filter is warm right now — the single source of truth
+    // for the light, not a value derived from some other mode enum.
+    // Written by exactly three things: SunsetToggle's pill/On-Off buttons
+    // (forceSunsetWarm), a schedule boundary crossing while
+    // sunsetScheduleFollow is true (_checkScheduleBoundary), and
+    // setScheduleFollow's own immediate resync when re-enabling follow.
     // Doesn't persist across a quickshell restart, same as idleActive above.
-    property string sunsetMode: "schedule"
-
-    // Last manually-set warmth, kept independent of sunsetMode so the
-    // SunsetToggle popup's slider still shows a sensible value (and
-    // reapplying "on" reuses it) even after switching to "schedule" or
-    // "off" and back. Seeded from hyprsunset.conf's night profile at
-    // startup (see _loadSunsetKelvin) so it survives a quickshell restart
-    // even though sunsetMode itself doesn't — the file is the one place
-    // this actually persists.
-    property int sunsetKelvin: 2500
-
-    // Whether the filter is ACTUALLY warm right now — true for "on", false
-    // for "off", and for "schedule" computed from hyprsunset.conf's two
-    // profile times against the current clock. This (not sunsetMode) is
-    // what SunsetToggle's icon brightness should follow, so picking
-    // "Follow schedule" during the day doesn't light the icon up white for
-    // a filter that isn't actually doing anything until night.
     property bool sunsetWarm: false
+
+    // Whether the schedule (hyprsunset.conf's day/night profile times) is
+    // allowed to drive sunsetWarm at its own boundary crossings. Completely
+    // independent of sunsetWarm itself -- toggling this never changes the
+    // light (see setScheduleFollow), and forcing the light via the pill or
+    // On/Off buttons never changes this. That independence is the whole
+    // point: turn schedule off and a force stays put until the next
+    // explicit force; turn it back on and the schedule resumes from
+    // wherever the clock currently is, ignoring whatever was forced while
+    // it was off.
+    property bool sunsetScheduleFollow: true
+
+    // Last manually-set warmth, shown by the popup's slider regardless of
+    // sunsetWarm/sunsetScheduleFollow. Seeded from hyprsunset.conf's night
+    // profile at startup (see _loadSunsetKelvin) so it survives a
+    // quickshell restart even though the two properties above don't — the
+    // file is the one place this actually persists.
+    property int sunsetKelvin: 2500
 
     readonly property FileView _sunsetConf: FileView {
         path: Quickshell.env("HOME") + "/.config/hypr/hyprsunset.conf"
         printErrors: false
     }
 
-    function _recomputeSunsetWarm() {
-        if (root.sunsetMode === "on") { root.sunsetWarm = true; return }
-        if (root.sunsetMode === "off") { root.sunsetWarm = false; return }
+    // Single spot that both writes sunsetWarm and pushes the matching
+    // hyprctl command, so the pill, the boundary check, and re-enabling
+    // the schedule can't drift from each other on which command means what.
+    function _applyWarm(v) {
+        root.sunsetWarm = v
+        Quickshell.execDetached(v
+            ? ["hyprctl", "hyprsunset", "temperature", String(root.sunsetKelvin)]
+            : ["hyprctl", "hyprsunset", "identity"])
+    }
 
-        // QV4 (this Qt's JS engine) doesn't have String.matchAll — walk exec() instead.
+    // Called by the pill's click and the popup's explicit On/Off buttons.
+    // Never touches sunsetScheduleFollow -- forcing a state is meant to be
+    // a plain override that sticks until the next explicit force or
+    // schedule boundary, not something that silently unchecks "Follow
+    // schedule" in the menu.
+    function forceSunsetWarm(v) {
+        if (root.sunsetWarm === v) return
+        root._applyWarm(v)
+    }
+
+    // Called by the popup's "Follow schedule" checkbox. Turning follow off
+    // makes no change to the light at all -- sunsetWarm already holds
+    // whatever it currently is, it just stops being written until follow
+    // is re-enabled. Turning it on resyncs immediately to whatever the
+    // schedule currently says (rather than waiting up to 30s for the next
+    // timer tick) and hands the last force's value back to the daemon.
+    function setScheduleFollow(follow) {
+        if (root.sunsetScheduleFollow === follow) return
+        root.sunsetScheduleFollow = follow
+        if (follow) {
+            const isNight = root._computePhaseIsNight()
+            root._lastPhase = isNight
+            root._applyWarm(isNight)
+        }
+    }
+
+    // QV4 (this Qt's JS engine) doesn't have String.matchAll — walk exec() instead.
+    function _computePhaseIsNight() {
         const re = /time\s*=\s*(\d{1,2}):(\d{2})/g
         const matches = []
         let m
@@ -89,9 +126,45 @@ QtObject {
         const nightMin = matches[1] ? (+matches[1][1]) * 60 + (+matches[1][2]) : 23 * 60
         const now = new Date()
         const nowMin = now.getHours() * 60 + now.getMinutes()
-        root.sunsetWarm = nightMin > dayMin
+        return nightMin > dayMin
             ? (nowMin >= nightMin || nowMin < dayMin)
             : (nowMin >= nightMin && nowMin < dayMin)
+    }
+
+    // Night/day phase as of the last check, so a boundary crossing can be
+    // detected (isNight !== _lastPhase) instead of recomputing sunsetWarm
+    // unconditionally on every tick -- an unconditional recompute would
+    // stomp a manual force back to the schedule's value every 30 seconds
+    // even with sunsetScheduleFollow true, which defeats "stays forced
+    // until the next explicit force or boundary crossing".
+    property bool _lastPhase: false
+    property bool _phaseInitialized: false
+
+    function _checkScheduleBoundary() {
+        const isNight = root._computePhaseIsNight()
+        if (!root._phaseInitialized) {
+            root._phaseInitialized = true
+            root._lastPhase = isNight
+            // Seed only -- no push. hyprsunset already applied whichever
+            // profile this is at its own startup (see hyprsunset.conf's
+            // header comment), so pushing here would just be a redundant
+            // gamma call for zero visible change.
+            if (root.sunsetScheduleFollow) root.sunsetWarm = isNight
+            return
+        }
+        if (isNight === root._lastPhase) return
+        root._lastPhase = isNight
+        if (root.sunsetScheduleFollow) root._applyWarm(isNight)
+    }
+
+    // Re-checks every 30s so a schedule boundary crossing is caught without
+    // needing a click.
+    property Timer _sunsetTimer: Timer {
+        interval: 30000
+        running: true
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: root._checkScheduleBoundary()
     }
 
     // Reads the persisted warmth once at startup so the slider opens on the
@@ -101,18 +174,6 @@ QtObject {
     function _loadSunsetKelvin() {
         const m = /temperature\s*=\s*(\d+)/.exec(root._sunsetConf.text())
         if (m) root.sunsetKelvin = +m[1]
-    }
-
-    onSunsetModeChanged: root._recomputeSunsetWarm()
-
-    // Also re-checks every 30s so the icon flips on its own at the
-    // schedule's day/night boundary without needing a click.
-    property Timer _sunsetTimer: Timer {
-        interval: 30000
-        running: true
-        repeat: true
-        triggeredOnStart: true
-        onTriggered: root._recomputeSunsetWarm()
     }
 
     Component.onCompleted: {
@@ -137,11 +198,11 @@ QtObject {
         onTriggered: root._commitKelvin()
     }
 
-    // Called from Bar.qml's onSetTemperature — dragging the slider always
-    // implies "on" (same as turning a real thermostat dial), so this owns
-    // both the mode switch and the debounced persist/apply.
+    // Called from Bar.qml's onSetTemperature. Deliberately leaves
+    // sunsetWarm/sunsetScheduleFollow untouched — presetting tonight's
+    // warmth shouldn't itself force the light on or knock "Follow
+    // schedule" off.
     function setSunsetKelvin(k) {
-        root.sunsetMode = "on"
         root.sunsetKelvin = k
         root._pendingKelvin = k
         root._kelvinCommitTimer.restart()
@@ -153,10 +214,10 @@ QtObject {
         root._pendingKelvin = -1
         root._sunsetConf.setText(root._sunsetConf.text().replace(/temperature\s*=\s*\d+/, "temperature = " + k))
         // Only worth an actual gamma push if it has a visible effect right
-        // now — dialing in tonight's warmth while it's still daytime
-        // shouldn't stutter the cursor for a change nothing on screen
-        // reflects until sunset.
-        if (root.sunsetMode === "on" || (root.sunsetMode === "schedule" && root.sunsetWarm))
+        // now — dialing in tonight's warmth while the filter is currently
+        // off shouldn't stutter the cursor for a change nothing on screen
+        // reflects yet.
+        if (root.sunsetWarm)
             Quickshell.execDetached(["hyprctl", "hyprsunset", "temperature", String(k)])
     }
 }
