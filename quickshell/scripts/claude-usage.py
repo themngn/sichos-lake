@@ -20,9 +20,14 @@ sent, no tokens spent, just a plain usage query:
 Emits one JSON line:
     {"fiveHourPercent": 0-100, "fiveHourResetsAt": epoch,
      "weeklyPercent": 0-100, "weeklyResetsAt": epoch}
-All fields are null if the check couldn't run (offline, expired
-credentials, endpoint down, etc.) — the widget treats null as "unknown"
-and falls back to showing nothing rather than a wrong number.
+On a successful fetch this also overwrites CACHE_FILE, and a failed fetch
+(offline, expired credentials, endpoint down, rate limited, etc.) falls
+back to reading it instead of emitting nulls — mirrors weather.py's own
+cache fallback, for the same reason: this re-runs from scratch on every
+quickshell (re)start with no memory of its own, and the 180s poll interval
+means a transient failure would otherwise blank the pill for a while.
+Only emit all-null if there's truly nothing cached yet (e.g. first run
+ever, never successfully reached the endpoint).
 """
 import json
 import os
@@ -34,6 +39,29 @@ from datetime import datetime, timezone
 
 CREDENTIALS_PATH = os.path.expanduser("~/.claude/.credentials.json")
 USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
+CACHE_FILE = os.path.expanduser("~/.config/quickshell/claude-usage-cache.json")
+EMPTY_RESULT = {"fiveHourPercent": None, "fiveHourResetsAt": None,
+                "weeklyPercent": None, "weeklyResetsAt": None}
+
+
+def load_cache():
+    try:
+        with open(CACHE_FILE, encoding="utf-8") as f:
+            cached = json.load(f)
+        if cached.get("fiveHourPercent") is not None:
+            return cached
+    except (OSError, ValueError, TypeError):
+        pass
+    return None
+
+
+def save_cache(result):
+    try:
+        os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
+        with open(CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(result, f)
+    except OSError:
+        pass
 
 
 def access_token():
@@ -72,19 +100,20 @@ def fetch():
 
 
 def main():
-    result = {"fiveHourPercent": None, "fiveHourResetsAt": None,
-              "weeklyPercent": None, "weeklyResetsAt": None}
     try:
         data = fetch()
         five_hour = data.get("five_hour") or {}
         weekly = data.get("seven_day") or {}
-        result["fiveHourPercent"] = five_hour.get("utilization")
-        result["fiveHourResetsAt"] = to_epoch(five_hour.get("resets_at"))
-        result["weeklyPercent"] = weekly.get("utilization")
-        result["weeklyResetsAt"] = to_epoch(weekly.get("resets_at"))
+        result = {
+            "fiveHourPercent": five_hour.get("utilization"),
+            "fiveHourResetsAt": to_epoch(five_hour.get("resets_at")),
+            "weeklyPercent": weekly.get("utilization"),
+            "weeklyResetsAt": to_epoch(weekly.get("resets_at")),
+        }
+        save_cache(result)
     except (OSError, urllib.error.URLError, urllib.error.HTTPError,
             KeyError, ValueError, TypeError):
-        pass
+        result = load_cache() or dict(EMPTY_RESULT)
     json.dump(result, sys.stdout)
 
 

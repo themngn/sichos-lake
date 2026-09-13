@@ -485,6 +485,30 @@ Pill {
         }
     }
 
+    // claude-usage.py re-runs from scratch on every quickshell (re)start with
+    // no memory of its own, so without this the pill shows "---" for however
+    // long the first fetch (and its 180s poll interval) takes. claude-usage.py
+    // maintains this same file as its own on-disk cache (mirroring exactly
+    // what it last emitted, same pattern as Weather.qml/weather.py), so
+    // reading it here shows the last known percentages on the very first
+    // frame; usageProc below then overwrites it with a fresh poll shortly after.
+    FileView {
+        id: claudeCacheFile
+        path: Quickshell.env("HOME") + "/.config/quickshell/claude-usage-cache.json"
+        printErrors: false
+        onLoaded: {
+            try {
+                const data = JSON.parse(text())
+                if (data.fiveHourPercent !== undefined && data.fiveHourPercent !== null) {
+                    root.claudeFiveHourPercent = data.fiveHourPercent
+                    root.claudeFiveHourResetsAt = data.fiveHourResetsAt
+                    root.claudeWeeklyPercent = data.weeklyPercent
+                    root.claudeWeeklyResetsAt = data.weeklyResetsAt
+                }
+            } catch (e) { /* no cache yet -- stays blank until the process finishes */ }
+        }
+    }
+
     // Process: pgrep for claude
     Process {
         id: pgrepClaude
