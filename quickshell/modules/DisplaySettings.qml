@@ -49,7 +49,7 @@ Pill {
     readonly property bool anyVrrOn: Object.keys(popup.vrrEnabled).some(k => popup.vrrEnabled[k])
 
     BarIcon {
-        glyph: "󰍹"
+        glyph: "󰹑"
         // Ink 544/1000em (fontTools glyf bbox) -- scaled to the shared bar
         // icon target.
         pixelSize: Theme.barIconInkHeight * 1000 / 544

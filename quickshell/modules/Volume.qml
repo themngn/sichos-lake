@@ -44,14 +44,16 @@ Pill {
 
     // Per-icon correction: these Nerd Font glyphs don't share a consistent
     // bounding box within their advance cell. Measured directly from the
-    // font's glyf table (ink height in font units, 1000/em): mute/zero 508,
-    // high 584, medium 714, low 928 — scaled here so all four render at the
-    // same effective visual height instead of Nerd Font's inconsistent one.
+    // font's glyf table (ink height in font units, 1000/em): mute/zero 508
+    // (nf-md-volume_mute), low 431 (nf-fa-volume_down), medium 421
+    // (nf-fa-volume), high 432 (nf-fa-volume_up) — scaled here so all four
+    // render at the same effective visual height instead of Nerd Font's
+    // inconsistent one.
     function iconScale() {
         const ic = root.icon()
-        if (ic === "󰕿") return 0.547
-        if (ic === "󰖀") return 0.712
-        if (ic === "󰕾") return 0.870
+        if (ic === "") return 1.179
+        if (ic === "") return 1.207
+        if (ic === "") return 1.176
         return 1.0
     }
 
@@ -60,9 +62,9 @@ Pill {
         if (sink.audio.muted) return "󰝟"
         const v = sink.audio.volume
         if (v < 0.01) return "󰝟"
-        if (v < 0.34) return "󰕿"
-        if (v < 0.67) return "󰖀"
-        return "󰕾"
+        if (v < 0.34) return ""
+        if (v < 0.67) return ""
+        return ""
     }
 
     Row {
