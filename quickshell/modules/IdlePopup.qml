@@ -127,7 +127,7 @@ PopupWindow {
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
                     Text {
-                        text: "\uf510"
+                        text: "\udb80\udd76"
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontSize + 1
                         color: popup.active ? Theme.accent : Theme.textDim

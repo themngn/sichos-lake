@@ -97,7 +97,7 @@ Pill {
     }
 
     Text {
-        text: "\uf510"
+        text: "\udb80\udd76"
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize * Theme.barIconScale
         color: root.active ? Theme.text : Theme.textMuted
