@@ -28,6 +28,19 @@ ddcutil 2.2.1):
        drm_connector_id: 0
        Monitor:          LEN:P27h-20:V909G51W
 and `ddcutil getvcp 10 --brief -b 4` -> "VCP 10 C 75 100" (current, max).
+
+The laptop panel (eDP-1) still shows up in `detect --brief`'s output --
+this AMD GPU exposes an I2C/DP-AUX bus for it same as any DP connector --
+but it has no real DDC/CI bus behind it, and probing it doesn't just fail
+fast: confirmed live (journalctl's "i2c_check_open_bus_alive" trace) that
+querying VCP 10 on it always eats 2 retries at a full, unscaled 1s sleep
+each (this retry path ignores both --sleep-multiplier and --maxtries --
+tried and timed both, no difference) before giving up as "disconnected" --
+~4.5s, on every single popup open, not just an occasional flaky-monitor
+case. So getvcp is skipped entirely for a connector that looks like the
+laptop panel, using the same eDP/LVDS/DSI prefix DisplaySettings.qml's own
+isLaptopPanel() already keys off of, rather than paying that tax and
+discarding the result anyway.
 """
 import json
 import re
@@ -37,6 +50,7 @@ import sys
 BUS_RE = re.compile(r"I2C bus:\s*/dev/i2c-(\d+)")
 CONNECTOR_RE = re.compile(r"DRM connector:\s*card\d+-(\S+)")
 VCP_RE = re.compile(r"VCP 10 C (\d+) (\d+)")
+LAPTOP_PANEL_RE = re.compile(r"^(eDP|LVDS|DSI)")
 
 
 def list_monitors():
@@ -53,6 +67,9 @@ def list_monitors():
         conn_match = CONNECTOR_RE.search(block)
         if not bus_match or not conn_match:
             continue
+        output = conn_match.group(1)
+        if LAPTOP_PANEL_RE.match(output):
+            continue
         bus = int(bus_match.group(1))
 
         try:
@@ -65,7 +82,7 @@ def list_monitors():
             continue  # DDC communication failed for this display -- skip it
         monitors.append({
             "bus": bus,
-            "output": conn_match.group(1),
+            "output": output,
             "brightness": int(vcp_match.group(1)),
             "max": int(vcp_match.group(2)),
         })

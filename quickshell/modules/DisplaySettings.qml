@@ -133,6 +133,11 @@ Pill {
         property int extraHoverCount: 0
         readonly property bool popupHovered: popupHoverHandler.hovered || popup.extraHoverCount > 0
 
+        // Popup content width -- every fixed-width row below shares this
+        // rather than its own literal 240/300 so resizing the popup is a
+        // one-line change.
+        readonly property real contentWidth: 300
+
         property var ddcMonitors: []
         property var vrrEnabled: ({}) // monitor name -> bool, see file header
 
@@ -314,7 +319,7 @@ Pill {
         Rectangle {
             id: bg
             implicitWidth: column.implicitWidth + 24
-            implicitHeight: column.implicitHeight + 20
+            implicitHeight: column.implicitHeight + 26
             color: "#1c1c1c"
             border.color: Qt.rgba(1, 1, 1, 0.15)
             border.width: 1
@@ -327,11 +332,11 @@ Pill {
             Column {
                 id: column
                 anchors.centerIn: parent
-                spacing: 12
+                spacing: 14
 
                 // Header
                 Item {
-                    width: 240
+                    width: popup.contentWidth
                     height: 20
 
                     Row {
@@ -349,7 +354,7 @@ Pill {
                 }
 
                 Rectangle {
-                    width: 240
+                    width: popup.contentWidth
                     height: 1
                     color: Qt.rgba(1, 1, 1, 0.08)
                 }
@@ -371,12 +376,19 @@ Pill {
                 // the Settings section below -- clicking a box selects it.
                 Item {
                     id: layoutBox
-                    width: 240
-                    height: 90
+                    width: popup.contentWidth
+                    // Scaled to fill the full width (fit is a width-only
+                    // ratio in layout below, not min(width,height) the way
+                    // it used to be) -- height then just follows whatever
+                    // that produces for this layout's real aspect ratio,
+                    // rather than being fixed and letterboxed top/bottom.
+                    height: layoutBox.layout.height
 
-                    readonly property var rects: {
+                    readonly property var rects: layoutBox.layout.rects
+
+                    readonly property var layout: {
                         const mons = Hyprland.monitors.values
-                        if (mons.length === 0) return []
+                        if (mons.length === 0) return { rects: [], height: 90 }
 
                         // width/height come back in transform-0 (unrotated)
                         // pixels regardless of the monitor's actual transform,
@@ -390,8 +402,8 @@ Pill {
                             return {
                                 name: m.name,
                                 isCurrent: m.name === root.screenName,
-                                brand: m.lastIpcObject ? popup.friendlyMake(m.lastIpcObject.make) : "",
-                                model: m.lastIpcObject ? m.lastIpcObject.model : "",
+                                brand: popup.isLaptopPanel(m.name) ? "Built-in Display" : (m.lastIpcObject ? popup.friendlyMake(m.lastIpcObject.make) : ""),
+                                model: popup.isLaptopPanel(m.name) ? "" : (m.lastIpcObject ? m.lastIpcObject.model : ""),
                                 vrrCapable: popup.vrrCapable(m),
                                 hdrCapable: popup.hdrCapability[m.name] === true,
                                 x: m.x,
@@ -405,11 +417,16 @@ Pill {
                         const minY = Math.min(...items.map(i => i.y))
                         const maxX = Math.max(...items.map(i => i.x + i.w))
                         const maxY = Math.max(...items.map(i => i.y + i.h))
-                        const fit = Math.min(
-                            layoutBox.width / Math.max(1, maxX - minX),
-                            layoutBox.height / Math.max(1, maxY - minY))
+                        const spanX = Math.max(1, maxX - minX)
+                        const spanY = Math.max(1, maxY - minY)
+                        // Width-only fit -- always fills layoutBox's full
+                        // width edge-to-edge, height (bound above) then
+                        // just follows to keep the real layout's aspect
+                        // ratio, rather than height-constraining and
+                        // leaving empty space on the sides.
+                        const fit = layoutBox.width / spanX
 
-                        return items.map(i => ({
+                        const rects = items.map(i => ({
                             name: i.name,
                             isCurrent: i.isCurrent,
                             brand: i.brand,
@@ -421,6 +438,7 @@ Pill {
                             rw: Math.max(2, i.w * fit),
                             rh: Math.max(2, i.h * fit)
                         }))
+                        return { rects: rects, height: spanY * fit }
                     }
 
                     Repeater {
@@ -458,7 +476,12 @@ Pill {
                                 anchors.top: parent.top
                                 anchors.left: parent.left
                                 anchors.margins: 4
-                                width: parent.width / 2 - 2
+                                // Full width rather than sharing with the
+                                // model corner when there's no model text
+                                // to share with (the "Built-in Display"
+                                // label set in place of brand for the
+                                // laptop panel, which leaves model blank).
+                                width: (monRect.modelData.model ? parent.width / 2 - 2 : parent.width - 8)
                                 text: monRect.modelData.brand
                                 color: Theme.textMuted
                                 font.family: Theme.fontFamily
@@ -537,7 +560,7 @@ Pill {
                 }
 
                 Rectangle {
-                    width: 240
+                    width: popup.contentWidth
                     height: 1
                     color: Qt.rgba(1, 1, 1, 0.08)
                 }
@@ -550,7 +573,7 @@ Pill {
                 }
 
                 Column {
-                    width: 240
+                    width: popup.contentWidth
                     spacing: 10
 
                     Repeater {
@@ -559,7 +582,7 @@ Pill {
                         delegate: Column {
                             id: row
                             required property var modelData
-                            width: 240
+                            width: popup.contentWidth
                             spacing: 4
 
                             readonly property bool isLaptopPanel: popup.isLaptopPanel(row.modelData.name)
@@ -737,10 +760,17 @@ Pill {
                                 // e.g. "Lenovo Group Limited P27h-20
                                 // V909G51W") -- friendlyMake() cleans the
                                 // make, and the serial isn't worth the space.
-                                text: row.modelData.name + (row.modelData.lastIpcObject
-                                    ? " — " + popup.friendlyMake(row.modelData.lastIpcObject.make)
-                                        + " " + row.modelData.lastIpcObject.model
-                                    : "")
+                                // The laptop panel has no meaningful make/model
+                                // of its own worth surfacing here (EDID reports
+                                // the panel vendor, e.g. "SDC", not "Laptop") --
+                                // "Built-in Display" (macOS/GNOME's own term)
+                                // names what it actually is instead.
+                                text: row.modelData.name + (row.isLaptopPanel
+                                    ? " — Built-in Display"
+                                    : (row.modelData.lastIpcObject
+                                        ? " — " + popup.friendlyMake(row.modelData.lastIpcObject.make)
+                                            + " " + row.modelData.lastIpcObject.model
+                                        : ""))
                                 color: Theme.textMuted
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.fontSize - 2
@@ -755,21 +785,21 @@ Pill {
                             }
 
                             // Side by side, 3:2 -- "2560x1440" needs more
-                            // room than "165Hz" does. (240 - 6 spacing) / 5
-                            // parts = ~47px/part.
+                            // room than "165Hz" does. (300 - 6 spacing) / 5
+                            // parts = ~59px/part.
                             Row {
                                 width: parent.width
                                 spacing: 6
 
                                 ModePicker {
-                                    boxWidth: 140
+                                    boxWidth: 175
                                     current: row.selectedRes
                                     options: row.resolutions
                                     onPicked: (value) => row.pickResolution(value)
                                 }
 
                                 ModePicker {
-                                    boxWidth: 94
+                                    boxWidth: 118
                                     current: Math.round(parseFloat(row.selectedRate)) + "Hz"
                                     options: row.ratesFor(row.selectedRes)
                                         .map(r => Math.round(parseFloat(r)) + "Hz")
