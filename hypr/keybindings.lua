@@ -79,8 +79,189 @@ hl.bind(mainMod .. " + L", hl.dsp.exec_cmd("hyprlock"))
 hl.bind(mainMod .. " + Q", hl.dsp.exec_cmd("quickshell ipc call launcher toggleApps")) -- quickshell launcher: apps only
 hl.bind(mainMod .. " + SHIFT + Q", hl.dsp.exec_cmd("quickshell ipc call launcher toggleFull")) -- quickshell launcher: full root menu (Apps/Toggles/Power)
 hl.bind(mainMod .. " + SHIFT + H", hl.dsp.exec_cmd("quickshell ipc call hdr toggle")) -- toggle HDR (only on monitors picked in the bar's HDR popup, see HdrSettings.qml)
-hl.bind(mainMod .. " + P", hl.dsp.window.pseudo())
+hl.bind(mainMod .. " + SHIFT + P", hl.dsp.window.pseudo()) -- moved off SUPER+P to free it for the mirror/extend toggle below
 hl.bind(mainMod .. " + J", hl.dsp.layout("togglesplit"))    -- dwindle only
+
+-- SUPER + P: mirror/extend toggle for every currently-connected monitor
+-- other than the internal panel (or, on a desktop with no panel, other than
+-- the first monitor Hyprland reports) -- the same "quickly project to a
+-- screen" action Windows binds to Win+P. The physical Fn+F7 key sends the
+-- XF86DisplayToggle keysym for that exact same Windows feature (see the git
+-- history for this file's own investigation of that key), but isn't bound
+-- here too: it fires a real SUPER keydown as part of its own hardware chord
+-- (confirmed live via `libinput debug-events`), so wiring both triggers to
+-- one dispatcher risked them racing each other -- SUPER+P alone is enough.
+--
+-- Snapshotted once at config load, after monitors.lua (required before this
+-- file, see hyprland.lua) has already applied this machine's real layout --
+-- restoring from this rather than Hyprland's generic "auto" placement keeps
+-- "extend" landing back on the deliberate per-machine layout monitors.lua
+-- configured (e.g. this machine's L-shaped 3-monitor arrangement) instead of
+-- whatever auto-placement would produce. A monitor hotplugged later (an
+-- actual projector plugged in after startup, the real-world case this bind
+-- is for) has no snapshot entry, so it falls back to "preferred"/"auto".
+--
+-- Originally read live `is_mirror` off each monitor instead of tracking this
+-- itself, on the theory that would keep this bind from ever getting out of
+-- sync with an external hotplug or a manual `hyprctl` change -- confirmed
+-- live that `is_mirror` never actually flips true after this bind's own
+-- `hl.monitor({ mirror = ... })` call, so that check always read "not
+-- currently mirroring" and every press just re-applied mirror (never
+-- toggled back to extend). A plain Lua local for the on/off state has its
+-- own problem, also confirmed live and already hit once here: `hyprctl
+-- reload` -- which is what every file-save-triggered reload in this whole
+-- repo is -- calls Hyprland's reinitLuaState(), which lua_close()s and
+-- recreates the *entire* Lua VM (see workspaces.lua's own comment on this
+-- same fact), wiping any plain local back to whatever this file
+-- initializes it to. That's what actually caused DP-2 to get stuck
+-- mirrored looking "missing" earlier -- not the toggle logic itself, but
+-- state that only lived in memory disagreeing with what monitors.lua had
+-- just forced onto the real displays. Persisting to disk like
+-- workspaces.lua's own STATE_FILE, and force-applying whatever it says
+-- every time this file runs (not just on a keypress), keeps the two from
+-- ever disagreeing again.
+local STATE_DIR  = (os.getenv("XDG_STATE_HOME") or (os.getenv("HOME") .. "/.local/state")) .. "/sichos"
+local STATE_FILE = STATE_DIR .. "/hypr-displaymode.lua"
+
+local function loadMirrorActive()
+    local chunk = loadfile(STATE_FILE)
+    local ok, result = false, nil
+    if chunk then ok, result = pcall(chunk) end
+    if ok and type(result) == "boolean" then return result end
+    return false
+end
+
+local function saveMirrorActive(active)
+    local escapedDir = STATE_DIR:gsub("'", "'\\''")
+    os.execute("mkdir -p -- '" .. escapedDir .. "'")
+    local f = io.open(STATE_FILE, "w")
+    if not f then return end
+    f:write("return " .. tostring(active) .. "\n")
+    f:close()
+end
+
+-- Reads each output's configured mode/position straight out of
+-- monitors.lua's own text (same technique workspaces.lua's
+-- detectPrimaryOutput() uses, for the same reason) instead of snapshotting
+-- live values off hl.get_monitors() -- confirmed live that a monitor mid
+-- mode-negotiation right after monitors.lua's own hl.monitor() calls can
+-- report width/height/refresh_rate as 0, which this file would otherwise
+-- have happily stored and then force-applied back as a literal "0x0@0.00"
+-- mode, wedging that output at zero resolution. Parsing the text has no
+-- such race and is exactly what the user actually configured, not whatever
+-- Hyprland happened to have resolved at the moment this ran.
+local function parseMonitorsConfig()
+    local layout = {}
+    local home = os.getenv("HOME")
+    local path = home and (home .. "/.config/hypr/monitors.lua")
+    local f = path and io.open(path, "r")
+    if not f then return layout end
+    local current = nil
+    for line in f:lines() do
+        local output = line:match('output%s*=%s*"([^"]*)"')
+        if output then current = (output ~= "") and output or nil end
+        if current then
+            local mode = line:match('mode%s*=%s*"([^"]*)"')
+            if mode then
+                layout[current] = layout[current] or {}
+                layout[current].mode = mode
+            end
+            local position = line:match('position%s*=%s*"([^"]*)"')
+            if position then
+                layout[current] = layout[current] or {}
+                layout[current].position = position
+            end
+        end
+    end
+    f:close()
+    return layout
+end
+
+local extendLayout = parseMonitorsConfig()
+
+-- hl.get_monitors() hides a monitor entirely once it's mirroring another --
+-- confirmed live: with DP-1/DP-2 both set to `mirror = "eDP-1"`,
+-- hl.get_monitors() returned only eDP-1, the same way `hyprctl monitors`
+-- (without "all") hides a mirrored monitor on the CLI side. Two attempts to
+-- work around that live-query problem (a growing "known monitors" set, then
+-- a version that re-merged on every call) both still ultimately depended on
+-- hl.get_monitors() at some point and both still broke: debug logging
+-- (temporarily added directly into this function, since `hyprctl eval`
+-- turned out to run in its own separate Lua context and couldn't be trusted
+-- to reflect what the real running config actually saw) proved live that a
+-- single `hyprctl reload` runs this *entire file* through twice, with
+-- monitors.lua also re-running each time (both required in hyprland.lua's
+-- fixed order) -- pass 1 saw all three monitors and correctly mirrored
+-- DP-1/DP-2, but pass 2 landed mid-transition and hl.get_monitors() reported
+-- only eDP-1 at that exact instant, so pass 2's own mirror application did
+-- nothing while pass 2's monitors.lua had *already* forced plain extend --
+-- leaving that as the final result regardless of what pass 1 did or what
+-- state was saved.
+--
+-- Fix: stop asking Hyprland's live monitor state entirely for "which
+-- outputs exist" -- extendLayout (parsed from monitors.lua's own text
+-- above) is already the authoritative, deterministic list of this machine's
+-- configured external outputs, unaffected by mirror-hiding or by which pass
+-- of a double reload this happens to be. The only other thing needed is the
+-- internal panel's name, which INTERNAL_PANEL already determined once via
+-- connector-prefix matching (eDP/LVDS/DSI never get mirrored themselves, so
+-- it isn't subject to this same hiding problem). A desktop with no
+-- INTERNAL_PANEL and no monitors.lua entries just makes this bind a no-op --
+-- "mirror to the laptop panel" doesn't have a meaningful desktop equivalent
+-- anyway.
+local function otherOutputNames()
+    local names = {}
+    for name in pairs(extendLayout) do
+        if name ~= INTERNAL_PANEL then table.insert(names, name) end
+    end
+    return names
+end
+
+-- Applies (rather than merely records) the given mode to every configured
+-- external output -- shared by the keybind below and the force-apply-on-load
+-- call right after it, so a saved "mirror" state gets put back onto the
+-- actual displays the moment this file runs again, rather than trusting
+-- monitors.lua's unconditional extend (already applied by the time this
+-- file loads, see hyprland.lua's require order) to have been what the user
+-- last chose.
+local function applyDisplayMode(active)
+    if not INTERNAL_PANEL then return end
+    for _, name in ipairs(otherOutputNames()) do
+        if active then
+            hl.monitor({ output = name, mirror = INTERNAL_PANEL })
+        else
+            -- `mirror` is sticky -- confirmed live that a later hl.monitor()
+            -- call for the same output with no `mirror` field at all does
+            -- NOT clear a previously-set one, it just stays mirrored
+            -- forever. "none" is the explicit clear (also confirmed live).
+            local saved = extendLayout[name]
+            hl.monitor({
+                output = name,
+                mirror = "none",
+                mode = saved.mode,
+                position = saved.position,
+            })
+        end
+    end
+end
+
+local mirrorActive = loadMirrorActive()
+applyDisplayMode(mirrorActive)
+
+hl.bind(mainMod .. " + P", function()
+    if not INTERNAL_PANEL then return end
+    if #otherOutputNames() == 0 then return end -- nothing to mirror/extend (undocked)
+
+    mirrorActive = not mirrorActive
+    saveMirrorActive(mirrorActive)
+    applyDisplayMode(mirrorActive)
+
+    -- Windows-11-style transient OSD (DisplayModeOSD.qml), same as the
+    -- volume/backlight ones -- there's no PipeWire property or sysfs file to
+    -- watch reactively for this, so it's poked directly over IPC instead.
+    hl.exec_cmd("quickshell ipc call displaymode pop " .. (mirrorActive and "mirror" or "extend"))
+end)
+
 -- locked so it also works from the hyprlock screen (same reasoning as the
 -- playerctl bind above) -- hyprlock has no layout-switch bind of its own,
 -- but it does listen for the compositor's XKB group-change event and

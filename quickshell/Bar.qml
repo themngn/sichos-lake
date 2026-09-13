@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Hyprland
+import Quickshell.Services.Pipewire
 import "./modules"
 
 PanelWindow {
@@ -76,6 +77,12 @@ PanelWindow {
         enabled: ShellState.idleActive
     }
 
+    // Keeps defaultAudioSource's audio.muted property actually live-bound —
+    // same reasoning as Volume.qml's own PwObjectTracker on defaultAudioSink.
+    PwObjectTracker {
+        objects: Pipewire.defaultAudioSource ? [Pipewire.defaultAudioSource] : []
+    }
+
     // One Component per right-section widget, picked by id at runtime so
     // BarSettings' order/enabled state (edited from the launcher's
     // Settings > Bar Widgets folder) can reshuffle and show/hide them
@@ -140,8 +147,8 @@ PanelWindow {
     }
 
     // Center section — the clock owns true screen-center; the sunset/idle/
-    // transparency toggles are secondary and sit to its left rather than
-    // sharing the center point.
+    // transparency/mic-mute toggles are secondary and sit to its left rather
+    // than sharing the center point.
     ClockWidget {
         id: clock
         screenName: bar.screen.name
@@ -187,7 +194,7 @@ PanelWindow {
     // MouseArea (real, geometry-accurate, unlike the fixed bootstrap zone
     // above) keeps the whole row revealed -- see toggleHoverZone's comment.
     readonly property bool anyToggleHovered: sunsetToggle.hovered || hdrToggle.hovered
-        || idleToggle.hovered || transparencyToggle.hovered
+        || idleToggle.hovered || transparencyToggle.hovered || micMuteToggle.hovered
     readonly property bool toggleRowRevealed: toggleRowHover.hovered || bar.toggleRowPopupOpen || bar.anyToggleHovered
 
     Row {
@@ -277,6 +284,11 @@ PanelWindow {
                 Quickshell.execDetached(["python3", Quickshell.env("HOME") + "/.config/quickshell/scripts/toggle-transparency.py",
                     ShellState.transparencyOpaque ? "opaque" : "semi"])
             }
+        }
+        MicMuteToggle {
+            id: micMuteToggle
+            revealed: bar.toggleRowRevealed
+            source: Pipewire.defaultAudioSource
         }
     }
     Row {

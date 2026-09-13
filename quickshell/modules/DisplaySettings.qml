@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Window
 import Quickshell
 import Quickshell.Io
-import Quickshell.Hyprland
 
 // Display Settings indicator and popup: a top-down layout diagram of every
 // connected monitor (doubles as a picker -- click a box to select it, current
@@ -141,6 +140,34 @@ Pill {
         property var ddcMonitors: []
         property var vrrEnabled: ({}) // monitor name -> bool, see file header
 
+        // Ground truth for every monitor field this popup reads (layout
+        // diagram, brand/model, resolution list, refresh rate) -- queried
+        // fresh via `hyprctl monitors all -j` on every open rather than
+        // trusting Quickshell's own Hyprland.monitors.values cache, which
+        // gets stale/duplicated after repeated hl.monitor({mirror=...})
+        // toggling (confirmed live: the layout diagram broke after enough
+        // mirror/extend cycles from the SUPER+P bind in keybindings.lua,
+        // even though `hyprctl monitors` itself reported the real state
+        // correctly the whole time -- restarting quickshell fixed it
+        // temporarily by rebuilding that cache from scratch, but it broke
+        // again after more toggling, confirming the cache itself is what
+        // drifts, not a one-off glitch). "all" (not just the default
+        // listing) so a currently-mirrored monitor still shows up here
+        // instead of vanishing from the diagram entirely.
+        property var freshMonitors: []
+
+        Process {
+            id: monitorsProc
+            command: ["hyprctl", "monitors", "all", "-j"]
+            stdout: StdioCollector {
+                onStreamFinished: {
+                    try {
+                        popup.freshMonitors = JSON.parse(text)
+                    } catch (e) { /* leave the previous (or empty) list in place */ }
+                }
+            }
+        }
+
         // Which monitor the Settings section below the layout diagram is
         // showing -- defaults to (and resets to, on every reopen, same as
         // the DDC re-read below) this bar's own screen, since that's the
@@ -149,7 +176,7 @@ Pill {
         property string selectedMonitor: root.screenName
 
         function monitorFor(name) {
-            for (const m of Hyprland.monitors.values) if (m.name === name) return m
+            for (const m of popup.freshMonitors) if (m.name === name) return m
             return null
         }
 
@@ -223,7 +250,7 @@ Pill {
         // HdrSettings/HdrPopup's own capability check, which only hints via
         // opacity and still lets an already-selected monitor be unchecked.
         function vrrCapable(m) {
-            const modes = (m.lastIpcObject && m.lastIpcObject.availableModes) || []
+            const modes = (m && m.availableModes) || []
             const prefix = m.width + "x" + m.height + "@"
             return modes.filter(s => s.startsWith(prefix)).length > 1
         }
@@ -249,6 +276,7 @@ Pill {
         onVisibleChanged: if (visible) {
             ddcListProc.running = true
             hdrCapableProc.running = true
+            monitorsProc.running = true
             popup.selectedMonitor = root.screenName
         }
 
@@ -387,7 +415,7 @@ Pill {
                     readonly property var rects: layoutBox.layout.rects
 
                     readonly property var layout: {
-                        const mons = Hyprland.monitors.values
+                        const mons = popup.freshMonitors
                         if (mons.length === 0) return { rects: [], height: 90 }
 
                         // width/height come back in transform-0 (unrotated)
@@ -402,8 +430,8 @@ Pill {
                             return {
                                 name: m.name,
                                 isCurrent: m.name === root.screenName,
-                                brand: popup.isLaptopPanel(m.name) ? "Built-in Display" : (m.lastIpcObject ? popup.friendlyMake(m.lastIpcObject.make) : ""),
-                                model: popup.isLaptopPanel(m.name) ? "" : (m.lastIpcObject ? m.lastIpcObject.model : ""),
+                                brand: popup.isLaptopPanel(m.name) ? "Built-in Display" : popup.friendlyMake(m.make),
+                                model: popup.isLaptopPanel(m.name) ? "" : m.model,
                                 vrrCapable: popup.vrrCapable(m),
                                 hdrCapable: popup.hdrCapability[m.name] === true,
                                 x: m.x,
@@ -606,8 +634,7 @@ Pill {
 
                             // "WxH@RRRHz" strings straight from hyprctl monitors
                             // -j's own availableModes.
-                            readonly property var modes: (row.modelData.lastIpcObject
-                                && row.modelData.lastIpcObject.availableModes) || []
+                            readonly property var modes: row.modelData.availableModes || []
 
                             // Common-name label for a WxH ratio (e.g. 16:9,
                             // 16:10, 4:3) rather than a raw GCD-reduced
@@ -681,7 +708,7 @@ Pill {
                             // availableModes) -- pickResolution/pickRate below
                             // take over from here once the user touches either.
                             property string selectedRate: {
-                                const cur = row.modelData.lastIpcObject ? row.modelData.lastIpcObject.refreshRate : 0
+                                const cur = row.modelData.refreshRate || 0
                                 const opts = row.ratesFor(row.selectedRes)
                                 let best = opts[0] || ""
                                 let bestDiff = Infinity
@@ -767,10 +794,7 @@ Pill {
                                 // names what it actually is instead.
                                 text: row.modelData.name + (row.isLaptopPanel
                                     ? " — Built-in Display"
-                                    : (row.modelData.lastIpcObject
-                                        ? " — " + popup.friendlyMake(row.modelData.lastIpcObject.make)
-                                            + " " + row.modelData.lastIpcObject.model
-                                        : ""))
+                                    : " — " + popup.friendlyMake(row.modelData.make) + " " + row.modelData.model)
                                 color: Theme.textMuted
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.fontSize - 2

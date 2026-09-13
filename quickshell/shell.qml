@@ -19,5 +19,6 @@ ShellRoot {
     VolumeOSD {}
     BacklightOSD {}
     KbdBacklightOSD {}
+    DisplayModeOSD {}
     Notifications {}
 }
