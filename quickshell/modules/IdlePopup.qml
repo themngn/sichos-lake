@@ -51,7 +51,7 @@ PopupWindow {
 
     function loadSettings() {
         const text = confFile.text()
-        const dimMatch = /listener\s*\{\s*timeout\s*=\s*(\d+)\s*\n\s*on-timeout\s*=\s*brightnessctl/.exec(text)
+        const dimMatch = /listener\s*\{\s*timeout\s*=\s*(\d+)\s*\n\s*on-timeout\s*=\s*quickshell ipc call idledim/.exec(text)
         const lockMatch = /listener\s*\{\s*timeout\s*=\s*(\d+)\s*\n\s*on-timeout\s*=\s*pidof hyprlock/.exec(text)
         const offMatch = /listener\s*\{\s*timeout\s*=\s*(\d+)\s*\n\s*on-timeout\s*=\s*hyprctl eval[^\n]*dpms/.exec(text)
 
@@ -79,8 +79,12 @@ PopupWindow {
             const lockSec = popup.lockHours * 3600 + popup.lockMinutes * 60
             if (!popup.dimNever) {
                 const dimSec = Math.max(0, lockSec - popup.dimSeconds)
+                // Software dim (IdleDimOverlay.qml), not brightnessctl -- a
+                // backlight write only ever dims the laptop panel, leaving
+                // external/DDC-less monitors undimmed. See
+                // IdleDimOverlay.qml's header for the full rationale.
                 listeners += "listener {\n    timeout = " + dimSec
-                    + "\n    on-timeout = brightnessctl -s set 10%\n    on-resume = brightnessctl -r\n}\n\n"
+                    + "\n    on-timeout = quickshell ipc call idledim dim\n    on-resume = quickshell ipc call idledim undim\n}\n\n"
             }
             listeners += "listener {\n    timeout = " + lockSec
                 + "\n    on-timeout = pidof hyprlock || hyprlock\n}\n\n"

@@ -228,7 +228,14 @@ local function applyDisplayMode(active)
     if not INTERNAL_PANEL then return end
     for _, name in ipairs(otherOutputNames()) do
         if active then
-            hl.monitor({ output = name, mirror = INTERNAL_PANEL })
+            -- `disabled = false` is explicit, not just the implicit default,
+            -- for the same reason `mirror = "none"` below is explicit rather
+            -- than omitted -- retrainIfWedged() below disables an output
+            -- before calling back into this function to recover it, and if
+            -- `disabled` turns out to be as sticky as `mirror` already is
+            -- (unconfirmed either way, but cheap to guard against), leaving
+            -- this field out would strand that output permanently off.
+            hl.monitor({ output = name, mirror = INTERNAL_PANEL, disabled = false })
         else
             -- `mirror` is sticky -- confirmed live that a later hl.monitor()
             -- call for the same output with no `mirror` field at all does
@@ -240,6 +247,7 @@ local function applyDisplayMode(active)
                 mirror = "none",
                 mode = saved.mode,
                 position = saved.position,
+                disabled = false,
             })
         end
     end
@@ -247,6 +255,58 @@ end
 
 local mirrorActive = loadMirrorActive()
 applyDisplayMode(mirrorActive)
+
+-- LTTPR link-training recovery: a monitor flapping (disconnect/reconnect)
+-- through a dock or long/active DP cable -- see workspaces.lua's own
+-- "monitor.added" comment for the amdgpu quirk behind this ("LTTPR count is
+-- nonzero but invalid lane count reported" in dmesg) -- can renegotiate down
+-- to a 0x0 or tiny fallback mode instead of what monitors.lua/applyDisplayMode
+-- actually configured, and just stay there. Confirmed live (2026-09-14): a
+-- plain hl.monitor() re-apply of the correct mode -- all a bare `hyprctl
+-- reload` does, and all applyDisplayMode() itself does -- left DP-1/DP-2
+-- wedged at 0x0 even across several reloads, but disabling the output and
+-- re-enabling it with the same mode forced fresh DP link training and
+-- recovered both to their real resolution. This automates that fix instead
+-- of needing a manual hyprctl/Lua intervention (or a full reboot, which
+-- doesn't even reliably clear it, hence the original bug report) every time
+-- the dock flaps.
+--
+-- Skipped entirely while mirroring: hl.get_monitors() hides a mirrored
+-- output from its results (see the big comment on otherOutputNames() above),
+-- so a 0x0-looking read while mirrorActive is true can't be told apart from
+-- "just mirroring" -- there's nothing reliable to check.
+--
+-- RETRAIN_SETTLE_MS gives Hyprland's own negotiation a moment to finish
+-- unaided before checking -- hl.get_monitors() can transiently report 0x0
+-- right after a reconnect even when it's about to land correctly on its own
+-- (see parseMonitorsConfig's own comment on that same race above), so
+-- checking immediately would misfire the retrain on every ordinary
+-- reconnect, not just a genuinely wedged one.
+local RETRAIN_SETTLE_MS = 1500
+
+local function retrainIfWedged(name)
+    if mirrorActive then return end
+    hl.timer(function()
+        local m = hl.get_monitor(name)
+        local wedged = not m or not m.width or m.width == 0 or not m.height or m.height == 0
+        if not wedged then return end -- negotiated fine on its own
+
+        hl.monitor({ output = name, disabled = true })
+        applyDisplayMode(mirrorActive)
+    end, { timeout = RETRAIN_SETTLE_MS, type = "oneshot" })
+end
+
+-- Covers a dock/monitor already connected at config load (the boot-time
+-- case the original bug report hit) in addition to the monitor.added hook
+-- below (any later flap, e.g. a dock power-cycle mid-session).
+for _, name in ipairs(otherOutputNames()) do
+    retrainIfWedged(name)
+end
+
+hl.on("monitor.added", function(mon)
+    if not extendLayout[mon.name] or mon.name == INTERNAL_PANEL then return end
+    retrainIfWedged(mon.name)
+end)
 
 hl.bind(mainMod .. " + P", function()
     if not INTERNAL_PANEL then return end

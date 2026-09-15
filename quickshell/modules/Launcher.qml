@@ -975,7 +975,7 @@ PanelWindow {
     Rectangle {
         id: box
         width: 600
-        height: 525
+        height: 788 // 1.5x the original 525
         anchors.centerIn: parent
         color: Theme.background
         border.color: Theme.accent

@@ -91,11 +91,17 @@ Pill {
     // BarIcon.qml elsewhere in this bar). `color` is each tool's own brand
     // color rather than Theme.text, since the whole point is to tell these
     // apart from each other (and from a plain shell) at a glance.
+    // "shell" (Devicons nf-dev-terminal, U+E795, ink ratio ~0.515 via
+    // fontTools) replaces the raster kitty-icon-theme lookup for a
+    // confirmed-idle kitty window (kitty-cli-icons.py's "" key), so a
+    // plain shell gets a crisp glyph instead of whatever fuzzy
+    // 12px-scaled kitty cat icon the system theme provides.
     readonly property var cliIcons: ({
         "claude": { glyph: "", size: 18, color: "#D97757" },
         "agy": { glyph: "", size: 17, color: "#4285F4" },
         "chatgpt": { glyph: "", size: 18, color: "#10A37F" },
         "nvim": { glyph: "", size: 15, color: "#57A143" },
+        "shell": { glyph: "", size: 21, color: Theme.accent },
     })
 
     // kitty pid (string) -> icon key, refreshed periodically by polling each
@@ -110,7 +116,12 @@ Pill {
         const pid = t.lastIpcObject ? t.lastIpcObject.pid : null
         if (!pid) return null
         const key = root.kittyCliMap[String(pid)]
-        return key ? (root.cliIcons[key] || null) : null
+        // undefined means the pid hasn't been polled successfully yet
+        // (brand-new window, or the last query failed) -- fall through to
+        // the raster Image for that tick rather than guessing. "" means a
+        // confirmed-idle plain shell, which gets the "shell" glyph.
+        if (key === undefined) return null
+        return root.cliIcons[key || "shell"] || null
     }
 
     Process {

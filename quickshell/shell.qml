@@ -15,6 +15,12 @@ ShellRoot {
         NowPlaying {}
     }
 
+    Variants {
+        model: Quickshell.screens
+
+        IdleDimOverlay {}
+    }
+
     Launcher {}
     VolumeOSD {}
     BacklightOSD {}

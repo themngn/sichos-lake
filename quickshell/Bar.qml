@@ -147,8 +147,8 @@ PanelWindow {
     }
 
     // Center section — the clock owns true screen-center; the sunset/idle/
-    // transparency/mic-mute toggles are secondary and sit to its left rather
-    // than sharing the center point.
+    // transparency/mic-mute/notification-mute toggles are secondary and sit
+    // to its left rather than sharing the center point.
     ClockWidget {
         id: clock
         screenName: bar.screen.name
@@ -195,6 +195,7 @@ PanelWindow {
     // above) keeps the whole row revealed -- see toggleHoverZone's comment.
     readonly property bool anyToggleHovered: sunsetToggle.hovered || hdrToggle.hovered
         || idleToggle.hovered || transparencyToggle.hovered || micMuteToggle.hovered
+        || notificationMuteToggle.hovered
     readonly property bool toggleRowRevealed: toggleRowHover.hovered || bar.toggleRowPopupOpen || bar.anyToggleHovered
 
     Row {
@@ -289,6 +290,12 @@ PanelWindow {
             id: micMuteToggle
             revealed: bar.toggleRowRevealed
             source: Pipewire.defaultAudioSource
+        }
+        NotificationMuteToggle {
+            id: notificationMuteToggle
+            revealed: bar.toggleRowRevealed
+            muted: ShellState.notificationsMuted
+            onToggle: ShellState.notificationsMuted = !ShellState.notificationsMuted
         }
     }
     Row {

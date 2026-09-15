@@ -21,6 +21,28 @@ QtObject {
 
     property bool idleActive: false
 
+    // Do-not-disturb: suppresses new toast popups (Notifications.qml) while
+    // on. Doesn't touch NotificationHistory -- everything still lands in
+    // the bell icon's drawer, it's only the on-screen popup that's
+    // skipped, same "nothing lost, just not interrupting you" semantics as
+    // GNOME/Windows DND. Doesn't persist across a quickshell restart, same
+    // as idleActive/sunsetWarm above.
+    property bool notificationsMuted: false
+
+    // Idle-dim state, driven purely over IPC (`quickshell ipc call idledim
+    // dim`/`undim`) from hypridle.conf's on-timeout/on-resume — see
+    // IdleDimOverlay.qml for why this replaced a brightnessctl backlight
+    // dim. Lives here rather than on the overlay itself since one overlay
+    // instance exists per screen (shell.qml's Variants) and they all need
+    // to fade in/out in lockstep, same reasoning as NowPlayingState.
+    property bool idleDimActive: false
+
+    property IpcHandler _idleDimIpc: IpcHandler {
+        target: "idledim"
+        function dim() { root.idleDimActive = true }
+        function undim() { root.idleDimActive = false }
+    }
+
     // Screen (Quickshell ScreenInfo.name) where the notification center
     // panel is currently open, or "" if closed. Bar.qml instantiates one
     // NotificationCenter (and its own PanelWindow) per screen, same as

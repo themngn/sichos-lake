@@ -183,7 +183,19 @@ PanelWindow {
                 // onNotification above keeps notifications open for up to
                 // 10 minutes, long enough that hitting a reload while one
                 // is still pending is routine, not a corner case).
+                //
+                // Also starts hidden if do-not-disturb (ShellState.
+                // notificationsMuted, the bar's Notification Mute toggle)
+                // was on at the moment this toast was created. Deliberately
+                // a one-time snapshot via Component.onCompleted below, not
+                // a live binding on notificationsMuted -- a live binding
+                // would un-hide (pop in) every notification that arrived
+                // while muted the instant the toggle is switched back off,
+                // which is a much louder surprise than the toggle is meant
+                // to produce. History (NotificationHistory.add above) is
+                // unaffected either way -- muting only ever skips the toast.
                 property bool hidden: notification.lastGeneration
+                Component.onCompleted: if (ShellState.notificationsMuted) toast.hidden = true
 
                 width: column.width
                 height: content.height + 20
