@@ -33,6 +33,32 @@ PanelWindow {
     // implicitHeight changing on an already-visible surface does.
     visible: true
 
+    // Per-run expand/collapse state for grouped (same app+summary,
+    // consecutive) toast stacks -- see the toast delegate's `groupKey`/
+    // `groupExpanded` below. Keyed by "<appName>|<summary>" rather than a
+    // notification id since expanding is a property of the whole run, which
+    // outlives any single id in it as older entries get dismissed. Replacing
+    // the object (rather than mutating in place) is required for the
+    // property binding on `groupExpanded` to actually re-evaluate.
+    property var expandedGroups: ({})
+    function toggleGroupExpanded(key) {
+        const next = Object.assign({}, expandedGroups)
+        next[key] = !next[key]
+        expandedGroups = next
+    }
+
+    // Real arrival time per notification id, for the toast's own time row
+    // (see content's time Text below). Notification itself carries no
+    // timestamp -- captured here, in onNotification, rather than in the
+    // toast delegate's own Component.onCompleted, so a hot-reload's
+    // lastGeneration re-announcement (a new delegate, same id) keeps
+    // showing the real original arrival time instead of resetting to
+    // whatever moment the reload happened to land on. Never explicitly
+    // pruned -- grows by one small int->number entry per notification for
+    // the life of the session, negligible even over weeks of uptime, so
+    // not worth the complexity of clearing entries out as toasts close.
+    property var notificationTimes: ({})
+
     NotificationServer {
         id: server
         bodySupported: true
@@ -42,6 +68,13 @@ PanelWindow {
         actionsSupported: true
         onNotification: notification => {
             notification.tracked = true
+
+            // Real arrival time -- see root.notificationTimes' own comment
+            // for why this is captured here rather than per-delegate, and
+            // why lastGeneration is excluded (an existing id must keep its
+            // original timestamp, not get overwritten on every reload).
+            if (!notification.lastGeneration)
+                root.notificationTimes[notification.id] = Date.now()
 
             // lastGeneration notifications are the same still-open
             // notification being re-announced after a hot-reload
@@ -157,10 +190,66 @@ PanelWindow {
             delegate: Rectangle {
                 id: toast
                 required property var modelData
+                required property int index
                 readonly property var notification: modelData
                 readonly property bool critical: notification.urgency === NotificationUrgency.Critical
                 readonly property real timeout: notification.expireTimeout > 0
                     ? notification.expireTimeout : root.defaultTimeout(notification)
+                // trackedNotifications keeps arrival order (append-only,
+                // Quickshell's ObjectModel), so two entries adjacent in
+                // `.values` with the same app+summary really did arrive
+                // back-to-back -- e.g. Telegram announcing several messages
+                // from the same chat in quick succession, each its own
+                // D-Bus notification titled "<contact> -> <chat>". `.values`
+                // is a real notifying property (valuesChanged), so these
+                // recompute live as notifications arrive/close, same as
+                // NotificationHistory.qml folds the equivalent run into one
+                // history row -- here every popup in the run still exists
+                // (each needs its own grace timer/close handling above) but
+                // only the newest (the "leader") renders by default; the
+                // rest fold into it as a count with a ▾/▸ dropdown toggle
+                // (groupExpanded below), same expand affordance as
+                // NotificationCenter.qml's folded history rows, instead of
+                // stacking N near-identical toasts.
+                readonly property bool superseded: {
+                    const next = server.trackedNotifications.values[toast.index + 1]
+                    return !!next && next.appName === notification.appName && next.summary === notification.summary
+                }
+                readonly property int runCount: {
+                    const vals = server.trackedNotifications.values
+                    let n = 1
+                    let i = toast.index - 1
+                    while (i >= 0 && vals[i].appName === notification.appName && vals[i].summary === notification.summary) {
+                        n++
+                        i--
+                    }
+                    return n
+                }
+                // "<appName>|<summary>" identifies this toast's run for
+                // root.expandedGroups -- see its own comment for why a
+                // string key outlives individual notification ids.
+                readonly property string groupKey: notification.appName + "|" + notification.summary
+                readonly property bool groupExpanded: root.expandedGroups[toast.groupKey] === true
+                readonly property double time: root.notificationTimes[notification.id] || Date.now()
+                // Collects every notification in the run this toast
+                // represents (itself back through earlier same-app/summary
+                // arrivals) so the leader's ✕ can close the whole merged
+                // group in one action while collapsed -- without this,
+                // closing just the newest would un-fold the previous
+                // message back onto screen the instant it was removed from
+                // trackedNotifications. Once expanded, each toast in the run
+                // is individually visible and gets its own ✕ instead (see
+                // closeButton below), so this only ever fires collapsed.
+                function dismissRun() {
+                    const vals = server.trackedNotifications.values
+                    const group = []
+                    let i = toast.index
+                    while (i >= 0 && vals[i].appName === notification.appName && vals[i].summary === notification.summary) {
+                        group.push(vals[i])
+                        i--
+                    }
+                    group.forEach(n => n.dismiss())
+                }
                 // The spec's "default" action (activated by clicking the
                 // notification itself, e.g. Claude Code's "bring the
                 // terminal to front") is meant to never appear as its own
@@ -199,10 +288,15 @@ PanelWindow {
 
                 width: column.width
                 height: content.height + 20
-                visible: !toast.hidden
+                // A superseded (non-leader) toast still renders once its
+                // run is expanded -- Column skips invisible children
+                // entirely when positioning (confirmed live), so this is
+                // enough on its own to make the run "drop down" in place
+                // as a list, oldest first, no separate expanded view needed.
+                visible: !toast.hidden && (!toast.superseded || toast.groupExpanded)
                 color: Theme.background
                 border.color: critical ? Theme.critical : Theme.accent
-                border.width: 2
+                border.width: 3
 
                 // Only ever hides the toast popup -- does not touch the
                 // underlying notification (no expire()/dismiss()/tracked
@@ -225,10 +319,109 @@ PanelWindow {
                     hoverEnabled: true
                     onEntered: hideTimer.stop()
                     onExited: { if (toast.timeout > 0) hideTimer.restart() }
+                    // Dismissing here too (as this used to) made an
+                    // accidental click on a notification you meant to read
+                    // or act on lose it -- closing is now exclusively the
+                    // ✕ button below. A collapsed multi-toast run instead
+                    // treats a body click as the dropdown toggle, same dual
+                    // purpose NotificationCenter.qml's folded history rows
+                    // already give their click (expand if grouped, act
+                    // otherwise).
                     onClicked: {
-                        const defaultAction = notification.actions.find(a => a.identifier === "default")
-                        if (defaultAction) defaultAction.invoke()
-                        notification.dismiss()
+                        if (toast.runCount > 1 && !toast.superseded) {
+                            root.toggleGroupExpanded(toast.groupKey)
+                        } else {
+                            const defaultAction = notification.actions.find(a => a.identifier === "default")
+                            if (defaultAction) defaultAction.invoke()
+                        }
+                    }
+                }
+
+                // Second, inner accent bar for a toast that's part of a
+                // multi-notification run (leader or, once expanded, an
+                // older entry) -- the outer border already reads as "one
+                // notification"; this one starts below the title instead of
+                // running the full height, so it doesn't look like a second
+                // border and instead reads as "more folded below this" on a
+                // collapsed leader, or as a connecting thread line down the
+                // stack once the run is expanded.
+                Rectangle {
+                    id: line2
+                    visible: toast.runCount > 1
+                    anchors.left: parent.left
+                    anchors.leftMargin: 6
+                    // Can't anchor straight to headerRow.bottom -- it's
+                    // content's child, not this Rectangle's parent/sibling,
+                    // and QtQuick anchoring only allows those two. content's
+                    // own top margin (10) + headerRow's height + the same
+                    // 6px gap content's own Column spacing uses gets the
+                    // same "starts right after the title" result via a
+                    // plain height reference instead, which has no such
+                    // restriction.
+                    anchors.top: parent.top
+                    anchors.topMargin: 10 + headerRow.height + content.spacing
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: 10
+                    width: 3
+                    color: Theme.accent
+                }
+
+                // Count/dropdown-state badge for a run folded into this
+                // toast -- a square sitting left-aligned with, and flush
+                // against the top of, line2 above, so the two read as one
+                // shape together (line2 as the stem, the badge as the head,
+                // like a flag/a "P"). A real sibling anchor (line2.top) here
+                // instead of computed y math -- both are direct children of
+                // `toast`, so this is legal and stays correct regardless of
+                // how tall the header ends up. Only the leader (non-
+                // superseded) ever shows one -- an expanded run's older
+                // entries render with a plain title.
+                Rectangle {
+                    id: countBadge
+                    visible: toast.runCount > 1 && !toast.superseded
+                    anchors.left: parent.left
+                    anchors.leftMargin: line2.anchors.leftMargin
+                    anchors.bottom: line2.top
+                    // Square: both sides sized to whichever of badgeRow's
+                    // width/height is larger, so the content (never square
+                    // itself -- "15▸" is wider than it is tall) still fits
+                    // without clipping instead of forcing a squashed fit.
+                    width: Math.max(badgeRow.width, badgeRow.height) + 4
+                    height: width
+                    radius: 0
+                    color: Theme.accent
+
+                    Item {
+                        id: badgeRow
+                        anchors.centerIn: parent
+                        width: countNumber.width + 2 + countArrow.width
+                        height: Math.max(countNumber.height, countArrow.height)
+
+                        Text {
+                            id: countNumber
+                            anchors.left: parent.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: toast.runCount
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSize - 3
+                            font.bold: true
+                            color: Theme.background
+                        }
+
+                        // Noticeably bigger than the count next to it --
+                        // the one thing in this badge that actually needs
+                        // to be seen at a glance (expanded vs. collapsed).
+                        Text {
+                            id: countArrow
+                            anchors.left: countNumber.right
+                            anchors.leftMargin: 2
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: toast.groupExpanded ? "▾" : "▸"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSize + 6
+                            font.bold: true
+                            color: Theme.background
+                        }
                     }
                 }
 
@@ -239,8 +432,25 @@ PanelWindow {
                         right: parent.right
                         top: parent.top
                         margins: 10
+                        // Multi (runCount > 1): countBadge's own right edge
+                        // (x + width, not a fixed guess -- its width varies
+                        // with the digit count and this needs to clear it
+                        // whether the run is "3" or "15") + a 6px gap, so
+                        // the header/body/time this margin positions (all of
+                        // them, not just the header row) actually clear the
+                        // badge instead of sitting under/behind it. Single:
+                        // no badge to clear, so just border + one gap = 6.
+                        leftMargin: toast.runCount > 1 ? countBadge.x + countBadge.width + 6 : 6
                     }
-                    spacing: 6
+                    // Was 6 -- too tight specifically above the description,
+                    // where line2/countBadge sit right at this same boundary
+                    // and made it read as even less room than it was. Now
+                    // shared (via content.spacing above) with every other
+                    // gap in this Column, so body/time/actions grow slightly
+                    // too, not just this one -- a uniform bump reads better
+                    // than singling one gap out with a spacer Item that'd
+                    // double up on Column's own spacing either side of it.
+                    spacing: 10
 
                     Row {
                         id: headerRow
@@ -277,12 +487,44 @@ PanelWindow {
 
                         Text {
                             width: headerRow.width - (appIcon.visible ? appIcon.width + headerRow.spacing : 0)
+                                - closeButton.implicitWidth - headerRow.spacing
                             text: notification.summary
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontSize
                             font.bold: true
                             color: Theme.text
                             elide: Text.ElideRight
+                        }
+
+                        Text {
+                            id: closeButton
+                            // Font Awesome "times", same glyph
+                            // NotificationCenter.qml's history rows use for
+                            // their own close button -- keeps the one
+                            // "this ✕ dismisses" affordance visually
+                            // consistent between the live toast and history.
+                            text: ""
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSize - 3
+                            color: Theme.textDim
+
+                            MouseArea {
+                                anchors.fill: parent
+                                anchors.margins: -6
+                                onClicked: {
+                                    // Collapsed leader: close the whole run at
+                                    // once (its own older entries aren't on
+                                    // screen to close individually). Anything
+                                    // else -- a standalone toast, or any
+                                    // entry once the run is expanded -- is
+                                    // its own visible, individually closable
+                                    // notification.
+                                    if (toast.runCount > 1 && !toast.superseded && !toast.groupExpanded)
+                                        toast.dismissRun()
+                                    else
+                                        notification.dismiss()
+                                }
+                            }
                         }
                     }
 
@@ -302,6 +544,16 @@ PanelWindow {
                         font.pixelSize: Theme.fontSize - 1
                         color: Theme.textMuted
                         onLinkActivated: link => Qt.openUrlExternally(link)
+                    }
+
+                    // Same format/styling as NotificationCenter.qml's history
+                    // rows, for the same timestamp on the live toast as it'll
+                    // show once it lands in history.
+                    Text {
+                        text: Qt.formatDateTime(new Date(toast.time), "MMM d, HH:mm")
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSize - 3
+                        color: Theme.textDim
                     }
 
                     Row {

@@ -59,6 +59,34 @@ QtObject {
         // — so an update replaces its own previous entry in place instead
         // of stacking a new one.
         const idx = notifId !== undefined ? adapter.entries.findIndex(e => e.notifId === notifId) : -1
+
+        // A run of separate notifications (distinct notifIds, so not the
+        // replaces_id case above) sharing the same app+summary -- e.g. a
+        // Telegram chat sending several messages in a row, each announced
+        // as its own notification but all titled "<contact> -> <chat>" --
+        // otherwise floods this list with near-duplicate rows. Folding a
+        // new one into the most recent entry instead, as long as it's
+        // still the same app+summary and nothing else has landed in
+        // between (i.e. it's genuinely consecutive, not just "same title,
+        // sometime earlier"), keeps one row per burst with a count badge
+        // (rendered in NotificationCenter.qml) instead.
+        const top = adapter.entries[0]
+        if (idx === -1 && top && top.appName === entry.appName && top.summary === entry.summary) {
+            // `bodies` carries every message in the run (oldest first) so
+            // NotificationCenter.qml can expand the merged row and show
+            // each one in full -- `body`/`time` alone (overwritten to the
+            // newest message below via the entry spread) would silently
+            // discard everything but the latest message's text.
+            const priorBodies = top.bodies || [{ body: top.body, time: top.time }]
+            const merged = Object.assign({}, top, entry, {
+                id: top.id,
+                count: (top.count || 1) + 1,
+                bodies: priorBodies.concat([{ body: entry.body, time: entry.time }])
+            }, notifId !== undefined ? { notifId } : {})
+            adapter.entries = [merged].concat(adapter.entries.slice(1))
+            return
+        }
+
         const withId = Object.assign(
             { id: idx !== -1 ? adapter.entries[idx].id : Date.now() + "-" + Math.floor(Math.random() * 10000) },
             entry, notifId !== undefined ? { notifId } : {})
@@ -67,6 +95,38 @@ QtObject {
     }
     function remove(id) {
         adapter.entries = adapter.entries.filter(e => e.id !== id)
+    }
+    // Dismisses a single message out of a folded (count > 1) entry's
+    // `bodies` run -- NotificationCenter.qml's expanded-message close
+    // glyph. Collapses the entry back down to a plain, non-folded shape
+    // (no count/bodies field, same as an entry add() has never merged
+    // anything into) once only one message is left, rather than leaving a
+    // count-1 badge/bodies array of length 1 around.
+    function removeMessage(id, index) {
+        const idx = adapter.entries.findIndex(e => e.id === id)
+        if (idx === -1) return
+        const entry = adapter.entries[idx]
+        if (!entry.bodies || entry.bodies.length <= 1) {
+            root.remove(id)
+            return
+        }
+        const bodies = entry.bodies.slice()
+        bodies.splice(index, 1)
+        const next = adapter.entries.slice()
+        if (bodies.length === 1) {
+            const only = bodies[0]
+            const collapsed = Object.assign({}, entry, { body: only.body, time: only.time })
+            delete collapsed.count
+            delete collapsed.bodies
+            next[idx] = collapsed
+        } else {
+            // body/time always mirror the newest remaining message (last
+            // in bodies), same convention add()'s merge uses for the
+            // collapsed-row preview text.
+            const newest = bodies[bodies.length - 1]
+            next[idx] = Object.assign({}, entry, { bodies, count: bodies.length, body: newest.body, time: newest.time })
+        }
+        adapter.entries = next
     }
     // notifId is the sender's own D-Bus notification id (namespaced with
     // sessionId above), not this store's own `id`.
