@@ -124,11 +124,12 @@ Pill {
                     // NotificationHistory.entries is newest-first (add()
                     // unshifts) -- that order is load-bearing there (its
                     // burst-merge check reads entries[0] as "the most
-                    // recent"), so flip the rendering direction instead of
-                    // the model itself: index 0 (newest) renders at the
-                    // bottom, same chat-log feel as Telegram/Discord, with
-                    // older entries stacked upward above it.
-                    verticalLayoutDirection: ListView.BottomToTop
+                    // recent"). Rendering direction is independent of that:
+                    // TopToBottom (the default) puts index 0 (newest) at the
+                    // top with older entries stacked downward below it --
+                    // folding is unaffected either way since it keys off the
+                    // model's entries[0], not how the ListView paints it.
+                    verticalLayoutDirection: ListView.TopToBottom
                     model: NotificationHistory.entries
 
                     delegate: Rectangle {
