@@ -35,12 +35,10 @@ import Quickshell.Io
 // HdrSettings.toggleMonitor -- it only edits which monitors HDR would apply
 // to next, it does NOT turn HDR on for this popup's monitor (see
 // HdrSettings.qml's own header for why that's opt-in and global-switched
-// rather than direct); the "HDR is off" hint below it exists so ticking that
-// box doesn't look like it silently did nothing. That hint, and the VRR/HDR
-// checkboxes themselves, always occupy the same space regardless of state
-// (blank text / greyed-out MonitorCheckbox.capable, never visible:false) so
-// picking a different monitor above never resizes the popup depending on
-// what that monitor happens to support.
+// rather than direct). The VRR/HDR checkboxes always occupy the same space
+// regardless of state (greyed-out MonitorCheckbox.capable, never
+// visible:false) so picking a different monitor above never resizes the
+// popup depending on what that monitor happens to support.
 Pill {
     id: root
     property string screenName: ""
@@ -351,7 +349,7 @@ Pill {
             color: "#1c1c1c"
             border.color: Qt.rgba(1, 1, 1, 0.15)
             border.width: 1
-            radius: 6
+            radius: 0
 
             HoverHandler {
                 id: popupHoverHandler
@@ -374,7 +372,7 @@ Pill {
                         Text {
                             text: "Display"
                             font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSize
+                            font.pixelSize: Theme.fontSize + 2
                             font.bold: true
                             color: Theme.text
                         }
@@ -391,7 +389,8 @@ Pill {
                     text: "Layout"
                     color: Theme.textMuted
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize - 2
+                    font.pixelSize: Theme.fontSize
+                    font.bold: true
                 }
 
                 // Miniature top-down map of the real monitor arrangement --
@@ -479,7 +478,7 @@ Pill {
                             y: modelData.ry
                             width: modelData.rw
                             height: modelData.rh
-                            radius: 2
+                            radius: 0
                             readonly property bool selected: popup.selectedMonitor === modelData.name
                             color: monRect.selected
                                 ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25)
@@ -597,7 +596,8 @@ Pill {
                     text: "Settings"
                     color: Theme.textMuted
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize - 2
+                    font.pixelSize: Theme.fontSize
+                    font.bold: true
                 }
 
                 Column {
@@ -611,7 +611,7 @@ Pill {
                             id: row
                             required property var modelData
                             width: popup.contentWidth
-                            spacing: 4
+                            spacing: 12
 
                             readonly property bool isLaptopPanel: popup.isLaptopPanel(row.modelData.name)
                             readonly property var ddc: popup.ddcFor(row.modelData.name)
@@ -747,12 +747,39 @@ Pill {
                                 return opts[0] || ""
                             }
 
-                            // Fixed set rather than derived from anything
-                            // Hyprland reports -- there's no equivalent of
+                            // Candidate stops -- there's no equivalent of
                             // availableModes for scale, monitors.lua just
                             // takes any float, so this is the same small set
-                            // of stops most desktop scaling UIs offer.
-                            readonly property var scaleOptions: [1, 1.25, 1.6, 2, 3, 4]
+                            // of stops most desktop scaling UIs offer. 3.2
+                            // instead of a plain 3: Hyprland's own tooltip
+                            // flags scale=3 on a 2560x1440 panel as invalid
+                            // (853.33x480, a non-integer logical resolution)
+                            // and recommends 3.2 (a clean 800x450) instead --
+                            // filtered below per-monitor along with everything
+                            // else in this list, so a resolution where 3.2
+                            // itself doesn't divide evenly just won't offer it.
+                            readonly property var scaleCandidates: [1, 1.25, 1.6, 2, 3.2, 4]
+
+                            // Actually-offered stops for this monitor: capped
+                            // by native resolution (even 2x is already too
+                            // much on a 1920x1200 panel -- a ~960x600 logical
+                            // desktop is too cramped to be worth it, so that
+                            // tier caps at 1.6x instead) and filtered to only
+                            // those that divide this panel's real resolution
+                            // into a clean integer logical size, the same
+                            // property that makes 3 vs. 3.2 matter above,
+                            // generalized to whatever's connected.
+                            readonly property var scaleOptions: {
+                                const w = row.modelData.width
+                                const h = row.modelData.height
+                                const maxScale = h <= 1200 ? 1.6 : (h <= 1440 ? 3.2 : 4)
+                                return row.scaleCandidates.filter(s => {
+                                    if (s > maxScale) return false
+                                    const lw = w / s, lh = h / s
+                                    return Math.abs(lw - Math.round(lw)) < 0.01
+                                        && Math.abs(lh - Math.round(lh)) < 0.01
+                                })
+                            }
 
                             property real selectedScale: {
                                 const cur = row.modelData.scale || 1
@@ -779,169 +806,165 @@ Pill {
                                 popup.applyScale(row.modelData.name, scale)
                             }
 
-                            Text {
-                                width: parent.width
-                                elide: Text.ElideRight
-                                // make/model rather than modelData.description
-                                // (which is just "make model serial" verbatim,
-                                // e.g. "Lenovo Group Limited P27h-20
-                                // V909G51W") -- friendlyMake() cleans the
-                                // make, and the serial isn't worth the space.
-                                // The laptop panel has no meaningful make/model
-                                // of its own worth surfacing here (EDID reports
-                                // the panel vendor, e.g. "SDC", not "Laptop") --
-                                // "Built-in Display" (macOS/GNOME's own term)
-                                // names what it actually is instead.
-                                text: row.modelData.name + (row.isLaptopPanel
-                                    ? " — Built-in Display"
-                                    : " — " + popup.friendlyMake(row.modelData.make) + " " + row.modelData.model)
-                                color: Theme.textMuted
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontSize - 2
-                            }
-
-                            Text {
-                                text: "Resolution ("
-                                    + row.aspectLabel(row.modelData.width, row.modelData.height) + ")"
-                                color: Theme.textMuted
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontSize - 2
-                            }
-
-                            // Side by side, 3:2 -- "2560x1440" needs more
-                            // room than "165Hz" does. (300 - 6 spacing) / 5
-                            // parts = ~59px/part.
-                            Row {
-                                width: parent.width
-                                spacing: 6
-
-                                ModePicker {
-                                    boxWidth: 175
-                                    current: row.selectedRes
-                                    options: row.resolutions
-                                    onPicked: (value) => row.pickResolution(value)
-                                }
-
-                                ModePicker {
-                                    boxWidth: 118
-                                    current: Math.round(parseFloat(row.selectedRate)) + "Hz"
-                                    options: row.ratesFor(row.selectedRes)
-                                        .map(r => Math.round(parseFloat(r)) + "Hz")
-                                    onPicked: (value) => row.pickRate(row.preciseRateFor(value))
-                                }
-                            }
-
-                            Text {
-                                text: "Scale"
-                                color: Theme.textMuted
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontSize - 2
-                            }
-
-                            // Same button shape as HdrPopup.qml's own On/Off
-                            // mode switch -- one per scaleOptions entry
-                            // rather than a slider, since these are fixed,
-                            // individually-meaningful stops (not a
-                            // continuous range) that are few enough to all
-                            // show at once.
-                            Row {
-                                id: scaleButtons
+                            Column {
                                 width: parent.width
                                 spacing: 4
 
-                                Repeater {
-                                    model: row.scaleOptions
+                                Text {
+                                    text: "Resolution ("
+                                        + row.aspectLabel(row.modelData.width, row.modelData.height) + ")"
+                                    color: Theme.textMuted
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontSize
+                                }
 
-                                    delegate: Rectangle {
-                                        id: scaleButton
-                                        required property real modelData
-                                        readonly property bool isActive: row.selectedScale === scaleButton.modelData
-                                        width: (scaleButtons.width - 4 * (row.scaleOptions.length - 1))
-                                            / row.scaleOptions.length
-                                        height: 26
-                                        radius: 4
-                                        color: scaleButton.isActive
-                                            ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25)
-                                            : Qt.rgba(1, 1, 1, 0.06)
-                                        border.width: 1
-                                        border.color: scaleButton.isActive ? Theme.accent : Qt.rgba(1, 1, 1, 0.15)
+                                // Side by side, 3:2 -- "2560x1440" needs more
+                                // room than "165Hz" does. (300 - 6 spacing) / 5
+                                // parts = ~59px/part.
+                                Row {
+                                    width: parent.width
+                                    spacing: 6
 
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: scaleButton.modelData + "x"
-                                            color: scaleButton.isActive ? Theme.text : Theme.textMuted
-                                            font.family: Theme.fontFamily
-                                            font.pixelSize: Theme.fontSize - 3
-                                        }
-                                        MouseArea {
-                                            anchors.fill: parent
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: row.pickScale(scaleButton.modelData)
+                                    ModePicker {
+                                        boxWidth: 175
+                                        current: row.selectedRes
+                                        options: row.resolutions
+                                        onPicked: (value) => row.pickResolution(value)
+                                    }
+
+                                    ModePicker {
+                                        boxWidth: 118
+                                        current: Math.round(parseFloat(row.selectedRate)) + "Hz"
+                                        options: row.ratesFor(row.selectedRes)
+                                            .map(r => Math.round(parseFloat(r)) + "Hz")
+                                        onPicked: (value) => row.pickRate(row.preciseRateFor(value))
+                                    }
+                                }
+                            }
+
+                            Column {
+                                width: parent.width
+                                spacing: 4
+
+                                Text {
+                                    text: "Scale"
+                                    color: Theme.textMuted
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontSize
+                                }
+
+                                // Same button shape as HdrPopup.qml's own On/Off
+                                // mode switch -- one per scaleOptions entry
+                                // rather than a slider, since these are fixed,
+                                // individually-meaningful stops (not a
+                                // continuous range) that are few enough to all
+                                // show at once.
+                                Row {
+                                    id: scaleButtons
+                                    width: parent.width
+                                    spacing: 4
+
+                                    Repeater {
+                                        model: row.scaleOptions
+
+                                        delegate: Rectangle {
+                                            id: scaleButton
+                                            required property real modelData
+                                            readonly property bool isActive: row.selectedScale === scaleButton.modelData
+                                            width: (scaleButtons.width - 4 * (row.scaleOptions.length - 1))
+                                                / row.scaleOptions.length
+                                            height: 26
+                                            radius: 0
+                                            color: scaleButton.isActive
+                                                ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25)
+                                                : Qt.rgba(1, 1, 1, 0.06)
+                                            border.width: 1
+                                            border.color: scaleButton.isActive ? Theme.accent : Qt.rgba(1, 1, 1, 0.15)
+
+                                            Text {
+                                                anchors.centerIn: parent
+                                                text: scaleButton.modelData + "x"
+                                                color: scaleButton.isActive ? Theme.text : Theme.textMuted
+                                                font.family: Theme.fontFamily
+                                                font.pixelSize: Theme.fontSize - 3
+                                            }
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: row.pickScale(scaleButton.modelData)
+                                            }
                                         }
                                     }
                                 }
                             }
 
-                            Text {
-                                text: "Brightness"
-                                color: Theme.textMuted
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontSize - 2
-                            }
-
-                            // Brightness slider -- DDC for a desktop monitor,
-                            // the laptop panel's own backlight otherwise (see
-                            // popup.hasBacklight/backlightPercent above).
-                            Row {
-                                visible: row.hasBrightness
+                            Column {
                                 width: parent.width
-                                spacing: 6
+                                spacing: 4
 
-                                Rectangle {
-                                    id: track
-                                    width: parent.width - 40
-                                    height: 8
-                                    color: Qt.rgba(1, 1, 1, 0.12)
+                                Text {
+                                    text: "Brightness"
+                                    color: Theme.textMuted
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontSize
+                                }
+
+                                // Brightness slider -- DDC for a desktop monitor,
+                                // the laptop panel's own backlight otherwise (see
+                                // popup.hasBacklight/backlightPercent above).
+                                Row {
+                                    visible: row.hasBrightness
+                                    width: parent.width
+                                    spacing: 6
 
                                     Rectangle {
-                                        width: track.width * (row.percent / 100)
-                                        height: parent.height
-                                        color: Theme.accent
-                                    }
+                                        id: track
+                                        width: parent.width - 40
+                                        height: 8
+                                        color: Qt.rgba(1, 1, 1, 0.12)
 
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        onPositionChanged: (mouse) => {
-                                            if (pressed) {
+                                        Rectangle {
+                                            width: track.width * (row.percent / 100)
+                                            height: parent.height
+                                            color: Theme.accent
+                                        }
+
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            onPositionChanged: (mouse) => {
+                                                if (pressed) {
+                                                    row.percent = row._percentAt(mouse.x)
+                                                    commitTimer.restart()
+                                                }
+                                            }
+                                            onPressed: (mouse) => {
                                                 row.percent = row._percentAt(mouse.x)
                                                 commitTimer.restart()
                                             }
-                                        }
-                                        onPressed: (mouse) => {
-                                            row.percent = row._percentAt(mouse.x)
-                                            commitTimer.restart()
-                                        }
-                                        onWheel: (wheel) => {
-                                            row.percent = Math.max(0, Math.min(100, row.percent + (wheel.angleDelta.y > 0 ? 2 : -2)))
-                                            commitTimer.restart()
+                                            onWheel: (wheel) => {
+                                                row.percent = Math.max(0, Math.min(100, row.percent + (wheel.angleDelta.y > 0 ? 2 : -2)))
+                                                commitTimer.restart()
+                                            }
                                         }
                                     }
+                                    Text {
+                                        width: 34
+                                        height: track.height
+                                        verticalAlignment: Text.AlignVCenter
+                                        text: row.percent + "%"
+                                        color: Theme.textDim
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: Theme.fontSize - 2
+                                    }
                                 }
+
                                 Text {
-                                    width: 34
-                                    text: row.percent + "%"
+                                    visible: !row.hasBrightness
+                                    text: "No brightness control"
                                     color: Theme.textDim
                                     font.family: Theme.fontFamily
-                                    font.pixelSize: Theme.fontSize - 2
+                                    font.pixelSize: Theme.fontSize - 3
                                 }
-                            }
-
-                            Text {
-                                visible: !row.hasBrightness
-                                text: "No brightness control"
-                                color: Theme.textDim
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontSize - 3
                             }
 
                             // Debounced same reasoning as ShellState's sunset
@@ -957,52 +980,37 @@ Pill {
                                 }
                             }
 
-                            MonitorCheckbox {
-                                label: "Variable refresh rate"
-                                capable: row.vrrCapable
-                                checked: popup.isVrrEnabled(row.modelData.name)
-                                onToggled: popup.toggleVrr(row.modelData.name)
-                            }
-
-                            // Undefined (capability check hasn't returned yet)
-                            // or null (EDID unreadable/no CTA-861 block) both
-                            // mean "can't tell", not "unsupported" -- treated
-                            // as capable, same reasoning as HdrPopup.qml's own
-                            // use of this script. Only a confirmed `false`
-                            // greys it out.
-                            MonitorCheckbox {
-                                label: "Use this display for HDR"
-                                capable: row.hdrCapable !== false
-                                checked: HdrSettings.isSelected(row.modelData.name)
-                                onToggled: HdrSettings.toggleMonitor(row.modelData.name)
-                            }
-
-                            // Checking "Use HDR" above only adds this monitor
-                            // to HdrSettings' selection -- it doesn't turn HDR
-                            // on (see that file's own header), so make that
-                            // explicit rather than leaving a checked box that
-                            // looks like it already did something. Always two
-                            // lines tall (blank when there's nothing to say)
-                            // rather than visible:false, so picking a
-                            // different monitor above doesn't resize the
-                            // popup depending on its HDR state.
-                            readonly property bool showHdrHint: HdrSettings.isSelected(row.modelData.name) && !HdrSettings.active
                             Column {
                                 width: parent.width
+                                spacing: 4
+
                                 Text {
-                                    text: row.showHdrHint ? "HDR is off." : ""
-                                    color: Theme.textDim
+                                    text: "Options"
+                                    color: Theme.textMuted
                                     font.family: Theme.fontFamily
-                                    font.pixelSize: Theme.fontSize - 3
+                                    font.pixelSize: Theme.fontSize
                                 }
-                                Text {
-                                    text: row.showHdrHint ? "Press Super+Shift+H to turn it on." : ""
-                                    color: Theme.textDim
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: Theme.fontSize - 3
+
+                                MonitorCheckbox {
+                                    label: "Variable refresh rate"
+                                    capable: row.vrrCapable
+                                    checked: popup.isVrrEnabled(row.modelData.name)
+                                    onToggled: popup.toggleVrr(row.modelData.name)
+                                }
+
+                                // Undefined (capability check hasn't returned yet)
+                                // or null (EDID unreadable/no CTA-861 block) both
+                                // mean "can't tell", not "unsupported" -- treated
+                                // as capable, same reasoning as HdrPopup.qml's own
+                                // use of this script. Only a confirmed `false`
+                                // greys it out.
+                                MonitorCheckbox {
+                                    label: "Use this display for HDR"
+                                    capable: row.hdrCapable !== false
+                                    checked: HdrSettings.isSelected(row.modelData.name)
+                                    onToggled: HdrSettings.toggleMonitor(row.modelData.name)
                                 }
                             }
-
                         }
                     }
 
@@ -1039,7 +1047,7 @@ Pill {
                 elide: Text.ElideRight
                 text: (checkbox.checked ? "[x] " : "[ ] ") + checkbox.label
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize - 2
+                font.pixelSize: Theme.fontSize
                 color: checkbox.checked ? Theme.accent : Theme.textMuted
             }
             MouseArea {
@@ -1176,7 +1184,7 @@ Pill {
                 id: box
                 width: picker.boxWidth
                 height: 26
-                radius: 6
+                radius: 0
 
                 // Same "sunken control" look on the closed box regardless of
                 // hover/open state -- only the border lights up, same
@@ -1264,7 +1272,7 @@ Pill {
                 id: listBg
                 implicitWidth: picker.boxWidth
                 implicitHeight: optionsColumn.implicitHeight + 4
-                radius: 6
+                radius: 0
                 color: "#242424"
                 border.width: 1
                 border.color: Qt.rgba(1, 1, 1, 0.2)
@@ -1290,7 +1298,7 @@ Pill {
                             readonly property bool isCurrent: optionRow.modelData === picker.current
                             width: picker.boxWidth
                             height: 22
-                            radius: 4
+                            radius: 0
                             color: optionHover.containsMouse
                                 ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.3)
                                 : (optionRow.isCurrent
