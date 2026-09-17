@@ -135,11 +135,11 @@ Pill {
                     delegate: Rectangle {
                         id: entryItem
                         required property var modelData
-                        // Only entries folded by NotificationHistory.add()
-                        // (count > 1) have anything to expand into -- a
-                        // single-message entry's click is a no-op, only its
-                        // ✕ (closeGlyph below) dismisses it.
-                        property bool expanded: false
+                        // A folded (count > 1) entry always renders its full
+                        // message list -- there's nothing left to toggle, so
+                        // this just tracks "is this a folded entry" rather
+                        // than a click-driven expand/collapse state.
+                        readonly property bool expanded: entryItem.modelData.count > 1
                         width: list.width
                         // 14 top (was 10 -- title/description read as too
                         // close to the top edge, especially with countBadge
@@ -251,11 +251,10 @@ Pill {
                             // while just skimming history lost that record
                             // permanently -- closing is now exclusively the
                             // ✕ (closeGlyph) below, same as the live toast
-                            // in Notifications.qml. A multi entry still uses
-                            // the click as its expand/collapse toggle.
-                            onClicked: {
-                                if (entryItem.modelData.count > 1) entryItem.expanded = !entryItem.expanded
-                            }
+                            // in Notifications.qml. Folded entries have no
+                            // expand/collapse toggle to click into anymore
+                            // (always rendered expanded), so this MouseArea
+                            // now only exists for the hover highlight above.
                         }
 
                         Column {
@@ -401,80 +400,65 @@ Pill {
 
                                 Repeater {
                                     model: entryItem.modelData.bodies || []
-                                    delegate: Column {
+                                    delegate: Row {
                                         id: messageItem
                                         required property var modelData
                                         required property int index
                                         width: parent.width
-                                        spacing: 2
+                                        spacing: 6
 
-                                        Row {
-                                            width: parent.width
-                                            spacing: 6
-
-                                            Text {
-                                                width: parent.width - msgCloseGlyph.implicitWidth - parent.spacing
-                                                text: messageItem.modelData.body
-                                                textFormat: Text.StyledText
-                                                wrapMode: Text.WordWrap
-                                                font.family: Theme.fontFamily
-                                                font.pixelSize: Theme.fontSize - 2
-                                                color: Theme.textMuted
-                                            }
-
-                                            // Dismisses just this one
-                                            // message out of the folded run
-                                            // -- NotificationHistory.removeMessage()
-                                            // collapses the entry back down
-                                            // to a plain single once only
-                                            // one message is left, same as
-                                            // if it had never been folded.
-                                            Text {
-                                                id: msgCloseGlyph
-                                                // Font Awesome "times", same codepoint as closeGlyph above.
-                                                text: ""
-                                                font.family: Theme.fontFamily
-                                                font.pixelSize: Theme.fontSize - 3
-                                                color: Theme.textDim
-
-                                                MouseArea {
-                                                    anchors.fill: parent
-                                                    onClicked: NotificationHistory.removeMessage(entryItem.modelData.id, messageItem.index)
-                                                }
-                                            }
+                                        Text {
+                                            width: parent.width - msgCloseGlyph.implicitWidth - parent.spacing
+                                            text: messageItem.modelData.body
+                                            textFormat: Text.StyledText
+                                            wrapMode: Text.WordWrap
+                                            font.family: Theme.fontFamily
+                                            font.pixelSize: Theme.fontSize - 2
+                                            color: Theme.textMuted
                                         }
 
-                                        // Per-message time -- meaningful
-                                        // here since a folded run can span
-                                        // minutes, unlike the entry's own
-                                        // single time row below (just the
-                                        // latest message's time).
+                                        // Dismisses just this one
+                                        // message out of the folded run
+                                        // -- NotificationHistory.removeMessage()
+                                        // collapses the entry back down
+                                        // to a plain single once only
+                                        // one message is left, same as
+                                        // if it had never been folded.
                                         Text {
-                                            visible: messageItem.modelData.time !== undefined
-                                            text: Qt.formatDateTime(new Date(messageItem.modelData.time), "MMM d, HH:mm")
+                                            id: msgCloseGlyph
+                                            // Font Awesome "times", same codepoint as closeGlyph above.
+                                            text: ""
                                             font.family: Theme.fontFamily
                                             font.pixelSize: Theme.fontSize - 3
                                             color: Theme.textDim
+
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                onClicked: NotificationHistory.removeMessage(entryItem.modelData.id, messageItem.index)
+                                            }
                                         }
                                     }
                                 }
                             }
 
                             Text {
-                                // Hidden while expanded -- each message in
-                                // the expanded list already shows its own
-                                // time (see the per-message Text above),
-                                // so this "just the latest message's time"
-                                // row would be a redundant duplicate of the
-                                // last one in that list.
-                                visible: !entryItem.expanded
-                                // Same title-aligned-for-single /
-                                // pulled-in-for-multi rule as the
-                                // description Text above.
+                                // Single trailing timestamp for the whole
+                                // entry -- a folded run always renders
+                                // expanded now (see entryItem.expanded), so
+                                // there's no separate collapsed-vs-expanded
+                                // case to hide this behind anymore. For a
+                                // folded entry this is bodies[0].time (the
+                                // first/oldest message in the run), not
+                                // modelData.time (the latest one, still used
+                                // for a plain single entry) -- one time
+                                // reading "when this run started" beats a
+                                // per-message timestamp on every line.
                                 x: entryItem.modelData.count > 1
                                     ? (line2.anchors.leftMargin + line2.width + 6) - entryContent.anchors.leftMargin
                                     : 0
-                                text: Qt.formatDateTime(new Date(entryItem.modelData.time), "MMM d, HH:mm")
+                                text: Qt.formatDateTime(new Date(entryItem.expanded
+                                    ? entryItem.modelData.bodies[0].time
+                                    : entryItem.modelData.time), "MMM d, HH:mm")
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.fontSize - 3
                                 color: Theme.textDim
