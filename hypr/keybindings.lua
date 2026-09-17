@@ -284,6 +284,20 @@ applyDisplayMode(mirrorActive)
 -- reconnect, not just a genuinely wedged one.
 local RETRAIN_SETTLE_MS = 1500
 
+-- DISABLE_SETTLE_MS: the gap between disabling the output and re-enabling it
+-- has to be real wall-clock time, not just two back-to-back hl.monitor()
+-- calls in the same tick. Confirmed live (2026-09-16): calling
+-- applyDisplayMode() immediately after disabling (0ms gap, what this used to
+-- do) never once produced a working mode -- hyprland.log showed the same
+-- "Disabling output DP-1" -> "DP-1 is disabled, releasing crtc" -> "Connector
+-- DP-1 disconnected" -> reconnect -> disable again cycle repeating
+-- indefinitely, with zero "Modesetting DP-1" lines across the whole session,
+-- until it finally settled stuck disabled with no further hotplug to retry
+-- it. Manually disabling via `hyprctl eval`, waiting ~5s, then re-enabling
+-- with the explicit mode recovered it on the first try. Untested exactly how
+-- short a gap still works -- 3s is a middle ground, not a measured minimum.
+local DISABLE_SETTLE_MS = 3000
+
 local function retrainIfWedged(name)
     if mirrorActive then return end
     hl.timer(function()
@@ -292,7 +306,9 @@ local function retrainIfWedged(name)
         if not wedged then return end -- negotiated fine on its own
 
         hl.monitor({ output = name, disabled = true })
-        applyDisplayMode(mirrorActive)
+        hl.timer(function()
+            applyDisplayMode(mirrorActive)
+        end, { timeout = DISABLE_SETTLE_MS, type = "oneshot" })
     end, { timeout = RETRAIN_SETTLE_MS, type = "oneshot" })
 end
 
