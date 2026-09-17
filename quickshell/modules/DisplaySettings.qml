@@ -749,16 +749,27 @@ Pill {
 
                             // Candidate stops -- there's no equivalent of
                             // availableModes for scale, monitors.lua just
-                            // takes any float, so this is the same small set
-                            // of stops most desktop scaling UIs offer. 3.2
-                            // instead of a plain 3: Hyprland's own tooltip
-                            // flags scale=3 on a 2560x1440 panel as invalid
-                            // (853.33x480, a non-integer logical resolution)
-                            // and recommends 3.2 (a clean 800x450) instead --
-                            // filtered below per-monitor along with everything
-                            // else in this list, so a resolution where 3.2
-                            // itself doesn't divide evenly just won't offer it.
-                            readonly property var scaleCandidates: [1, 1.25, 1.6, 2, 3.2, 4]
+                            // takes any float, so this would otherwise be the
+                            // same small set of stops most desktop scaling
+                            // UIs offer ([1, 1.25, 1.6, 2, 2.5, 4]). Cut down
+                            // to just 1x for now: the bar's Language pill
+                            // (flag glyph, a color/bitmap emoji rather than a
+                            // Nerd Font icon) doesn't scale correctly at
+                            // anything else -- confirmed live it renders the
+                            // wrong size and, worse, drifts increasingly out
+                            // of vertical alignment with every other bar icon
+                            // as scale grows (0px off at 1x, ~8px+ low at
+                            // 2x). Every fix attempted (compensating pixelSize
+                            // by the real per-output Hyprland scale, a
+                            // calibrated vertical offset, a plain `scale`
+                            // transform instead of a bigger pixelSize) still
+                            // came out wrong at some stop -- Qt's color-emoji
+                            // rendering path just doesn't behave predictably
+                            // enough here to compensate for from outside.
+                            // Revert to the full list above once that's
+                            // actually fixed (or the flag glyph is replaced
+                            // with something that isn't a bitmap font).
+                            readonly property var scaleCandidates: [1]
 
                             // Actually-offered stops for this monitor: capped
                             // by native resolution (even 2x is already too
@@ -767,12 +778,12 @@ Pill {
                             // tier caps at 1.6x instead) and filtered to only
                             // those that divide this panel's real resolution
                             // into a clean integer logical size, the same
-                            // property that makes 3 vs. 3.2 matter above,
+                            // property that makes 2.5 vs. 3 matter above,
                             // generalized to whatever's connected.
                             readonly property var scaleOptions: {
                                 const w = row.modelData.width
                                 const h = row.modelData.height
-                                const maxScale = h <= 1200 ? 1.6 : (h <= 1440 ? 3.2 : 4)
+                                const maxScale = h <= 1200 ? 1.6 : (h <= 1440 ? 2.5 : 4)
                                 return row.scaleCandidates.filter(s => {
                                     if (s > maxScale) return false
                                     const lw = w / s, lh = h / s
