@@ -104,6 +104,7 @@ PanelWindow {
     // glyph like its neighbors, so it wants more breathing room on both
     // sides than the uniform 4 * barIconSpacingScale everything else gets.
     Component { id: trayComp; Tray { horizontalPadding: 12 * Theme.barIconSpacingScale } }
+    Component { id: systemUpdateComp; SystemUpdate { screenName: bar.screen.name; horizontalPadding: 4 * Theme.barIconSpacingScale } }
     Component { id: aiModelUsageComp; AiModelUsage { screenName: bar.screen.name; horizontalPadding: 4 * Theme.barIconSpacingScale } }
     Component { id: notificationCenterComp; NotificationCenter { screen: bar.screen; screenName: bar.screen.name; horizontalPadding: 4 * Theme.barIconSpacingScale } }
     Component { id: languageComp; Language { horizontalPadding: 4 * Theme.barIconSpacingScale } }
@@ -118,6 +119,7 @@ PanelWindow {
     function componentFor(id) {
         switch (id) {
         case "tray": return trayComp
+        case "system-update": return systemUpdateComp
         case "ai-model-usage":
         case "claude-usage": return aiModelUsageComp
         case "notifications": return notificationCenterComp

@@ -93,6 +93,17 @@ hl.window_rule({
     size   = "monitor_w*0.8 monitor_h*0.8",
 })
 
+-- Float and center the "Update All" console (System Update widget's popup,
+-- quickshell/modules/SystemUpdate.qml), same treatment as wlctl above.
+hl.window_rule({
+    name  = "float-center-update-console",
+    match = { class = "sichos-update-console" },
+
+    float  = true,
+    center = true,
+    size   = "monitor_w*0.8 monitor_h*0.8",
+})
+
 -- Float Telegram's media viewer (opened by clicking a photo/video) instead
 -- of letting it tile. Confirmed via `hyprctl clients -j` it's a genuine
 -- separate toplevel (class "org.telegram.desktop", title "Media viewer") —

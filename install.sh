@@ -332,6 +332,19 @@ else
     else
         echo "    flatpak already installed"
     fi
+    # python3-gobject-base: lets the System Update bar widget's checker
+    # script (quickshell/scripts/system-update-check.py) call libflatpak's
+    # own list_installed_refs_for_update() -- the same call `flatpak
+    # update`/GNOME Software use internally -- instead of `flatpak remote-ls
+    # --updates`, which was confirmed live to report false positives (see
+    # that script's own comment). No Gtk pulled in, just glib/girepository
+    # bindings.
+    if ! rpm -q python3-gobject-base >/dev/null 2>&1; then
+        echo "    installing python3-gobject-base"
+        sudo dnf install -y python3-gobject-base
+    else
+        echo "    python3-gobject-base already installed"
+    fi
     if flatpak remote-list 2>/dev/null | grep -q '^flathub'; then
         echo "    flathub remote already added"
     else
@@ -790,6 +803,7 @@ else
     ],
     "order": [
         "claude-usage",
+        "system-update",
         "tray",
         "language",
         "bluetooth",

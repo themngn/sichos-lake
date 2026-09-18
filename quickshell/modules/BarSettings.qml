@@ -20,6 +20,7 @@ QtObject {
     readonly property var widgets: [
         { id: "ai-model-usage", name: "AI Model Usage" },
         { id: "notifications", name: "Notification Center" },
+        { id: "system-update", name: "System Update" },
         { id: "tray", name: "Tray" },
         { id: "language", name: "Keyboard Layout" },
         { id: "bluetooth", name: "Bluetooth" },
@@ -103,7 +104,7 @@ QtObject {
         adapter: JsonAdapter {
             id: adapter
             property var disabled: ["claude-usage"]
-            property var order: ["claude-usage", "tray", "language", "bluetooth", "network",
+            property var order: ["claude-usage", "system-update", "tray", "language", "bluetooth", "network",
                                   "volume", "backlight", "display", "powerprofile", "battery", "notifications"]
         }
     }
