@@ -66,7 +66,12 @@
 # enables openssh-server (opening it in firewalld if active) — default
 # skipped, since a keypair or authorized_keys are pointless for incoming
 # access without it. SSHD_PASSWORD_AUTH=1 allows password login when sshd
-# is enabled (default 0/key-only). GH_IMPORT_USER (blank = skip) pulls a GitHub
+# is enabled (default 0/key-only; the drop-in also pins PermitRootLogin,
+# X11Forwarding, GSSAPIAuthentication off and tightens auth-retry/grace-time
+# limits — see the "SSH server" step for why it's a 00- prefixed file).
+# SKIP_FAIL2BAN=0 installs fail2ban (banning repeat SSH auth failures);
+# default mirrors SKIP_SSHD since it's pointless without sshd, but can be
+# overridden independently. GH_IMPORT_USER (blank = skip) pulls a GitHub
 # username's public keys into ~/.ssh/authorized_keys via
 # github.com/<user>.keys, independent of SSH_KEY_MODE — that's this
 # machine's identity going out, this is who's allowed to log in. SICHOS_HOSTNAME
@@ -1449,14 +1454,87 @@ else
     # A drop-in under sshd_config.d/ (included by Fedora's default
     # sshd_config) rather than editing sshd_config directly — idempotent to
     # re-run and won't fight a future openssh-server update that ships a
-    # new default sshd_config.
+    # new default sshd_config. Named 00- (not 99-, what this file used to be
+    # called) because sshd_config keeps only the FIRST value it sees for a
+    # given keyword across every included file, and Anaconda's own
+    # 01-permitrootlogin.conf (PermitRootLogin yes) and Fedora's
+    # 50-redhat.conf (X11Forwarding yes, GSSAPIAuthentication yes) both sort
+    # before a 99- file and would silently win over it — confirmed via
+    # `sshd -T`, which dumps the effective post-precedence config and is the
+    # only way to actually verify an override took effect (`sshd -t` only
+    # checks syntax, not which of several conflicting values wins).
     SSHD_PASSWORD_AUTH="${SSHD_PASSWORD_AUTH:-0}"
     PW_SETTING=$([ "$SSHD_PASSWORD_AUTH" = "1" ] && echo yes || echo no)
+    sudo rm -f /etc/ssh/sshd_config.d/99-sichos.conf
     sudo mkdir -p /etc/ssh/sshd_config.d
-    printf 'PasswordAuthentication %s\n' "$PW_SETTING" | sudo tee /etc/ssh/sshd_config.d/99-sichos.conf >/dev/null
+    cat <<EOF | sudo tee /etc/ssh/sshd_config.d/00-sichos.conf >/dev/null
+PasswordAuthentication $PW_SETTING
+PermitRootLogin no
+PermitEmptyPasswords no
+X11Forwarding no
+GSSAPIAuthentication no
+# Counts every key a client offers, not just wrong passwords — fine with
+# one key, raise it back if a client ever offers several.
+MaxAuthTries 3
+LoginGraceTime 30
+ClientAliveInterval 300
+ClientAliveCountMax 2
+AllowUsers $(id -un)
+EOF
     sudo sshd -t
     sudo systemctl reload sshd
-    echo "    password login: $PW_SETTING"
+    EFFECTIVE_ROOT_LOGIN="$(sudo sshd -T | awk '/^permitrootlogin /{print $2}')"
+    if [ "$EFFECTIVE_ROOT_LOGIN" != "no" ]; then
+        echo "    WARNING: effective PermitRootLogin is '$EFFECTIVE_ROOT_LOGIN', not 'no' — check sshd_config.d ordering" >&2
+    fi
+    echo "    password login: $PW_SETTING, root login: no, key-only auth enforced"
+fi
+
+# fail2ban bans repeat SSH auth failures at the firewall level — pointless
+# without sshd running, so this defaults to whatever SKIP_SSHD resolved to
+# above, independently overridable via SKIP_FAIL2BAN. Nothing else on this
+# box already fills this role (no crowdsec/sshguard installed), so it isn't
+# redundant.
+if [ "${SKIP_FAIL2BAN:-${SKIP_SSHD:-1}}" = "1" ]; then
+    echo "==> fail2ban (skipped)"
+else
+    echo "==> fail2ban"
+    if ! rpm -q fail2ban >/dev/null 2>&1; then
+        echo "    installing fail2ban"
+        # fail2ban-firewalld wires its ban action to firewalld (already
+        # active on this box) instead of falling back to raw iptables.
+        sudo dnf install -y fail2ban fail2ban-firewalld
+    else
+        echo "    fail2ban already installed"
+    fi
+
+    # jail.d/*.local takes precedence over jail.d/*.conf and jail.conf
+    # itself, so this only needs to state what we want changed — escalating
+    # bantime on repeat offenders, and this machine's own LAN subnet(s) in
+    # ignoreip (alongside the loopback jail.conf already ignores) so a
+    # fumbled key from another device on the same network can't ban itself
+    # out along with any real attacker.
+    LAN_SUBNETS="$(ip -o -f inet addr show scope global 2>/dev/null | awk '{print $4}' | tr '\n' ' ')"
+    sudo mkdir -p /etc/fail2ban/jail.d
+    cat <<EOF | sudo tee /etc/fail2ban/jail.d/sichos.local >/dev/null
+[DEFAULT]
+ignoreip = 127.0.0.1/8 ::1 $LAN_SUBNETS
+bantime = 1h
+bantime.increment = true
+bantime.factor = 2
+bantime.maxtime = 1w
+findtime = 10m
+maxretry = 5
+
+[sshd]
+enabled = true
+EOF
+    if systemctl is-active --quiet fail2ban; then
+        sudo systemctl restart fail2ban
+    else
+        sudo systemctl enable --now fail2ban
+    fi
+    echo "    fail2ban enabled, sshd jail active"
 fi
 
 # Independent of SSH_KEY_MODE above: that's this machine's own identity going

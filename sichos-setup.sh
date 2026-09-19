@@ -550,6 +550,11 @@ SSHD_ENABLED=0
 # server is already an opt-in step, so it should come up hardened rather
 # than falling back to sshd's own permissive default.
 SSHD_PASSWORD_AUTH=0
+# Also only meaningful when SSHD_ENABLED is on. Defaults to enabled (unlike
+# SSHD_PASSWORD_AUTH's default-off) since fail2ban has no downside for the
+# one legitimate user — it only bans repeat auth *failures* — and pairs with
+# a network-facing service being turned on in the first place.
+FAIL2BAN_ENABLED=1
 
 INSTALL_CONFIRMED=0
 
@@ -565,7 +570,7 @@ content_row_count() {
         Gaming)             build_grouped_rows GAMING_ROWS GAMING_ORDER GAMING_GROUP; echo "${#GAMING_ROWS[@]}" ;;
         Browser)            echo "${#BROWSER_ORDER[@]}" ;;
         Git)                echo 2 ;;
-        SSH)                echo "$((${#SSH_OPTIONS[@]} + 3))" ;;
+        SSH)                echo "$((${#SSH_OPTIONS[@]} + 4))" ;;
         Debug)              echo "${#DEBUG_ORDER[@]}" ;;
         Finalize)           echo 1 ;;
     esac
@@ -826,6 +831,21 @@ render_content() {
             fi
             r=$((r+1))
             cup "$r" $((col + 6)); printf "%sOff by default (key-only) — only turn on if you understand the risk%s" "$DIM" "$RESET"
+            r=$((r+2))
+
+            local f2b_mark="[x]"
+            [ "$FAIL2BAN_ENABLED" != "1" ] && f2b_mark="[ ]"
+            if [ "$SSHD_ENABLED" != "1" ]; then
+                local f2b_prefix="    "
+                [ "$content_cursor" -eq "$((n + 3))" ] && f2b_prefix="  > "
+                cup "$r" "$col"
+                printf "%s%s%s Install fail2ban (unavailable — needs SSH server enabled)%s" "$DIM" "$f2b_prefix" "$f2b_mark" "$RESET"
+            else
+                render_row "$r" "$([ "$content_cursor" -eq "$((n + 3))" ] && echo 1 || echo 0)" \
+                    "  $f2b_mark Install fail2ban"
+            fi
+            r=$((r+1))
+            cup "$r" $((col + 6)); printf "%sBans an IP after repeated failed SSH logins — on by default%s" "$DIM" "$RESET"
             ;;
         Debug)
             local i label mark
@@ -888,6 +908,7 @@ render_content() {
             cup "$r" "$col"; printf "SSH server (sshd): %s" "$([ "$SSHD_ENABLED" = "1" ] && echo enabled || echo "(skipped)")"; r=$((r+1))
             if [ "$SSHD_ENABLED" = "1" ]; then
                 cup "$r" "$col"; printf "Password login: %s" "$([ "$SSHD_PASSWORD_AUTH" = "1" ] && echo allowed || echo disabled)"; r=$((r+1))
+                cup "$r" "$col"; printf "fail2ban: %s" "$([ "$FAIL2BAN_ENABLED" = "1" ] && echo enabled || echo "(skipped)")"; r=$((r+1))
             fi
             r=$((r+1))
             cup "$r" "$col"; printf "%sDebug:%s" "$BOLD" "$RESET"; r=$((r+1))
@@ -1174,9 +1195,12 @@ activate_content_row() {
                 fi
             elif [ "$content_cursor" -eq "$((n + 1))" ]; then
                 if [ "$SSHD_ENABLED" = "1" ]; then SSHD_ENABLED=0; else SSHD_ENABLED=1; fi
-            else
+            elif [ "$content_cursor" -eq "$((n + 2))" ]; then
                 [ "$SSHD_ENABLED" = "1" ] || return
                 if [ "$SSHD_PASSWORD_AUTH" = "1" ]; then SSHD_PASSWORD_AUTH=0; else SSHD_PASSWORD_AUTH=1; fi
+            else
+                [ "$SSHD_ENABLED" = "1" ] || return
+                if [ "$FAIL2BAN_ENABLED" = "1" ]; then FAIL2BAN_ENABLED=0; else FAIL2BAN_ENABLED=1; fi
             fi
             ;;
         Debug)
@@ -1249,6 +1273,7 @@ ENV_ARGS+=("SICHOS_LC_NUMERIC=$LC_NUMERIC_VALUE")
 ENV_ARGS+=("SICHOS_LC_MONETARY=$LC_MONETARY_VALUE" "SICHOS_LC_COLLATE=$LC_COLLATE_VALUE")
 ENV_ARGS+=("SKIP_SSHD=$([ "$SSHD_ENABLED" = "1" ] && echo 0 || echo 1)")
 ENV_ARGS+=("SSHD_PASSWORD_AUTH=$SSHD_PASSWORD_AUTH")
+ENV_ARGS+=("SKIP_FAIL2BAN=$([ "$SSHD_ENABLED" = "1" ] && [ "$FAIL2BAN_ENABLED" = "1" ] && echo 0 || echo 1)")
 [ "${#FLATHUB_APPS[@]}" -gt 0 ] && ENV_ARGS+=("FLATHUB_APPS=${FLATHUB_APPS[*]}")
 [ "${#GFN_APPS[@]}" -gt 0 ] && ENV_ARGS+=("GFN_APPS=${GFN_APPS[*]}")
 
