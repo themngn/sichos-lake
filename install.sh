@@ -695,13 +695,32 @@ fi
 # environment, which these units require via ConditionEnvironment) — under
 # the plain `hyprland.desktop` entry this is a harmless no-op, nothing
 # starts. xdg-desktop-portal(-hyprland/-gtk) need no enabling here: they're
-# Type=dbus and activate on demand. Only stdout (the "Created symlink ..."
-# lines) is thrown away here -- stderr is left alone so that a failure (e.g.
-# no user D-Bus session yet, such as running this over SSH/a bare TTY before
-# ever logging into a graphical session) prints systemctl's actual reason
-# instead of the ERR trap's bare "exit 1" with no explanation.
-systemctl --user enable hyprpolkitagent.service hyprsunset.service hypridle.service >/dev/null
-echo "    enabled hyprpolkitagent/hyprsunset/hypridle systemd --user services"
+# Type=dbus and activate on demand.
+#
+# install.sh is meant to run straight from a bare TTY (no graphical login,
+# no `su -`/`sudo -u` login shell) -- so there's often no systemd --user
+# instance/bus for this user yet, and a plain `systemctl --user` call fails
+# outright with no bus to talk to (confirmed live: exit 1). `loginctl
+# enable-linger` starts that instance immediately regardless of any session
+# existing, which is exactly what a bare-TTY run needs; it's idempotent so
+# safe to call unconditionally. The runtime dir/bus socket can take a beat
+# to appear even once the unit's started, hence the short poll loop instead
+# of using it immediately. If it still can't connect for some other reason,
+# stderr is left visible (only the noisy "Created symlink ..." stdout is
+# thrown away) and the failure is treated as non-fatal rather than aborting
+# the whole install over it -- same "harmless no-op" spirit as the comment
+# above.
+sudo loginctl enable-linger "$USER" >/dev/null 2>&1 || true
+RUNTIME_DIR="/run/user/$(id -u)"
+for _ in $(seq 1 20); do
+    [ -S "$RUNTIME_DIR/bus" ] && break
+    sleep 0.5
+done
+if XDG_RUNTIME_DIR="$RUNTIME_DIR" systemctl --user enable hyprpolkitagent.service hyprsunset.service hypridle.service >/dev/null; then
+    echo "    enabled hyprpolkitagent/hyprsunset/hypridle systemd --user services"
+else
+    echo "    couldn't reach a systemd --user bus to enable hyprpolkitagent/hyprsunset/hypridle (see error above) -- harmless, log into Hyprland once and re-run ./install.sh to pick this up"
+fi
 
 echo "==> Firefox"
 
