@@ -61,21 +61,21 @@
 # Git identity and SSH key setup are opt-IN (the opposite default, since
 # running install.sh bare shouldn't silently touch your git config or mint a
 # new SSH key): set GIT_NAME/GIT_EMAIL to configure `git config --global`,
-# and SSH_KEY_MODE to one of skip (default) / existing / generate /
-# generate-gh (generate + `gh ssh-key add`). SKIP_SSHD=0 installs and
-# enables openssh-server (opening it in firewalld if active) — default
-# skipped, since a keypair or authorized_keys are pointless for incoming
-# access without it. SSHD_PASSWORD_AUTH=1 allows password login when sshd
-# is enabled (default 0/key-only; the drop-in also pins PermitRootLogin,
-# X11Forwarding, GSSAPIAuthentication off and tightens auth-retry/grace-time
-# limits — see the "SSH server" step for why it's a 00- prefixed file).
-# SKIP_FAIL2BAN=0 installs fail2ban (banning repeat SSH auth failures);
-# default mirrors SKIP_SSHD since it's pointless without sshd, but can be
-# overridden independently. GH_IMPORT_USER (blank = skip) pulls a GitHub
-# username's public keys into ~/.ssh/authorized_keys via
+# and SSH_KEY_MODE to one of skip (default) / existing / generate.
+# SKIP_SSHD=0 installs and enables openssh-server (opening it in firewalld
+# if active) — default skipped, since a keypair or authorized_keys are
+# pointless for incoming access without it. SSHD_PASSWORD_AUTH=1 allows
+# password login when sshd is enabled (default 0/key-only; the drop-in also
+# pins PermitRootLogin, X11Forwarding, GSSAPIAuthentication off and tightens
+# auth-retry/grace-time limits — see the "SSH server" step for why it's a
+# 00- prefixed file). SKIP_FAIL2BAN=0 installs fail2ban (banning repeat SSH
+# auth failures); default mirrors SKIP_SSHD since it's pointless without
+# sshd, but can be overridden independently. GH_IMPORT_USER (blank = skip)
+# pulls a GitHub username's public keys into ~/.ssh/authorized_keys via
 # github.com/<user>.keys, independent of SSH_KEY_MODE — that's this
-# machine's identity going out, this is who's allowed to log in. SICHOS_HOSTNAME
-# overrides the default fedora->SichOS rename with a custom hostname.
+# machine's identity going out, this is who's allowed to log in.
+# SICHOS_HOSTNAME overrides the default fedora->SichOS rename with a custom
+# hostname.
 # SICHOS_TIMEZONE (an IANA zone like America/New_York), SICHOS_LANG (a
 # glibc locale like en_US.UTF-8), and SICHOS_LC_NUMERIC/SICHOS_LC_MONETARY/
 # SICHOS_LC_COLLATE (per-category overrides, same locale format) are all
@@ -1441,27 +1441,6 @@ else
         # Add one later with 'ssh-keygen -p' if you want one.
         ssh-keygen -t ed25519 -C "${GIT_EMAIL:-$USER@$(hostname)}" -f "$SSH_KEY" -N ""
         echo "    generated $SSH_KEY"
-    fi
-
-    if [ "$SSH_KEY_MODE" = "generate-gh" ]; then
-        if ! command -v gh >/dev/null 2>&1; then
-            echo "    installing GitHub CLI (gh)"
-            sudo dnf install -y 'dnf-command(config-manager)'
-            sudo dnf config-manager addrepo --from-repofile=https://cli.github.com/packages/rpm/gh-cli.repo 2>/dev/null \
-                || sudo dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
-            sudo dnf install -y gh
-        fi
-        if ! gh auth status >/dev/null 2>&1; then
-            echo "    not logged in to gh — starting login flow"
-            gh auth login
-        fi
-        KEY_FINGERPRINT="$(ssh-keygen -lf "$SSH_KEY.pub" | awk '{print $2}')"
-        if gh ssh-key list 2>/dev/null | grep -qF "$KEY_FINGERPRINT"; then
-            echo "    key already registered on GitHub"
-        else
-            gh ssh-key add "$SSH_KEY.pub" --title "$(hostname)-$(date +%Y%m%d)"
-            echo "    uploaded $SSH_KEY.pub to GitHub"
-        fi
     fi
 fi
 

@@ -527,13 +527,12 @@ SSH_KEY_PATH="$HOME/.ssh/id_ed25519"
 declare -A SSH_LABELS=(
     [existing]="Use existing key"
     [generate]="Generate a new ed25519 key"
-    [generate-gh]="Generate a new key and add it to GitHub (via gh)"
     [skip]="Skip SSH setup"
 )
 SSH_OPTIONS=()
 [ -f "$SSH_KEY_PATH" ] && SSH_OPTIONS+=("existing")
-SSH_OPTIONS+=("generate" "generate-gh" "skip")
-if [ -f "$SSH_KEY_PATH" ]; then SSH_KEY_MODE=existing; else SSH_KEY_MODE=generate-gh; fi
+SSH_OPTIONS+=("generate" "skip")
+if [ -f "$SSH_KEY_PATH" ]; then SSH_KEY_MODE=existing; else SSH_KEY_MODE=generate; fi
 
 # Separate from the mode above (that's about *this machine's own* identity
 # going out to GitHub) — this pulls a GitHub user's public keys IN, so they
