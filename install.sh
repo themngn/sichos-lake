@@ -695,8 +695,12 @@ fi
 # environment, which these units require via ConditionEnvironment) — under
 # the plain `hyprland.desktop` entry this is a harmless no-op, nothing
 # starts. xdg-desktop-portal(-hyprland/-gtk) need no enabling here: they're
-# Type=dbus and activate on demand.
-systemctl --user enable hyprpolkitagent.service hyprsunset.service hypridle.service >/dev/null 2>&1
+# Type=dbus and activate on demand. Only stdout (the "Created symlink ..."
+# lines) is thrown away here -- stderr is left alone so that a failure (e.g.
+# no user D-Bus session yet, such as running this over SSH/a bare TTY before
+# ever logging into a graphical session) prints systemctl's actual reason
+# instead of the ERR trap's bare "exit 1" with no explanation.
+systemctl --user enable hyprpolkitagent.service hyprsunset.service hypridle.service >/dev/null
 echo "    enabled hyprpolkitagent/hyprsunset/hypridle systemd --user services"
 
 echo "==> Firefox"
