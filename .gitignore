@@ -1,2 +1,18 @@
 agy_list.md
 __pycache__/
+
+# secret-pattern safety net (nothing currently matches these; kept as
+# insurance against an accidental `git add` of real credentials)
+*.pem
+*.key
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+*.p12
+*.pfx
+.env
+.env.*
+*credentials*
+*secret*
+*.token
