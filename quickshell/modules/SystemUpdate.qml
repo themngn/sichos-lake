@@ -4,9 +4,12 @@ import Quickshell.Io
 
 // System Update widget: a pill that only renders once dnf and/or Flatpak
 // report at least one pending update (hidden the rest of the time -- most
-// days). Hover opens a menu with the pending count (broken down by source),
-// when the system was last updated, a "Check now" re-poll, and an "Update
-// All" button that opens a floating kitty console running
+// days), and stays hidden for 24h after the last successful update even if
+// a new pending count shows up in that window (e.g. a repo publishing a
+// same-day follow-up build) -- avoids nagging again right after "Update
+// All" was just used. Hover opens a menu with the pending count (broken
+// down by source), when the system was last updated, a "Check now" re-poll,
+// and an "Update All" button that opens a floating kitty console running
 // system-update-run.sh (dnf upgrade + flatpak update, system and user) --
 // same float-and-center floating-terminal treatment as wlctl/btop/fastfetch
 // (see window_rules.lua's float-center-* rules; sichos-update-console needs
@@ -14,8 +17,16 @@ import Quickshell.Io
 Pill {
     id: root
 
-    visible: root.count !== null && root.count > 0
+    readonly property bool recentlyUpdated: root.lastUpdateEpoch !== null
+        && (root._nowSec - root.lastUpdateEpoch) < 86400
+    visible: root.count !== null && root.count > 0 && !root.recentlyUpdated
     property string screenName: ""
+
+    // Only needs to be fresh enough to flip `recentlyUpdated` off within a
+    // reasonable window of crossing the 24h mark -- same pattern/interval as
+    // AiModelUsage.qml's _nowSec.
+    property real _nowSec: Date.now() / 1000
+    Timer { interval: 30000; running: true; repeat: true; onTriggered: root._nowSec = Date.now() / 1000 }
 
     property var count: null
     property var dnfCount: null

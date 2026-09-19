@@ -5,10 +5,13 @@ import Quickshell.Io
 
 // Which optional right-side tray widgets are shown, and in what order,
 // editable from the launcher's Settings > Bar Widgets folder (drag to
-// reorder, click to toggle on/off). AI Model Usage defaults off on a fresh
-// install; everything else here defaults on. Persisted the
-// same way AutostartApps/HiddenApps are — only state that differs from the
-// default is ever written to disk.
+// reorder, click to toggle on/off). Everything here defaults on -- AI Model
+// Usage hides itself the same way System Update does (a computed `visible`
+// in the widget itself, not a disabled-by-default toggle): with no
+// claude/agy process running, or no pending updates, the pill just never
+// renders, so there's no nag on a fresh install/machine that doesn't run
+// either. Persisted the same way AutostartApps/HiddenApps are — only state
+// that differs from the default is ever written to disk.
 //
 // Night Light and Stay Awake (SunsetToggle/IdleToggle, next to the clock)
 // deliberately aren't covered here — they're a fixed pair in their own Row
@@ -103,7 +106,7 @@ QtObject {
 
         adapter: JsonAdapter {
             id: adapter
-            property var disabled: ["claude-usage"]
+            property var disabled: []
             property var order: ["claude-usage", "system-update", "tray", "language", "bluetooth", "network",
                                   "volume", "backlight", "display", "powerprofile", "battery", "notifications"]
         }
