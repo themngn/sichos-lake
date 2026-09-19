@@ -1047,6 +1047,23 @@ else
     echo "    already installed"
 fi
 
+# Xbox/Xinput-style pad support (xpad) is split out of Fedora's base kernel
+# package into kernel-modules-extra (CONFIG_JOYSTICK_XPAD=m, confirmed in
+# /boot/config-$(uname -r) — it's built, just not shipped in kernel-modules).
+# Without it a controller like the Xbox 360 pad enumerates fine on USB
+# (visible in lsusb) but never gets a /proc/bus/input/devices entry, so
+# sichos-gamepad has no real gamepad event node to read — its own virtual
+# uinput device still shows up, making the daemon look "running" while doing
+# nothing. Installed per-running-kernel (not the bare package name) since
+# dnf would otherwise happily pull whatever kernel-modules-extra version is
+# newest in the repo, which can mismatch the kernel actually booted.
+if ! modinfo xpad >/dev/null 2>&1; then
+    sudo dnf install -y "kernel-modules-extra-$(uname -r)"
+fi
+if ! lsmod | grep -q '^xpad'; then
+    sudo modprobe xpad
+fi
+
 echo "==> GRUB boot-menu branding (SichOS, not Fedora)"
 
 # See kernel-install.d/21-sichos-grub-brand.install's header comment for why
