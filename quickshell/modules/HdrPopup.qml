@@ -8,21 +8,30 @@ import Quickshell.Hyprland
 // limited to the displays that actually render it well instead of hitting
 // every screen. Hover-driven with persistent hover, same as
 // SunsetPopup/IdlePopup.
-PopupWindow {
+Item {
     id: popup
 
     required property Item anchorItem
+    // Content for ToggleMorphPopup (the bar's one morphing card, shared by
+    // every toggle-row popup): the toggle reparents this into the card and
+    // drives `shown`; the card sizes itself to this item's implicit size,
+    // lines up under anchorItem, and cross-fades between contents.
+    property bool shown: false
+    anchors.top: parent ? parent.top : undefined
+    anchors.horizontalCenter: parent ? parent.horizontalCenter : undefined
+    opacity: shown ? 1 : 0
+    visible: opacity > 0
+    // Outgoing content clears out quickly so the two don't read as a
+    // jumble mid-morph; the incoming one fades in over the full open time.
+    Behavior on opacity {
+        NumberAnimation { duration: shown ? Theme.openDuration : 70; easing.type: Easing.OutCubic }
+    }
 
     readonly property bool popupHovered: popupHoverHandler.hovered
 
-    anchor.item: anchorItem
-    anchor.edges: Edges.Bottom
-    anchor.gravity: Edges.Bottom
-    anchor.margins.top: 4
 
-    implicitWidth: bg.implicitWidth
-    implicitHeight: bg.implicitHeight
-    color: "transparent"
+    implicitWidth: column.implicitWidth + 2 * Theme.surfacePadding
+    implicitHeight: column.implicitHeight + 2 * Theme.surfacePadding
 
     // name -> true|false|null ("can't tell" -- an unreadable/absent EDID,
     // treated the same as capable so an unknown display isn't greyed out
@@ -35,7 +44,7 @@ PopupWindow {
     // "srgb" -- confirmed live that DP-1 here does exactly that fallback).
     property var hdrCapability: ({})
 
-    onVisibleChanged: if (visible) capabilityProc.running = true
+    onShownChanged: if (shown) capabilityProc.running = true
 
     Process {
         id: capabilityProc
@@ -49,15 +58,9 @@ PopupWindow {
         }
     }
 
-    Rectangle {
+    Item {
         id: bg
-        SurfaceAppear { target: bg; shown: popup.visible }
-        implicitWidth: column.implicitWidth + 2 * Theme.surfacePadding
-        implicitHeight: column.implicitHeight + 2 * Theme.surfacePadding
-        color: Theme.surfaceFor(popup.screen)
-        border.color: Theme.surfaceBorder
-        border.width: Theme.surfaceBorderWidth
-        radius: Theme.surfaceRadius
+        anchors.fill: parent
 
         HoverHandler {
             id: popupHoverHandler

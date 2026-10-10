@@ -3,28 +3,37 @@ import Quickshell
 
 // Do-not-disturb popup for NotificationMuteToggle.qml: On/Off plus timed
 // muting (ShellState.setNotificationsMuted/muteNotificationsUntil, which
-// also own the auto-unmute). Same hover-persistent PopupWindow shape as
+// also own the auto-unmute). Same ToggleMorphPopup content shape as
 // GameFocusPopup.qml. Muting only skips the toasts -- everything still
 // lands in the notification center.
-PopupWindow {
+Item {
     id: popup
 
     required property Item anchorItem
+    // Content for ToggleMorphPopup (the bar's one morphing card, shared by
+    // every toggle-row popup): the toggle reparents this into the card and
+    // drives `shown`; the card sizes itself to this item's implicit size,
+    // lines up under anchorItem, and cross-fades between contents.
+    property bool shown: false
+    anchors.top: parent ? parent.top : undefined
+    anchors.horizontalCenter: parent ? parent.horizontalCenter : undefined
+    opacity: shown ? 1 : 0
+    visible: opacity > 0
+    // Outgoing content clears out quickly so the two don't read as a
+    // jumble mid-morph; the incoming one fades in over the full open time.
+    Behavior on opacity {
+        NumberAnimation { duration: shown ? Theme.openDuration : 70; easing.type: Easing.OutCubic }
+    }
     // Re-evaluated each time the popup opens, for the "until" caption and
     // the "until morning" target.
     property real now: Date.now()
-    onVisibleChanged: if (visible) popup.now = Date.now()
+    onShownChanged: if (shown) popup.now = Date.now()
 
-    anchor.item: anchorItem
-    anchor.edges: Edges.Bottom
-    anchor.gravity: Edges.Bottom
-    anchor.margins.top: 4
 
     readonly property bool popupHovered: popupHoverHandler.hovered
 
-    implicitWidth: bg.implicitWidth
-    implicitHeight: bg.implicitHeight
-    color: "transparent"
+    implicitWidth: column.implicitWidth + 2 * Theme.surfacePadding
+    implicitHeight: column.implicitHeight + 2 * Theme.surfacePadding
 
     // Next 08:00 local time (today if it's still before 8, else tomorrow).
     function nextMorning() {
@@ -41,15 +50,9 @@ PopupWindow {
         return "Muted until " + Qt.formatDateTime(d, today ? "HH:mm" : "ddd HH:mm")
     }
 
-    Rectangle {
+    Item {
         id: bg
-        SurfaceAppear { target: bg; shown: popup.visible }
-        implicitWidth: column.implicitWidth + 2 * Theme.surfacePadding
-        implicitHeight: column.implicitHeight + 2 * Theme.surfacePadding
-        color: Theme.surfaceFor(popup.screen)
-        border.color: Theme.surfaceBorder
-        border.width: Theme.surfaceBorderWidth
-        radius: Theme.surfaceRadius
+        anchors.fill: parent
 
         HoverHandler {
             id: popupHoverHandler

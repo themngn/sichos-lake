@@ -97,10 +97,17 @@ Pill {
         color: root.active ? Theme.text : Theme.textMuted
     }
 
-    BarSoloPopup {
+    // Set by Bar.qml: the bar's ToggleMorphPopup card. The popup content is
+    // assigned to a property (not declared as a child) because Pill's
+    // default property would otherwise lay it out inside the pill itself;
+    // `parent` then moves it into the card, keeping every binding to this
+    // toggle intact.
+    property Item popupHost: null
+    readonly property Item _popupContent: BarSoloPopup {
         id: popup
+        parent: root.popupHost
         anchorItem: root
         screenName: root.screenName
-        visible: root.popupOpen
+        shown: root.popupOpen
     }
 }

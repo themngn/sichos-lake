@@ -2,38 +2,41 @@ import QtQuick
 import Quickshell
 
 // Transparency popup for TransparencyToggle.qml: Semi/Opaque switch plus the
-// terminal's opacity in semi mode. Same hover-persistent PopupWindow shape
+// terminal's opacity in semi mode. Same ToggleMorphPopup content shape
 // as GameFocusPopup.qml. Both go through ShellState (setTransparencyOpaque/
 // setTerminalOpacity), which owns pushing the change to kitty.
-PopupWindow {
+Item {
     id: popup
 
     required property Item anchorItem
+    // Content for ToggleMorphPopup (the bar's one morphing card, shared by
+    // every toggle-row popup): the toggle reparents this into the card and
+    // drives `shown`; the card sizes itself to this item's implicit size,
+    // lines up under anchorItem, and cross-fades between contents.
+    property bool shown: false
+    anchors.top: parent ? parent.top : undefined
+    anchors.horizontalCenter: parent ? parent.horizontalCenter : undefined
+    opacity: shown ? 1 : 0
+    visible: opacity > 0
+    // Outgoing content clears out quickly so the two don't read as a
+    // jumble mid-morph; the incoming one fades in over the full open time.
+    Behavior on opacity {
+        NumberAnimation { duration: shown ? Theme.openDuration : 70; easing.type: Easing.OutCubic }
+    }
 
-    anchor.item: anchorItem
-    anchor.edges: Edges.Bottom
-    anchor.gravity: Edges.Bottom
-    anchor.margins.top: 4
 
     readonly property bool popupHovered: popupHoverHandler.hovered
 
-    implicitWidth: bg.implicitWidth
-    implicitHeight: bg.implicitHeight
-    color: "transparent"
+    implicitWidth: column.implicitWidth + 2 * Theme.surfacePadding
+    implicitHeight: column.implicitHeight + 2 * Theme.surfacePadding
 
     function _opacityAt(x) {
         return 0.5 + Math.max(0, Math.min(1, x / track.width)) * 0.45
     }
 
-    Rectangle {
+    Item {
         id: bg
-        SurfaceAppear { target: bg; shown: popup.visible }
-        implicitWidth: column.implicitWidth + 2 * Theme.surfacePadding
-        implicitHeight: column.implicitHeight + 2 * Theme.surfacePadding
-        color: Theme.surfaceFor(popup.screen)
-        border.color: Theme.surfaceBorder
-        border.width: Theme.surfaceBorderWidth
-        radius: Theme.surfaceRadius
+        anchors.fill: parent
 
         HoverHandler {
             id: popupHoverHandler

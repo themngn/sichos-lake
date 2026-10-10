@@ -5,18 +5,28 @@ import Quickshell.Io
 // Idle timeout settings popup panel for IdleToggle.qml.
 // Hover-driven with persistent hover: allows adjusting lock, dim, and screen-off
 // timers and Never toggles smoothly without focus grabs.
-PopupWindow {
+Item {
     id: popup
 
     required property Item anchorItem
+    // Content for ToggleMorphPopup (the bar's one morphing card, shared by
+    // every toggle-row popup): the toggle reparents this into the card and
+    // drives `shown`; the card sizes itself to this item's implicit size,
+    // lines up under anchorItem, and cross-fades between contents.
+    property bool shown: false
+    anchors.top: parent ? parent.top : undefined
+    anchors.horizontalCenter: parent ? parent.horizontalCenter : undefined
+    opacity: shown ? 1 : 0
+    visible: opacity > 0
+    // Outgoing content clears out quickly so the two don't read as a
+    // jumble mid-morph; the incoming one fades in over the full open time.
+    Behavior on opacity {
+        NumberAnimation { duration: shown ? Theme.openDuration : 70; easing.type: Easing.OutCubic }
+    }
     property bool active: false
 
     signal settingsSaved()
 
-    anchor.item: anchorItem
-    anchor.edges: Edges.Bottom
-    anchor.gravity: Edges.Bottom
-    anchor.margins.top: 4
 
     // HoverHandler rather than a background MouseArea: a MouseArea only reports
     // containsMouse while it's the topmost hover-accepting item, so it goes false
@@ -26,11 +36,10 @@ PopupWindow {
     // independently of what's on top.
     readonly property bool popupHovered: popupHoverHandler.hovered
 
-    implicitWidth: bg.implicitWidth
-    implicitHeight: bg.implicitHeight
-    color: "transparent"
+    implicitWidth: column.implicitWidth + 2 * Theme.surfacePadding
+    implicitHeight: column.implicitHeight + 2 * Theme.surfacePadding
 
-    onVisibleChanged: if (visible) loadSettings()
+    onShownChanged: if (shown) loadSettings()
 
     FileView {
         id: confFile
@@ -103,15 +112,9 @@ PopupWindow {
         popup.settingsSaved()
     }
 
-    Rectangle {
+    Item {
         id: bg
-        SurfaceAppear { target: bg; shown: popup.visible }
-        implicitWidth: column.implicitWidth + 2 * Theme.surfacePadding
-        implicitHeight: column.implicitHeight + 2 * Theme.surfacePadding
-        color: Theme.surfaceFor(popup.screen)
-        border.color: Theme.surfaceBorder
-        border.width: Theme.surfaceBorderWidth
-        radius: Theme.surfaceRadius
+        anchors.fill: parent
 
         HoverHandler {
             id: popupHoverHandler

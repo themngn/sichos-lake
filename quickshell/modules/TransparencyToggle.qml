@@ -103,9 +103,16 @@ Pill {
         color: root.opaque ? Theme.text : Theme.textMuted
     }
 
-    TransparencyPopup {
+    // Set by Bar.qml: the bar's ToggleMorphPopup card. The popup content is
+    // assigned to a property (not declared as a child) because Pill's
+    // default property would otherwise lay it out inside the pill itself;
+    // `parent` then moves it into the card, keeping every binding to this
+    // toggle intact.
+    property Item popupHost: null
+    readonly property Item _popupContent: TransparencyPopup {
         id: popup
+        parent: root.popupHost
         anchorItem: root
-        visible: root.popupOpen
+        shown: root.popupOpen
     }
 }

@@ -181,7 +181,12 @@ Everything else lives in `quickshell/modules/`:
   has a popup, or the row will collapse out from under it. The right section is data-driven —
   `BarSettings.orderedIds()` picks which widgets render and in what order via a `Loader`/`Component`
   switch (`componentFor(id)`), so reordering/hiding a widget is a settings change, not a `Bar.qml` edit.
-  The toggle row is fixed and outside that system.
+  The toggle row is fixed and outside that system. Toggle-row popups don't own windows: each
+  `*Popup.qml` there is plain content that its toggle assigns to a property (not a child — `Pill`'s
+  default property would lay it out inside the pill) and reparents into the bar's one
+  `ToggleMorphPopup` card via `popupHost`, driving its `shown`. While one is open, hovering another
+  toggle slides/reshapes that card into the next popup instead of swapping windows. A new toggle popup
+  follows the same shape (copy any existing pair) and needs its popupId in `toggleRowPopupOpen`.
 - **`Launcher.qml`** (by far the largest file): the SUPER+SHIFT+Q app launcher/menu, including
   its Settings and Autostart folders.
 - Python helper scripts (`quickshell/scripts/*.py`) are invoked as subprocesses by QML for anything

@@ -213,6 +213,13 @@ PanelWindow {
         || micMuteToggle.hovered || notificationMuteToggle.hovered || barSoloToggle.hovered
     readonly property bool toggleRowRevealed: toggleRowHover.hovered || bar.toggleRowPopupOpen || bar.anyToggleHovered
 
+    // The one morphing card every toggle-row popup below renders into --
+    // see ToggleMorphPopup.qml.
+    ToggleMorphPopup {
+        id: toggleMorph
+        bar: bar
+    }
+
     Row {
         id: toggleRow
         anchors {
@@ -236,6 +243,7 @@ PanelWindow {
 
         SunsetToggle {
             id: sunsetToggle
+            popupHost: toggleMorph.slot
             screenName: bar.screen.name
             revealed: bar.toggleRowRevealed
             active: ShellState.sunsetWarm
@@ -275,11 +283,13 @@ PanelWindow {
         }
         HdrToggle {
             id: hdrToggle
+            popupHost: toggleMorph.slot
             screenName: bar.screen.name
             revealed: bar.toggleRowRevealed
         }
         IdleToggle {
             id: idleToggle
+            popupHost: toggleMorph.slot
             screenName: bar.screen.name
             revealed: bar.toggleRowRevealed
             active: ShellState.idleActive
@@ -293,11 +303,13 @@ PanelWindow {
         }
         GameFocusToggle {
             id: gameFocusToggle
+            popupHost: toggleMorph.slot
             screenName: bar.screen.name
             revealed: bar.toggleRowRevealed
         }
         TransparencyToggle {
             id: transparencyToggle
+            popupHost: toggleMorph.slot
             screenName: bar.screen.name
             revealed: bar.toggleRowRevealed
             opaque: ShellState.transparencyOpaque
@@ -305,6 +317,7 @@ PanelWindow {
         }
         BarSoloToggle {
             id: barSoloToggle
+            popupHost: toggleMorph.slot
             screenName: bar.screen.name
             revealed: bar.toggleRowRevealed
             active: ShellState.barSoloScreen === bar.screen.name
@@ -312,12 +325,14 @@ PanelWindow {
         }
         MicMuteToggle {
             id: micMuteToggle
+            popupHost: toggleMorph.slot
             screenName: bar.screen.name
             revealed: bar.toggleRowRevealed
             source: Pipewire.defaultAudioSource
         }
         NotificationMuteToggle {
             id: notificationMuteToggle
+            popupHost: toggleMorph.slot
             screenName: bar.screen.name
             revealed: bar.toggleRowRevealed
             muted: ShellState.notificationsMuted

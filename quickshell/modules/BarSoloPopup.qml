@@ -3,26 +3,35 @@ import Quickshell
 
 // Bar placement popup for BarSoloToggle.qml: show the bar on every screen,
 // or on one picked screen only (ShellState.barSoloScreen). Same
-// hover-persistent PopupWindow shape as GameFocusPopup.qml; the screen list
+// ToggleMorphPopup content shape as GameFocusPopup.qml; the screen list
 // uses MicPopup's radio-row style. Picking another screen hides this bar
 // (and with it this popup) -- expected, the bar moved.
-PopupWindow {
+Item {
     id: popup
 
     required property Item anchorItem
+    // Content for ToggleMorphPopup (the bar's one morphing card, shared by
+    // every toggle-row popup): the toggle reparents this into the card and
+    // drives `shown`; the card sizes itself to this item's implicit size,
+    // lines up under anchorItem, and cross-fades between contents.
+    property bool shown: false
+    anchors.top: parent ? parent.top : undefined
+    anchors.horizontalCenter: parent ? parent.horizontalCenter : undefined
+    opacity: shown ? 1 : 0
+    visible: opacity > 0
+    // Outgoing content clears out quickly so the two don't read as a
+    // jumble mid-morph; the incoming one fades in over the full open time.
+    Behavior on opacity {
+        NumberAnimation { duration: shown ? Theme.openDuration : 70; easing.type: Easing.OutCubic }
+    }
     // The screen this popup's bar lives on, to tag it "this screen".
     property string screenName: ""
 
-    anchor.item: anchorItem
-    anchor.edges: Edges.Bottom
-    anchor.gravity: Edges.Bottom
-    anchor.margins.top: 4
 
     readonly property bool popupHovered: popupHoverHandler.hovered
 
-    implicitWidth: bg.implicitWidth
-    implicitHeight: bg.implicitHeight
-    color: "transparent"
+    implicitWidth: column.implicitWidth + 2 * Theme.surfacePadding
+    implicitHeight: column.implicitHeight + 2 * Theme.surfacePadding
 
     // Monitor make/model next to the connector name, when Quickshell has one.
     function screenLabel(s) {
@@ -30,15 +39,9 @@ PopupWindow {
         return model.length ? s.name + " · " + model : s.name
     }
 
-    Rectangle {
+    Item {
         id: bg
-        SurfaceAppear { target: bg; shown: popup.visible }
-        implicitWidth: column.implicitWidth + 2 * Theme.surfacePadding
-        implicitHeight: column.implicitHeight + 2 * Theme.surfacePadding
-        color: Theme.surfaceFor(popup.screen)
-        border.color: Theme.surfaceBorder
-        border.width: Theme.surfaceBorderWidth
-        radius: Theme.surfaceRadius
+        anchors.fill: parent
 
         HoverHandler {
             id: popupHoverHandler
