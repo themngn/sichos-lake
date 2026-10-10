@@ -45,10 +45,10 @@ PanelWindow {
 
     Rectangle {
         anchors.fill: parent
-        radius: 0
-        color: Theme.background
-        border.color: Theme.accent
-        border.width: 4
+        radius: Theme.surfaceRadius
+        color: Theme.surface
+        border.color: Theme.surfaceBorder
+        border.width: Theme.surfaceBorderWidth
 
         Row {
             anchors.centerIn: parent

@@ -225,9 +225,10 @@ PanelWindow {
                 width: column.width
                 height: content.height + 20
                 visible: !toast.hidden
-                color: Theme.background
-                border.color: critical ? Theme.critical : Theme.accent
-                border.width: 3
+                color: Theme.surface
+                border.color: critical ? Theme.critical : Theme.surfaceBorder
+                border.width: Theme.surfaceBorderWidth
+                radius: Theme.surfaceRadius
 
                 // Only ever hides the toast popup -- does not touch the
                 // underlying notification (no expire()/dismiss()/tracked
@@ -374,9 +375,10 @@ PanelWindow {
                                 required property var modelData
                                 width: actionText.implicitWidth + 16
                                 height: actionText.implicitHeight + 8
-                                color: Qt.rgba(1, 1, 1, 0.08)
-                                border.color: Theme.accent
+                                color: Theme.controlFill
+                                border.color: Theme.surfaceBorder
                                 border.width: 1
+                                radius: Theme.controlRadius
 
                                 Text {
                                     id: actionText

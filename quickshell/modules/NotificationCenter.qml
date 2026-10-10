@@ -1,11 +1,10 @@
 import QtQuick
 import Quickshell
 
-// Bar bell icon + full-height notification history drawer, styled to match
-// Launcher.qml (same dim full-screen overlay + click-outside-to-close +
-// flat Theme.background/Theme.accent box) rather than the small rounded
-// dropdown popups the other bar widgets use — docked to the right edge
-// instead of centered, and full height instead of a fixed box size.
+// Bar bell icon + full-height notification history drawer, sharing
+// Launcher.qml's dim full-screen overlay + click-outside-to-close behavior
+// and the same Theme.surface card as every other popup — docked to the
+// right edge instead of centered, and full height instead of a fixed box size.
 Pill {
     id: root
 
@@ -45,7 +44,7 @@ Pill {
         screen: root.screen
         visible: root.panelOpen
         focusable: true
-        color: Qt.rgba(0, 0, 0, 0.35)
+        color: Theme.backdrop
 
         anchors {
             top: true
@@ -66,11 +65,21 @@ Pill {
                 top: parent.top
                 bottom: parent.bottom
                 right: parent.right
+                // Inset from the screen edges so the rounded card reads as
+                // floating, like the bar popups, instead of having its
+                // corners clipped against the edge.
+                margins: 8
             }
-            color: Theme.background
-            border.color: Theme.accent
-            border.width: 4
-            radius: 0
+            // Width of the accent bars marking each entry (and the folded-
+            // entry connector). Used to be box.border.width itself (the old
+            // 4px accent frame); kept as its own value now that the frame is
+            // Theme.surfaceBorderWidth (1px) so the markers don't shrink to a
+            // hairline along with it.
+            readonly property int markerWidth: 4
+            color: Theme.surface
+            border.color: Theme.surfaceBorder
+            border.width: Theme.surfaceBorderWidth
+            radius: Theme.surfaceRadius
 
             // Swallows clicks so they don't fall through to the outer
             // click-to-close MouseArea.
@@ -145,28 +154,28 @@ Pill {
                         // close to the top edge, especially with countBadge
                         // sitting right there too) + 10 bottom.
                         height: entryContent.height + 24
-                        color: entryMouse.containsMouse ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16) : "transparent"
-                        radius: 0
+                        color: entryMouse.containsMouse ? Theme.hoverFill : "transparent"
+                        radius: Theme.controlRadius
 
-                        // Width tied to box.border.width, not a matching
-                        // literal, so "same width as the panel border" can't
-                        // silently drift out of sync with it. entryItem sits
+                        // Width tied to box.markerWidth, not a matching
+                        // literal, so it can't silently drift out of sync
+                        // with line2/the content inset below. entryItem sits
                         // at inner's own 15px inset (unchanged, same as the
                         // header above it), so a small leftMargin here
-                        // (one border-width) still reads as a real gap of
-                        // inner.anchors.leftMargin from the true panel
-                        // border -- (inner.leftMargin + border.width) -
-                        // border.width = inner.leftMargin exactly. Grown to
+                        // (one marker width) still reads as a real gap of
+                        // inner.anchors.leftMargin from the panel edge --
+                        // (inner.leftMargin + markerWidth) - markerWidth =
+                        // inner.leftMargin exactly. Grown to
                         // match that bigger gap (see bar2/entryContent
                         // below) rather than shrinking it to match a small
                         // bar-to-bar gap -- pulling the whole list in flush
                         // against the border looked worse.
                         Rectangle {
                             anchors.left: parent.left
-                            anchors.leftMargin: box.border.width
+                            anchors.leftMargin: box.markerWidth
                             anchors.top: parent.top
                             anchors.bottom: parent.bottom
-                            width: box.border.width
+                            width: box.markerWidth
                             color: Theme.accent
                         }
 
@@ -176,7 +185,7 @@ Pill {
                         // same "more folded below this" / thread-connector
                         // look as the live toast's own second bar in
                         // Notifications.qml. leftMargin is bar1's own
-                        // (border.width) + its width + the same
+                        // (markerWidth) + its width + the same
                         // inner.anchors.leftMargin gap bar1 has from the
                         // border, so this gap matches that one instead of
                         // the other way around.
@@ -184,11 +193,11 @@ Pill {
                             id: line2
                             visible: entryItem.modelData.count > 1
                             anchors.left: parent.left
-                            anchors.leftMargin: box.border.width * 2 + inner.anchors.leftMargin
+                            anchors.leftMargin: box.markerWidth * 2 + inner.anchors.leftMargin
                             anchors.top: countBadge.bottom
                             anchors.bottom: parent.bottom
                             anchors.bottomMargin: 10
-                            width: box.border.width
+                            width: box.markerWidth
                             color: Theme.accent
                         }
 
@@ -274,7 +283,7 @@ Pill {
                                 // gap -- content sits closer to the edge.
                                 leftMargin: entryItem.modelData.count > 1
                                     ? countBadge.x + countBadge.width + 6
-                                    : box.border.width * 2 + inner.anchors.leftMargin
+                                    : box.markerWidth * 2 + inner.anchors.leftMargin
                                 right: parent.right
                                 rightMargin: 8
                                 // Explicit top instead of verticalCenter --

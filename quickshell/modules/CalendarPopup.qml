@@ -53,10 +53,10 @@ PopupWindow {
         id: bg
         implicitWidth: contentColumn.implicitWidth + 24
         implicitHeight: contentColumn.implicitHeight + 24
-        color: "#1c1c1c"
-        border.color: Qt.rgba(1, 1, 1, 0.15)
+        color: Theme.surface
+        border.color: Theme.surfaceBorder
         border.width: 1
-        radius: 6
+        radius: Theme.surfaceRadius
 
         MouseArea {
             id: popupMouseArea
@@ -103,7 +103,7 @@ PopupWindow {
             Rectangle {
                 width: parent.width
                 height: 1
-                color: Qt.rgba(1, 1, 1, 0.08)
+                color: Theme.separator
             }
 
             // Month Navigation Row
@@ -201,7 +201,7 @@ PopupWindow {
                             text: cell.modelData
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontSize - 1
-                            color: cell.isToday ? "#1c1c1c" : Theme.text
+                            color: cell.isToday ? Theme.textOnLight : Theme.text
                         }
                     }
                 }

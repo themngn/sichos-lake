@@ -48,7 +48,7 @@ PanelWindow {
         const wsId = launcher.hyprMonitor.activeWorkspace.id
         return Hyprland.toplevels.values.some(t => t.workspace && t.workspace.id === wsId)
     }
-    color: launcher.activeWorkspaceHasWindows ? Qt.rgba(0, 0, 0, 0.35) : "transparent"
+    color: launcher.activeWorkspaceHasWindows ? Theme.backdrop : "transparent"
 
     property string mode: "root" // "root" | "apps" | "toggles" | "power" | "autostart" | "reload" | "settings" | "settings-bar" | "settings-plugins" | "settings-timeregion" | "picklist:<field>" | "folder:<id>" | "folderpick" | "newfoldername" | "pluginsource" | "pluginaddtype" | "pluginfolderpick" | "appmenu" | "pluginmenu"
     property string query: ""
@@ -999,10 +999,10 @@ PanelWindow {
         width: 600
         height: 788 // 1.5x the original 525
         anchors.centerIn: parent
-        color: Theme.background
-        border.color: Theme.accent
-        border.width: 4
-        radius: 0
+        color: Theme.surface
+        border.color: Theme.surfaceBorder
+        border.width: Theme.surfaceBorderWidth
+        radius: Theme.surfaceRadius
 
         // Swallows clicks so they don't fall through to the outer
         // click-to-close MouseArea.
@@ -1036,9 +1036,11 @@ PanelWindow {
             Rectangle {
                 width: parent.width
                 height: 40
-                radius: 0
-                color: Qt.rgba(0, 0, 0, 0.4)
-                border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.5)
+                radius: Theme.controlRadius
+                color: Theme.controlFill
+                // Accent border: the search field always has focus, same
+                // "active field" treatment DisplaySettings' open dropdown gets.
+                border.color: Theme.accent
                 border.width: 1
 
                 Text {
@@ -1161,18 +1163,9 @@ PanelWindow {
                     readonly property bool showPath: launcher.query.length > 0
                     width: list.width
                     height: 54
-                    radius: 0
-                    color: row.index === launcher.selectedIndex ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16) : "transparent"
+                    radius: Theme.controlRadius
+                    color: row.index === launcher.selectedIndex ? Theme.hoverFill : "transparent"
                     z: dragArea.drag.active ? 10 : 0
-
-                    Rectangle {
-                        visible: row.index === launcher.selectedIndex
-                        anchors.left: parent.left
-                        anchors.top: parent.top
-                        anchors.bottom: parent.bottom
-                        width: 3
-                        color: Theme.accent
-                    }
 
                     Row {
                         anchors {
@@ -1268,15 +1261,16 @@ PanelWindow {
                         }
                         width: 50
                         height: 22
-                        radius: 0
-                        color: row.isToggleLike && row.modelData.active ? Theme.success : Qt.rgba(1, 1, 1, 0.1)
-                        border.color: Qt.rgba(1, 1, 1, 0.15)
+                        radius: Theme.controlRadius
+                        // Same active/inactive look as the bar popups' mode buttons.
+                        color: row.isToggleLike && row.modelData.active ? Theme.selectedFill : Theme.controlFill
+                        border.color: row.isToggleLike && row.modelData.active ? Theme.accent : Theme.surfaceBorder
                         border.width: 1
 
                         Text {
                             anchors.centerIn: parent
                             text: row.isToggleLike && row.modelData.active ? "On" : "Off"
-                            color: row.isToggleLike && row.modelData.active ? "#1c1c1c" : Theme.textMuted
+                            color: row.isToggleLike && row.modelData.active ? Theme.text : Theme.textMuted
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontSize - 1
                         }

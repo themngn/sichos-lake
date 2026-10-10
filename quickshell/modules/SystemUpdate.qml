@@ -142,10 +142,10 @@ Pill {
             id: bg
             implicitWidth: panel.popupWidth
             implicitHeight: content.implicitHeight + 24
-            color: "#1c1c1c"
-            border.color: Qt.rgba(1, 1, 1, 0.15)
+            color: Theme.surface
+            border.color: Theme.surfaceBorder
             border.width: 1
-            radius: 6
+            radius: Theme.surfaceRadius
 
             MouseArea {
                 id: popupMouseArea
@@ -184,7 +184,7 @@ Pill {
                 Rectangle {
                     width: parent.width
                     height: 1
-                    color: Qt.rgba(1, 1, 1, 0.08)
+                    color: Theme.separator
                 }
 
                 Text {
@@ -237,8 +237,8 @@ Pill {
                 Rectangle {
                     width: parent.width
                     height: 30
-                    radius: 4
-                    color: root.updating ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(1, 1, 1, 0.14)
+                    radius: Theme.controlRadius
+                    color: root.updating ? Theme.controlFill : Theme.selectedFill
 
                     Text {
                         anchors.centerIn: parent

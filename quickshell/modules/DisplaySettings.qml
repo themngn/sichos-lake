@@ -367,10 +367,10 @@ Pill {
             id: bg
             implicitWidth: column.implicitWidth + 24
             implicitHeight: column.implicitHeight + 26
-            color: "#1c1c1c"
-            border.color: Qt.rgba(1, 1, 1, 0.15)
-            border.width: 1
-            radius: 0
+            color: Theme.surface
+            border.color: Theme.surfaceBorder
+            border.width: Theme.surfaceBorderWidth
+            radius: Theme.surfaceRadius
 
             HoverHandler {
                 id: popupHoverHandler
@@ -403,7 +403,7 @@ Pill {
                 Rectangle {
                     width: popup.contentWidth
                     height: 1
-                    color: Qt.rgba(1, 1, 1, 0.08)
+                    color: Theme.separator
                 }
 
                 Text {
@@ -499,13 +499,13 @@ Pill {
                             y: modelData.ry
                             width: modelData.rw
                             height: modelData.rh
-                            radius: 0
+                            radius: Theme.controlRadius
                             readonly property bool selected: popup.selectedMonitor === modelData.name
                             color: monRect.selected
-                                ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25)
-                                : Qt.rgba(1, 1, 1, 0.08)
+                                ? Theme.selectedFill
+                                : Theme.controlFill
                             border.width: 1
-                            border.color: monRect.selected ? Theme.accent : Qt.rgba(1, 1, 1, 0.25)
+                            border.color: monRect.selected ? Theme.accent : Theme.surfaceBorder
 
                             MouseArea {
                                 anchors.fill: parent
@@ -610,7 +610,7 @@ Pill {
                 Rectangle {
                     width: popup.contentWidth
                     height: 1
-                    color: Qt.rgba(1, 1, 1, 0.08)
+                    color: Theme.separator
                 }
 
                 Text {
@@ -906,12 +906,12 @@ Pill {
                                             width: (scaleButtons.width - 4 * (row.scaleOptions.length - 1))
                                                 / row.scaleOptions.length
                                             height: 26
-                                            radius: 0
+                                            radius: Theme.controlRadius
                                             color: scaleButton.isActive
-                                                ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25)
-                                                : Qt.rgba(1, 1, 1, 0.06)
+                                                ? Theme.selectedFill
+                                                : Theme.controlFill
                                             border.width: 1
-                                            border.color: scaleButton.isActive ? Theme.accent : Qt.rgba(1, 1, 1, 0.15)
+                                            border.color: scaleButton.isActive ? Theme.accent : Theme.surfaceBorder
 
                                             Text {
                                                 anchors.centerIn: parent
@@ -953,11 +953,13 @@ Pill {
                                         id: track
                                         width: parent.width - 40
                                         height: 8
-                                        color: Qt.rgba(1, 1, 1, 0.12)
+                                        radius: Theme.trackRadius
+                                        color: Theme.track
 
                                         Rectangle {
                                             width: track.width * (row.percent / 100)
                                             height: parent.height
+                                            radius: Theme.trackRadius
                                             color: Theme.accent
                                         }
 
@@ -1216,15 +1218,15 @@ Pill {
                 id: box
                 width: picker.boxWidth
                 height: 26
-                radius: 0
+                radius: Theme.controlRadius
 
                 // Same "sunken control" look on the closed box regardless of
                 // hover/open state -- only the border lights up, same
                 // treatment TimeSpinner's arrows give hover via containsMouse.
-                color: Qt.rgba(1, 1, 1, 0.05)
+                color: Theme.controlFill
                 border.width: 1
                 border.color: (boxHover.containsMouse || picker.expanded)
-                    ? Theme.accent : Qt.rgba(1, 1, 1, 0.2)
+                    ? Theme.accent : Theme.surfaceBorder
 
                 Text {
                     anchors.left: parent.left
@@ -1248,7 +1250,7 @@ Pill {
                     anchors.verticalCenter: parent.verticalCenter
                     width: 1
                     height: parent.height - 10
-                    color: Qt.rgba(1, 1, 1, 0.15)
+                    color: Theme.surfaceBorder
                 }
 
                 Item {
@@ -1304,10 +1306,10 @@ Pill {
                 id: listBg
                 implicitWidth: picker.boxWidth
                 implicitHeight: optionsColumn.implicitHeight + 4
-                radius: 0
-                color: "#242424"
+                radius: Theme.controlRadius
+                color: Theme.surfaceRaised
                 border.width: 1
-                border.color: Qt.rgba(1, 1, 1, 0.2)
+                border.color: Theme.surfaceBorder
 
                 // Covers the whole card (padding included, not just the
                 // option rows' own MouseAreas) so picker.selfHovered stays
@@ -1330,11 +1332,11 @@ Pill {
                             readonly property bool isCurrent: optionRow.modelData === picker.current
                             width: picker.boxWidth
                             height: 22
-                            radius: 0
+                            radius: Theme.controlRadius
                             color: optionHover.containsMouse
-                                ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.3)
+                                ? Theme.selectedFill
                                 : (optionRow.isCurrent
-                                    ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.15)
+                                    ? Theme.hoverFill
                                     : "transparent")
 
                             Text {

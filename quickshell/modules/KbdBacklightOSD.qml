@@ -73,10 +73,10 @@ PanelWindow {
 
     Rectangle {
         anchors.fill: parent
-        radius: 0
-        color: Theme.background
-        border.color: Theme.accent
-        border.width: 4
+        radius: Theme.surfaceRadius
+        color: Theme.surface
+        border.color: Theme.surfaceBorder
+        border.width: Theme.surfaceBorderWidth
 
         Row {
             anchors.centerIn: parent
@@ -102,13 +102,13 @@ PanelWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 width: 130
                 height: 8
-                radius: 0
-                color: Qt.rgba(1, 1, 1, 0.15)
+                radius: Theme.trackRadius
+                color: Theme.track
 
                 Rectangle {
                     width: track.width * (osd.percent / 100)
                     height: track.height
-                    radius: 0
+                    radius: Theme.trackRadius
                     color: Theme.accent
                 }
             }

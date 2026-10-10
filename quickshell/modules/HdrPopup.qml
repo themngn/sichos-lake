@@ -53,10 +53,10 @@ PopupWindow {
         id: bg
         implicitWidth: column.implicitWidth + 24
         implicitHeight: column.implicitHeight + 20
-        color: "#1c1c1c"
-        border.color: Qt.rgba(1, 1, 1, 0.15)
+        color: Theme.surface
+        border.color: Theme.surfaceBorder
         border.width: 1
-        radius: 6
+        radius: Theme.surfaceRadius
 
         HoverHandler {
             id: popupHoverHandler
@@ -102,9 +102,9 @@ PopupWindow {
                         readonly property bool isActive: HdrSettings.active === modeButton.modelData.on
                         width: 117
                         height: 26
-                        radius: 4
-                        color: modeButton.isActive ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25) : Qt.rgba(1, 1, 1, 0.06)
-                        border.color: modeButton.isActive ? Theme.accent : Qt.rgba(1, 1, 1, 0.15)
+                        radius: Theme.controlRadius
+                        color: modeButton.isActive ? Theme.selectedFill : Theme.controlFill
+                        border.color: modeButton.isActive ? Theme.accent : Theme.surfaceBorder
                         border.width: 1
 
                         Text {
@@ -126,7 +126,7 @@ PopupWindow {
             Rectangle {
                 width: 240
                 height: 1
-                color: Qt.rgba(1, 1, 1, 0.12)
+                color: Theme.separator
             }
 
             Text {

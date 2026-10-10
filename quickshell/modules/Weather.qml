@@ -190,10 +190,10 @@ Pill {
             width: 340
             implicitWidth: 340
             implicitHeight: content.implicitHeight + 24
-            color: "#1c1c1c"
-            border.color: Qt.rgba(1, 1, 1, 0.15)
+            color: Theme.surface
+            border.color: Theme.surfaceBorder
             border.width: 1
-            radius: 6
+            radius: Theme.surfaceRadius
 
             MouseArea {
                 id: popupMouseArea

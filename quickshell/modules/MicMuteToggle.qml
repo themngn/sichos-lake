@@ -22,7 +22,7 @@ Pill {
     // colRed — not in Theme.qml since that widget lives outside this repo, but
     // reusing its exact red keeps every "something needs your attention right
     // now" indicator across the bar visually consistent.
-    readonly property color mutedColor: "#ee3e3e"
+    readonly property color mutedColor: Theme.danger
 
     // PipeWire's mute here is a software-only mute — confirmed live it never
     // touches the actual ALSA "Capture Switch" mixer control, so the kernel's

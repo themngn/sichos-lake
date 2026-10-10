@@ -216,10 +216,10 @@ Pill {
             width: popup.popupWidth
             implicitWidth: popup.popupWidth
             implicitHeight: content.implicitHeight + 24
-            color: "#1c1c1c"
-            border.color: Qt.rgba(1, 1, 1, 0.15)
+            color: Theme.surface
+            border.color: Theme.surfaceBorder
             border.width: 1
-            radius: 6
+            radius: Theme.surfaceRadius
 
             MouseArea {
                 id: popupMouseArea
@@ -247,9 +247,9 @@ Pill {
                     Rectangle {
                         width: Math.floor((popup.contentWidth - 6) / 2)
                         height: 28
-                        radius: 4
-                        color: root.currentAgent === "claude" ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(1, 1, 1, 0.05)
-                        border.color: root.currentAgent === "claude" ? Theme.accent : "transparent"
+                        radius: Theme.controlRadius
+                        color: root.currentAgent === "claude" ? Theme.selectedFill : Theme.controlFill
+                        border.color: root.currentAgent === "claude" ? Theme.accent : Theme.surfaceBorder
                         border.width: 1
 
                         Row {
@@ -280,9 +280,9 @@ Pill {
                     Rectangle {
                         width: Math.floor((popup.contentWidth - 6) / 2)
                         height: 28
-                        radius: 4
-                        color: root.currentAgent === "agy" ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(1, 1, 1, 0.05)
-                        border.color: root.currentAgent === "agy" ? Theme.accent : "transparent"
+                        radius: Theme.controlRadius
+                        color: root.currentAgent === "agy" ? Theme.selectedFill : Theme.controlFill
+                        border.color: root.currentAgent === "agy" ? Theme.accent : Theme.surfaceBorder
                         border.width: 1
 
                         Row {
@@ -366,13 +366,13 @@ Pill {
                     Rectangle {
                         width: parent.width
                         height: 8
-                        radius: 0
-                        color: Qt.rgba(1, 1, 1, 0.12)
+                        radius: Theme.trackRadius
+                        color: Theme.track
 
                         Rectangle {
                             width: parent.width * Math.max(0, Math.min(1, (root.activeFiveHourPercent || 0) / 100))
                             height: parent.height
-                            radius: 0
+                            radius: Theme.trackRadius
                             color: root._barColor(root.activeFiveHourPercent)
                         }
                     }
@@ -380,13 +380,13 @@ Pill {
                     Rectangle {
                         width: parent.width
                         height: 3
-                        radius: 0
-                        color: Qt.rgba(1, 1, 1, 0.12)
+                        radius: Theme.trackRadius
+                        color: Theme.track
 
                         Rectangle {
                             width: parent.width * Math.max(0, Math.min(1, (root.fiveHourTimeProgress || 0) / 100))
                             height: parent.height
-                            radius: 0
+                            radius: Theme.trackRadius
                             color: Theme.textDim
                         }
                     }
@@ -427,13 +427,13 @@ Pill {
                     Rectangle {
                         width: parent.width
                         height: 8
-                        radius: 0
-                        color: Qt.rgba(1, 1, 1, 0.12)
+                        radius: Theme.trackRadius
+                        color: Theme.track
 
                         Rectangle {
                             width: parent.width * Math.max(0, Math.min(1, (root.activeWeeklyPercent || 0) / 100))
                             height: parent.height
-                            radius: 0
+                            radius: Theme.trackRadius
                             color: root._barColor(root.activeWeeklyPercent)
                         }
                     }
@@ -441,13 +441,13 @@ Pill {
                     Rectangle {
                         width: parent.width
                         height: 3
-                        radius: 0
-                        color: Qt.rgba(1, 1, 1, 0.12)
+                        radius: Theme.trackRadius
+                        color: Theme.track
 
                         Rectangle {
                             width: parent.width * Math.max(0, Math.min(1, (root.weeklyTimeProgress || 0) / 100))
                             height: parent.height
-                            radius: 0
+                            radius: Theme.trackRadius
                             color: Theme.textDim
                         }
                     }
@@ -469,7 +469,7 @@ Pill {
                     Rectangle {
                         width: parent.width
                         height: 1
-                        color: Qt.rgba(1, 1, 1, 0.08)
+                        color: Theme.separator
                     }
 
                     Text {

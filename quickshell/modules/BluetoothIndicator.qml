@@ -142,10 +142,10 @@ Pill {
             id: bg
             implicitWidth: 280
             implicitHeight: content.implicitHeight + 24
-            color: "#1c1c1c"
-            border.color: Qt.rgba(1, 1, 1, 0.15)
+            color: Theme.surface
+            border.color: Theme.surfaceBorder
             border.width: 1
-            radius: 6
+            radius: Theme.surfaceRadius
 
             HoverHandler {
                 id: popupHoverHandler
@@ -203,7 +203,7 @@ Pill {
                 Rectangle {
                     width: parent.width
                     height: 1
-                    color: Qt.rgba(1, 1, 1, 0.08)
+                    color: Theme.separator
                 }
 
                 Text {

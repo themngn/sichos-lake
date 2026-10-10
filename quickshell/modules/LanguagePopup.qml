@@ -36,10 +36,10 @@ PopupWindow {
         id: bg
         implicitWidth: column.implicitWidth + 20
         implicitHeight: column.implicitHeight + 16
-        color: "#1c1c1c"
-        border.color: Qt.rgba(1, 1, 1, 0.15)
+        color: Theme.surface
+        border.color: Theme.surfaceBorder
         border.width: 1
-        radius: 6
+        radius: Theme.surfaceRadius
 
         Column {
             id: column
@@ -58,8 +58,8 @@ PopupWindow {
 
                     width: rowContent.implicitWidth + 16
                     height: rowContent.implicitHeight + 6
-                    radius: 4
-                    color: row.active ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16) : "transparent"
+                    radius: Theme.controlRadius
+                    color: row.active ? Theme.hoverFill : "transparent"
 
                     Row {
                         id: rowContent

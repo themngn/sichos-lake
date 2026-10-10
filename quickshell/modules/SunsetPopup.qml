@@ -80,10 +80,10 @@ PopupWindow {
         id: bg
         implicitWidth: column.implicitWidth + 24
         implicitHeight: column.implicitHeight + 20
-        color: "#1c1c1c"
-        border.color: Qt.rgba(1, 1, 1, 0.15)
+        color: Theme.surface
+        border.color: Theme.surfaceBorder
         border.width: 1
-        radius: 6
+        radius: Theme.surfaceRadius
 
         HoverHandler {
             id: popupHoverHandler
@@ -137,9 +137,9 @@ PopupWindow {
                         readonly property bool active: popup.active === modelData.on
                         width: 107
                         height: 26
-                        radius: 4
-                        color: modeButton.active ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25) : Qt.rgba(1, 1, 1, 0.06)
-                        border.color: modeButton.active ? Theme.accent : Qt.rgba(1, 1, 1, 0.15)
+                        radius: Theme.controlRadius
+                        color: modeButton.active ? Theme.selectedFill : Theme.controlFill
+                        border.color: modeButton.active ? Theme.accent : Theme.surfaceBorder
                         border.width: 1
 
                         Text {
@@ -212,8 +212,8 @@ PopupWindow {
                     id: track
                     width: parent.width
                     height: 8
-                    radius: 0
-                    color: Qt.rgba(1, 1, 1, 0.12)
+                    radius: Theme.trackRadius
+                    color: Theme.track
                     opacity: popup.active && !popup.scheduleFollow ? 1 : 0.5
 
                     readonly property real fraction: (popup.kelvin - popup.minKelvin) / (popup.maxKelvin - popup.minKelvin)
@@ -221,7 +221,7 @@ PopupWindow {
                     Rectangle {
                         width: track.width * track.fraction
                         height: parent.height
-                        radius: 0
+                        radius: Theme.trackRadius
                         color: Theme.accent
                     }
 
@@ -243,7 +243,7 @@ PopupWindow {
             Rectangle {
                 width: 220
                 height: 1
-                color: Qt.rgba(1, 1, 1, 0.12)
+                color: Theme.separator
             }
 
             Text {
@@ -328,8 +328,8 @@ PopupWindow {
 
                 Rectangle {
                     anchors.fill: parent
-                    radius: 4
-                    color: saveArea.containsMouse ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16) : "transparent"
+                    radius: Theme.controlRadius
+                    color: saveArea.containsMouse ? Theme.hoverFill : "transparent"
                 }
                 Text {
                     id: saveLabel

@@ -75,10 +75,10 @@ Item {
             id: tooltipBg
             implicitWidth: tooltipLabel.implicitWidth + 16
             implicitHeight: tooltipLabel.implicitHeight + 10
-            color: "#1c1c1c"
-            border.color: Qt.rgba(1, 1, 1, 0.15)
+            color: Theme.surface
+            border.color: Theme.surfaceBorder
             border.width: 1
-            radius: 4
+            radius: Theme.controlRadius
 
             Text {
                 id: tooltipLabel

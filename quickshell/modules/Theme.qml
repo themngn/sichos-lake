@@ -21,6 +21,35 @@ QtObject {
     readonly property color perfBalanced: "#698b85"
     readonly property color perfPowerSaver: "#b2cfb8"
 
+    // Shared surface style for every popup, OSD, launcher and notification.
+    // Each module reads these rather than its own literals, so the whole
+    // shell's look can be retuned from here in one place. (Previously
+    // there were two clashing styles: OSDs/launcher/notification center used
+    // square black boxes with a 4px accent frame, while the bar popups used
+    // rounded neutral-gray cards. Everything is now the card style.)
+    readonly property color surface: "#1c1c1c"
+    // One step lighter than surface, for something floating on top of a
+    // surface (e.g. an open dropdown list), so it doesn't blend in.
+    readonly property color surfaceRaised: "#242424"
+    readonly property color surfaceBorder: Qt.rgba(1, 1, 1, 0.15)
+    readonly property int surfaceBorderWidth: 1
+    readonly property int surfaceRadius: 6
+    // Buttons, rows, chips and fields inside a surface.
+    readonly property int controlRadius: 4
+    readonly property color controlFill: Qt.rgba(1, 1, 1, 0.06)
+    readonly property color hoverFill: Qt.rgba(accent.r, accent.g, accent.b, 0.16)
+    readonly property color selectedFill: Qt.rgba(accent.r, accent.g, accent.b, 0.25)
+    readonly property color separator: Qt.rgba(1, 1, 1, 0.08)
+    // Unfilled part of progress/level bars, and the bar's own corners.
+    readonly property color track: Qt.rgba(1, 1, 1, 0.12)
+    readonly property int trackRadius: 0
+    // Dims the desktop behind fullscreen overlays (launcher, notification center).
+    readonly property color backdrop: Qt.rgba(0, 0, 0, 0.35)
+    // Dark text drawn on a light fill (e.g. the calendar's "today" dot).
+    readonly property color textOnLight: "#1c1c1c"
+    // "Muted" state of the mic/notification mute toggles.
+    readonly property color danger: "#ee3e3e"
+
     // font.family takes a single family name (this build has no font.families
     // fallback-list support); Qt's font engine still auto-falls-back to other
     // installed fonts (e.g. Noto Color Emoji) for glyphs missing from this one.

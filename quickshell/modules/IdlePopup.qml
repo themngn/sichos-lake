@@ -107,10 +107,10 @@ PopupWindow {
         id: bg
         implicitWidth: column.implicitWidth + 24
         implicitHeight: column.implicitHeight + 20
-        color: "#1c1c1c"
-        border.color: Qt.rgba(1, 1, 1, 0.15)
+        color: Theme.surface
+        border.color: Theme.surfaceBorder
         border.width: 1
-        radius: 6
+        radius: Theme.surfaceRadius
 
         HoverHandler {
             id: popupHoverHandler
@@ -304,8 +304,8 @@ PopupWindow {
 
                 Rectangle {
                     anchors.fill: parent
-                    radius: 4
-                    color: saveArea.containsMouse ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16) : "transparent"
+                    radius: Theme.controlRadius
+                    color: saveArea.containsMouse ? Theme.hoverFill : "transparent"
                 }
                 Text {
                     id: saveLabel

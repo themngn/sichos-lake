@@ -18,7 +18,7 @@ Pill {
     // Same red as MicMuteToggle's mutedColor -- kept local rather than
     // hoisted into Theme.qml for the same reason that one is: it belongs to
     // the custom alert-widget outside this repo, this just matches it.
-    readonly property color mutedColor: "#ee3e3e"
+    readonly property color mutedColor: Theme.danger
 
     readonly property bool shown: root.muted || root.revealed
     opacity: root.shown ? (root.muted ? 1 : 0.5) : 0
