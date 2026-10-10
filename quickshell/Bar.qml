@@ -177,7 +177,7 @@ PanelWindow {
     // own bounds for the popup below it (its own window, outside toggleRow's
     // geometry, so toggleRowHover alone would otherwise drop to unhovered
     // and fade the row out from under an still-open popup).
-    readonly property bool toggleRowPopupOpen: ["sunset", "hdr", "idle", "gamefocus"].includes(ShellState.activePopup)
+    readonly property bool toggleRowPopupOpen: ["sunset", "hdr", "idle", "gamefocus", "mic"].includes(ShellState.activePopup)
         && ShellState.activePopupScreen === bar.screen.name
 
     // Fixed invisible hover target used only to bootstrap the very first
@@ -314,6 +314,7 @@ PanelWindow {
         }
         MicMuteToggle {
             id: micMuteToggle
+            screenName: bar.screen.name
             revealed: bar.toggleRowRevealed
             source: Pipewire.defaultAudioSource
         }

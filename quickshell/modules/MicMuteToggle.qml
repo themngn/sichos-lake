@@ -1,8 +1,10 @@
 import QtQuick
 import Quickshell
 
-// Microphone mute toggle. No popup, same shape as TransparencyToggle — one
-// click flips Pipewire.defaultAudioSource's mute state, the same PipeWire
+// Microphone mute toggle. Left click flips Pipewire.defaultAudioSource's mute
+// state; hover (or right click) opens MicPopup.qml for input volume and
+// device selection -- same hover/popup handling as GameFocusToggle.qml.
+// Mute goes through the same PipeWire
 // object hyprland's XF86AudioMicMute key already drives via
 // `wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle` (keybindings.lua), so the
 // hardware button and this pill always agree without any extra wiring.
@@ -14,6 +16,7 @@ Pill {
     id: root
     property var source: null
     property bool revealed: true
+    property string screenName: ""
 
     readonly property bool muted: root.source && root.source.audio ? root.source.audio.muted : false
     tooltipText: !root.source ? "No microphone" : (root.muted ? "Mic muted" : "Mic live")
@@ -59,8 +62,68 @@ Pill {
         NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
     }
 
-    onClicked: {
-        if (root.source && root.source.audio) root.source.audio.muted = !root.source.audio.muted
+    readonly property string popupId: "mic"
+    readonly property bool popupOpen: ShellState.activePopup === root.popupId && ShellState.activePopupScreen === root.screenName
+    readonly property bool popupHovered: popup.popupHovered
+
+    Timer {
+        id: openDelayTimer
+        interval: 250
+        onTriggered: {
+            if (root.hovered) {
+                ShellState.activePopup = root.popupId
+                ShellState.activePopupScreen = root.screenName
+            }
+        }
+    }
+
+    Timer {
+        id: closeDelayTimer
+        interval: 300
+        onTriggered: {
+            if (!root.hovered && !root.popupHovered) {
+                if (ShellState.activePopup === root.popupId) {
+                    ShellState.activePopup = ""
+                }
+            }
+        }
+    }
+
+    function _updateHoverState() {
+        if (root.hovered) {
+            closeDelayTimer.stop()
+            if (ShellState.activePopup !== "" && !root.popupOpen) {
+                openDelayTimer.stop()
+                ShellState.activePopup = root.popupId
+                ShellState.activePopupScreen = root.screenName
+            } else if (ShellState.activePopup === "" && !openDelayTimer.running) {
+                openDelayTimer.start()
+            }
+        } else if (root.popupHovered) {
+            closeDelayTimer.stop()
+            openDelayTimer.stop()
+        } else {
+            openDelayTimer.stop()
+            if (root.popupOpen && !closeDelayTimer.running) {
+                closeDelayTimer.start()
+            }
+        }
+    }
+
+    onHoveredChanged: _updateHoverState()
+    onPopupHoveredChanged: _updateHoverState()
+
+    onClicked: (mouse) => {
+        if (mouse.button === Qt.RightButton) {
+            if (root.popupOpen) {
+                ShellState.activePopup = ""
+            } else {
+                ShellState.activePopup = root.popupId
+                ShellState.activePopupScreen = root.screenName
+            }
+        } else if (root.source && root.source.audio) {
+            root.source.audio.muted = !root.source.audio.muted
+        }
     }
 
     Text {
@@ -68,5 +131,12 @@ Pill {
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontSize * Theme.barIconScale
         color: root.muted ? root.mutedColor : Theme.textMuted
+    }
+
+    MicPopup {
+        id: popup
+        anchorItem: root
+        source: root.source
+        visible: root.popupOpen
     }
 }

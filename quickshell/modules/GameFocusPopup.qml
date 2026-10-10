@@ -132,6 +132,7 @@ PopupWindow {
                     id: track
                     width: parent.width
                     height: Theme.trackHeight
+                    radius: Theme.trackRadius
                     color: Theme.track
                     opacity: GameFocus.enabled ? 1 : 0.5
 
@@ -140,6 +141,7 @@ PopupWindow {
                     Rectangle {
                         width: track.width * track.fraction
                         height: parent.height
+                        radius: Theme.trackRadius
                         color: Theme.accent
                     }
 
