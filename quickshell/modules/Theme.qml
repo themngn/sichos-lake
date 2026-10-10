@@ -34,11 +34,30 @@ QtObject {
     // One step lighter than surface, for something floating on top of a
     // surface (e.g. an open dropdown list), so it doesn't blend in.
     readonly property color surfaceRaised: "#2d3332"
+    // Glass: the same two surface colors at glassAlpha, with Hyprland
+    // blurring whatever is behind them (layer rules in hypr/window_rules.lua
+    // -- only quickshell's menu-type surfaces are blurred, never the bar or
+    // application windows). Cards pick per screen via surfaceFor()/
+    // surfaceRaisedFor(): on a monitor with HDR active they stay solid,
+    // since translucent surfaces band there (TODO.md, same reason Bar.qml
+    // forces itself opaque under HDR). glassAlpha must stay above the
+    // layer rules' ignore_alpha, or Hyprland stops blurring behind cards.
+    readonly property real glassAlpha: 0.55
+    function glassOn(screen) {
+        return !(screen && HdrSettings.active && HdrSettings.isSelected(screen.name))
+    }
+    function surfaceFor(screen) {
+        return glassOn(screen) ? Qt.rgba(surface.r, surface.g, surface.b, glassAlpha) : surface
+    }
+    function surfaceRaisedFor(screen) {
+        return glassOn(screen) ? Qt.rgba(surfaceRaised.r, surfaceRaised.g, surfaceRaised.b, glassAlpha) : surfaceRaised
+    }
     readonly property color surfaceBorder: Qt.rgba(1, 1, 1, 0.10)
     readonly property int surfaceBorderWidth: 1
     readonly property int surfaceRadius: 12
     // Drop shadow under surfaces that have room for one (launcher,
     // notification center -- popups are sized exactly to their card).
+    // Only drawn while the card is solid (HDR screens) -- see Launcher.qml.
     readonly property color surfaceShadow: Qt.rgba(0, 0, 0, 0.55)
     readonly property int surfaceShadowBlur: 36  // px (RectangularShadow.blur)
     readonly property int surfaceShadowOffset: 10  // px, straight down

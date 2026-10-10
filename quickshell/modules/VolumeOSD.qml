@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Wayland
 import Quickshell.Services.Pipewire
 
 // Windows-11-style transient volume overlay: pops up on any volume/mute
@@ -9,6 +10,8 @@ import Quickshell.Services.Pipewire
 // seconds of no further change.
 PanelWindow {
     id: osd
+    // Blurred behind by the "sichos-glass" layer rule (hypr/window_rules.lua).
+    WlrLayershell.namespace: "sichos-glass"
 
     property var sink: Pipewire.defaultAudioSink
 
@@ -74,7 +77,7 @@ PanelWindow {
     Rectangle {
         anchors.fill: parent
         radius: Theme.surfaceRadius
-        color: Theme.surface
+        color: Theme.surfaceFor(osd.screen)
         border.color: Theme.surfaceBorder
         border.width: Theme.surfaceBorderWidth
 

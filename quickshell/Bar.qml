@@ -7,6 +7,9 @@ import "./modules"
 
 PanelWindow {
     id: bar
+    // Own namespace so hypr/window_rules.lua can blur this bar's popups
+    // (menus/tooltips) without blurring the bar itself.
+    WlrLayershell.namespace: "sichos-bar"
 
     required property var modelData
     screen: modelData

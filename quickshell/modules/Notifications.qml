@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Wayland
 import Quickshell.Services.Notifications
 
 // Native notification popups. This project doesn't run a separate
@@ -14,6 +15,8 @@ import Quickshell.Services.Notifications
 // plainly reads better than a dropdown affordance on a fast-changing list).
 PanelWindow {
     id: root
+    // Blurred behind by the "sichos-glass" layer rule (hypr/window_rules.lua).
+    WlrLayershell.namespace: "sichos-glass"
 
     screen: Quickshell.screens[0]
     color: "transparent"
@@ -335,7 +338,7 @@ PanelWindow {
                 width: column.width
                 height: content.height + 2 * Theme.cardPadding
                 visible: !toast.hidden && !toast.isFollower
-                color: Theme.surface
+                color: Theme.surfaceFor(root.screen)
                 border.color: critical ? Theme.critical : Theme.surfaceBorder
                 border.width: Theme.surfaceBorderWidth
                 radius: Theme.surfaceRadius

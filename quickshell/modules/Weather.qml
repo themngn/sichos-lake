@@ -191,7 +191,7 @@ Pill {
             width: 340
             implicitWidth: 340
             implicitHeight: content.implicitHeight + 2 * Theme.surfacePadding
-            color: Theme.surface
+            color: Theme.surfaceFor(popup.screen)
             border.color: Theme.surfaceBorder
             border.width: Theme.surfaceBorderWidth
             radius: Theme.surfaceRadius

@@ -143,7 +143,7 @@ Pill {
             SurfaceAppear { target: bg; shown: panel.visible }
             implicitWidth: 280
             implicitHeight: content.implicitHeight + 2 * Theme.surfacePadding
-            color: Theme.surface
+            color: Theme.surfaceFor(panel.screen)
             border.color: Theme.surfaceBorder
             border.width: Theme.surfaceBorderWidth
             radius: Theme.surfaceRadius

@@ -54,7 +54,7 @@ PopupWindow {
         SurfaceAppear { target: bg; shown: popup.visible }
         implicitWidth: contentColumn.implicitWidth + 2 * Theme.surfacePadding
         implicitHeight: contentColumn.implicitHeight + 2 * Theme.surfacePadding
-        color: Theme.surface
+        color: Theme.surfaceFor(popup.screen)
         border.color: Theme.surfaceBorder
         border.width: Theme.surfaceBorderWidth
         radius: Theme.surfaceRadius

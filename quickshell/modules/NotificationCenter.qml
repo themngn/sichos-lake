@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Effects
 import Quickshell
+import Quickshell.Wayland
 
 // Bar bell icon + full-height notification history drawer, sharing
 // Launcher.qml's dim full-screen overlay + click-outside-to-close behavior
@@ -59,6 +60,8 @@ Pill {
 
     PanelWindow {
         id: panel
+        // Blurred behind by the "sichos-glass" layer rule (hypr/window_rules.lua).
+        WlrLayershell.namespace: "sichos-glass"
 
         screen: root.screen
         visible: root.panelOpen
@@ -77,8 +80,13 @@ Pill {
             onClicked: ShellState.notificationCenterScreen = ""
         }
 
-        // Soft macOS-style drop shadow under the card (drawn first, so beneath it).
+        // Soft drop shadow under the card (drawn first, so beneath it) -- solid
+        // cards only. Under a glass card it shows through as a dark smudge, and
+        // on top of the dimmed backdrop it pushes alpha past the glass layer
+        // rule's ignore_alpha, so Hyprland blurs a hard-edged ring around the
+        // card (observed: odd shadows whenever a window was open behind it).
         RectangularShadow {
+            visible: !Theme.glassOn(panel.screen)
             anchors.fill: box
             radius: box.radius
             offset.y: Theme.surfaceShadowOffset
@@ -104,7 +112,7 @@ Pill {
                 // corners clipped against the edge.
                 margins: 8
             }
-            color: Theme.surface
+            color: Theme.surfaceFor(panel.screen)
             border.color: Theme.surfaceBorder
             border.width: Theme.surfaceBorderWidth
             radius: Theme.surfaceRadius

@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Wayland
 import Quickshell.Io
 
 // Same Windows-11-style transient overlay as VolumeOSD.qml/BacklightOSD.qml,
@@ -12,6 +13,8 @@ import Quickshell.Io
 // keybind rather than this being watched for.
 PanelWindow {
     id: osd
+    // Blurred behind by the "sichos-glass" layer rule (hypr/window_rules.lua).
+    WlrLayershell.namespace: "sichos-glass"
 
     property string mode: "extend"
 
@@ -46,7 +49,7 @@ PanelWindow {
     Rectangle {
         anchors.fill: parent
         radius: Theme.surfaceRadius
-        color: Theme.surface
+        color: Theme.surfaceFor(osd.screen)
         border.color: Theme.surfaceBorder
         border.width: Theme.surfaceBorderWidth
 

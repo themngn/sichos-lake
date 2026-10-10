@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Effects
 import Quickshell
+import Quickshell.Wayland
 import Quickshell.Io
 import Quickshell.Networking
 import Quickshell.Bluetooth
@@ -12,6 +13,8 @@ import Quickshell.Hyprland
 // alongside the other two.
 PanelWindow {
     id: launcher
+    // Blurred behind by the "sichos-glass" layer rule (hypr/window_rules.lua).
+    WlrLayershell.namespace: "sichos-glass"
 
     screen: Quickshell.screens[0]
     visible: false
@@ -995,8 +998,13 @@ PanelWindow {
         onClicked: launcher.close()
     }
 
-    // Soft macOS-style drop shadow under the card (drawn first, so beneath it).
+    // Soft drop shadow under the card (drawn first, so beneath it) -- solid
+    // cards only. Under a glass card it shows through as a dark smudge, and
+    // on top of the dimmed backdrop it pushes alpha past the glass layer
+    // rule's ignore_alpha, so Hyprland blurs a hard-edged ring around the
+    // card (observed: odd shadows whenever a window was open behind it).
     RectangularShadow {
+        visible: !Theme.glassOn(launcher.screen)
         anchors.fill: box
         radius: box.radius
         offset.y: Theme.surfaceShadowOffset
@@ -1015,7 +1023,7 @@ PanelWindow {
         width: 600
         height: 788 // 1.5x the original 525
         anchors.centerIn: parent
-        color: Theme.surface
+        color: Theme.surfaceFor(launcher.screen)
         border.color: Theme.surfaceBorder
         border.width: Theme.surfaceBorderWidth
         radius: Theme.surfaceRadius

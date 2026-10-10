@@ -36,10 +36,16 @@ hl.config({
             enabled = false,
         },
 
+        -- Enabled only so quickshell's menus/popups can be frosted glass
+        -- (layer rules in window_rules.lua); application windows are
+        -- excluded there with a catch-all no_blur rule, so e.g. kitty's
+        -- 0.8 background_opacity stays plain see-through, not blurred.
+        -- size/passes for a soft macOS-style frost rather than the old
+        -- barely-there 3/1.
         blur = {
-            enabled   = false,
-            size      = 3,
-            passes    = 1,
+            enabled   = true,
+            size      = 8,
+            passes    = 3,
             vibrancy  = 0.1696,
         },
     },

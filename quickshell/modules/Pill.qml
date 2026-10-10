@@ -75,7 +75,7 @@ Item {
             id: tooltipBg
             implicitWidth: tooltipLabel.implicitWidth + 16
             implicitHeight: tooltipLabel.implicitHeight + 10
-            color: Theme.surface
+            color: Theme.surfaceFor(tooltipPopup.screen)
             border.color: Theme.surfaceBorder
             border.width: Theme.surfaceBorderWidth
             radius: Theme.controlRadius

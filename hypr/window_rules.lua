@@ -39,6 +39,40 @@ hl.window_rule({
 -- })
 -- overlayLayerRule:set_enabled(false)
 
+-- Frosted-glass quickshell menus (see look_and_feel.lua's blur block and
+-- quickshell/modules/Theme.qml's glassAlpha). Blur is on globally only for
+-- these: no application window is ever blurred.
+hl.window_rule({
+    name    = "no-window-blur",
+    match   = { class = ".*" },
+    no_blur = true,
+})
+
+-- Launcher, notification center, toasts and OSDs (quickshell sets
+-- WlrLayershell.namespace "sichos-glass" on each). These are mostly fully
+-- transparent windows with a translucent card in them -- the launcher and
+-- notification center are whole-screen with a 0.35-alpha dimmed backdrop --
+-- so ignore_alpha limits the blur to pixels at least this opaque: the cards
+-- (Theme.glassAlpha, 0.55), not the backdrop or the empty window around a
+-- card. blur_popups covers the launcher's own popup children.
+hl.layer_rule({
+    name         = "sichos-glass-blur",
+    match        = { namespace = "^sichos-glass$" },
+    blur         = true,
+    blur_popups  = true,
+    ignore_alpha = 0.45,
+})
+
+-- The bar itself is never blurred (it's either fully transparent or the
+-- 0.8/1.0 solid it's always been), but its popups -- every bar menu,
+-- the workspace menu, tooltips -- are, same frosted cards as above.
+hl.layer_rule({
+    name         = "sichos-bar-popups-blur",
+    match        = { namespace = "^sichos-bar$" },
+    blur_popups  = true,
+    ignore_alpha = 0.45,
+})
+
 -- Hyprland-run windowrule
 hl.window_rule({
     name  = "move-hyprland-run",

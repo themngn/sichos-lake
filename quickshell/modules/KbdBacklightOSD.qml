@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Wayland
 import Quickshell.Io
 
 // Same Windows-11-style transient overlay as VolumeOSD.qml/BacklightOSD.qml,
@@ -16,6 +17,8 @@ import Quickshell.Io
 // bug.
 PanelWindow {
     id: osd
+    // Blurred behind by the "sichos-glass" layer rule (hypr/window_rules.lua).
+    WlrLayershell.namespace: "sichos-glass"
 
     readonly property int percent: maxFile.text().length > 0 && brightnessFile.text().length > 0
         ? Math.round((Number(brightnessFile.text()) / Number(maxFile.text())) * 100)
@@ -74,7 +77,7 @@ PanelWindow {
     Rectangle {
         anchors.fill: parent
         radius: Theme.surfaceRadius
-        color: Theme.surface
+        color: Theme.surfaceFor(osd.screen)
         border.color: Theme.surfaceBorder
         border.width: Theme.surfaceBorderWidth
 

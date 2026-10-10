@@ -368,7 +368,7 @@ Pill {
             SurfaceAppear { target: bg; shown: popup.visible }
             implicitWidth: column.implicitWidth + 2 * Theme.surfacePadding
             implicitHeight: column.implicitHeight + 2 * Theme.surfacePadding
-            color: Theme.surface
+            color: Theme.surfaceFor(popup.screen)
             border.color: Theme.surfaceBorder
             border.width: Theme.surfaceBorderWidth
             radius: Theme.surfaceRadius
@@ -1326,7 +1326,7 @@ Pill {
                 implicitWidth: picker.boxWidth
                 implicitHeight: optionsColumn.implicitHeight + 4
                 radius: Theme.controlRadius
-                color: Theme.surfaceRaised
+                color: Theme.surfaceRaisedFor(listPopup.screen)
                 border.width: 1
                 border.color: Theme.surfaceBorder
 

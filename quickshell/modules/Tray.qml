@@ -7,6 +7,10 @@ Pill {
     visible: SystemTray.items.values.length > 0
     horizontalPadding: 8
 
+    TrayMenu {
+        id: trayMenu
+    }
+
     Row {
         spacing: 8
 
@@ -86,13 +90,14 @@ Pill {
                             // (Quit/Show/etc.) — secondaryActivate() is a
                             // distinct action tied to middle click per the
                             // StatusNotifierItem spec, not "show the menu".
-                            // display() renders a real Qt Widgets QMenu,
-                            // which needs shell.qml's `UseQApplication`
-                            // pragma — without it this fails silently
-                            // (well, logs "quickshell was not started in
-                            // QApplication mode" to stderr, easy to miss).
-                            const pos = trayItem.QsWindow.itemPosition(trayItem)
-                            trayItem.modelData.display(trayItem.QsWindow.window, pos.x, pos.y + trayItem.height)
+                            // Drawn by TrayMenu.qml rather than
+                            // modelData.display(), whose native Qt Widgets
+                            // QMenu ignores Theme (no glass, wrong colors).
+                            ShellState.activePopup = ""
+                            trayMenu.stack = []
+                            trayMenu.anchorItem = trayItem
+                            trayMenu.title = trayItem.modelData.title || ""
+                            trayMenu.handle = trayItem.modelData.menu
                         }
                     }
                 }
