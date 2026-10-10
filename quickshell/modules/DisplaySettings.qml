@@ -102,14 +102,13 @@ Pill {
     onHoveredChanged: _updateHoverState()
     onPopupHoveredChanged: _updateHoverState()
 
-    PopupWindow {
+    // Set by Bar.qml: the bar's MorphPopup card (see MorphContent.qml).
+    property Item popupHost: null
+    readonly property Item _popupContent: MorphContent {
         id: popup
-        anchor.item: root
-        anchor.edges: Edges.Bottom
-        anchor.gravity: Edges.Bottom
-        anchor.margins.top: 4
-        color: "transparent"
-        visible: root.popupOpen
+        parent: root.popupHost
+        anchorItem: root
+        shown: root.popupOpen
 
         implicitWidth: bg.implicitWidth
         implicitHeight: bg.implicitHeight
@@ -268,7 +267,7 @@ Pill {
             }
         }
 
-        onVisibleChanged: if (visible) {
+        onShownChanged: if (shown) {
             vrrListProc.running = true
             ddcListProc.running = true
             hdrCapableProc.running = true
@@ -363,15 +362,10 @@ Pill {
                 name, "--vrr", next[name] ? "2" : "0"])
         }
 
-        Rectangle {
+        Item {
             id: bg
-            SurfaceAppear { target: bg; shown: popup.visible }
             implicitWidth: column.implicitWidth + 2 * Theme.surfacePadding
             implicitHeight: column.implicitHeight + 2 * Theme.surfacePadding
-            color: Theme.surfaceFor(popup.screen)
-            border.color: Theme.surfaceBorder
-            border.width: Theme.surfaceBorderWidth
-            radius: Theme.surfaceRadius
 
             HoverHandler {
                 id: popupHoverHandler
@@ -1152,7 +1146,7 @@ Pill {
             // would stay stuck on "▲" for next time this reopens.
             Connections {
                 target: popup
-                function onVisibleChanged() { if (!popup.visible) picker.expanded = false }
+                function onShownChanged() { if (!popup.shown) picker.expanded = false }
             }
 
             // True while the pointer is over this picker's own box or its
@@ -1214,10 +1208,11 @@ Pill {
                 const barWin = root.Window.window
                 if (!popupWin || !barWin) return Qt.rect(0, 0, 1, 1)
 
-                // box's own position within popup -- ordinary same-window
-                // mapping, exact now that this runs after layout instead of
-                // during construction.
-                const b = box.mapToItem(popup.contentItem, 0, 0, box.width, box.height)
+                // box's own position within its window (the bar's
+                // MorphPopup surface) -- ordinary same-window mapping, exact
+                // now that this runs after layout instead of during
+                // construction.
+                const b = box.mapToItem(null, 0, 0, box.width, box.height)
 
                 // The 2px gap under the box is baked into the returned
                 // height instead of an anchor.margins.top on listPopup --
@@ -1297,10 +1292,10 @@ Pill {
                 id: listPopup
                 // Anchored to the bar (see barRectForBox's own comment), so
                 // this does NOT inherit the Display popup's own visibility
-                // automatically -- without the `&& popup.visible` an
+                // automatically -- without the `&& popup.shown` an
                 // expanded dropdown would keep floating on screen after the
                 // Display popup itself closes on hover-out.
-                visible: picker.expanded && popup.visible
+                visible: picker.expanded && popup.shown
                 anchor.window: root.QsWindow.window
                 anchor.edges: Edges.Bottom
                 anchor.gravity: Edges.Bottom

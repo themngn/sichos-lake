@@ -1,12 +1,16 @@
 import QtQuick
 import Quickshell
 
-// One card shared by every toggle-row popup on this bar (Sunset, HDR, Idle,
-// GameFocus, Transparency, BarSolo, Mic, NotificationMute). Each *Toggle.qml
-// reparents its *Popup.qml content into `slot` and drives that content's
-// `shown`; while one is open, moving to another toggle slides and reshapes
-// this card into the next popup (x/width/height animate, contents
-// cross-fade) instead of closing one window and opening another.
+// One card shared by every hover popup on this bar: the toggle row's
+// (Sunset, HDR, Idle, GameFocus, Transparency, BarSolo, Mic,
+// NotificationMute), the clock's calendar, Weather, and the right-side
+// widgets with hover popups (AI usage, Bluetooth, System Update, Display).
+// Each widget reparents its MorphContent into `slot` and drives that
+// content's `shown`; while one is open, moving to another widget slides and
+// reshapes this card into the next popup (x/width/height animate, contents
+// cross-fade) instead of closing one window and opening another. Click
+// menus (tray, language, workspace) and the notification drawer keep their
+// own windows.
 //
 // The window itself never moves or resizes during a morph: it spans the
 // bar's full width and the tallest content's height, transparent, with its

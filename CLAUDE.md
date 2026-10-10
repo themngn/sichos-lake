@@ -181,12 +181,17 @@ Everything else lives in `quickshell/modules/`:
   has a popup, or the row will collapse out from under it. The right section is data-driven —
   `BarSettings.orderedIds()` picks which widgets render and in what order via a `Loader`/`Component`
   switch (`componentFor(id)`), so reordering/hiding a widget is a settings change, not a `Bar.qml` edit.
-  The toggle row is fixed and outside that system. Toggle-row popups don't own windows: each
-  `*Popup.qml` there is plain content that its toggle assigns to a property (not a child — `Pill`'s
-  default property would lay it out inside the pill) and reparents into the bar's one
-  `ToggleMorphPopup` card via `popupHost`, driving its `shown`. While one is open, hovering another
-  toggle slides/reshapes that card into the next popup instead of swapping windows. A new toggle popup
-  follows the same shape (copy any existing pair) and needs its popupId in `toggleRowPopupOpen`.
+  The toggle row is fixed and outside that system. **Bar hover popups don't own windows**: the toggle
+  row's, the clock's calendar, Weather, the right-side widgets with hover popups (AI usage, Bluetooth,
+  System Update, Display) and custom widgets that opt in (alert-widget) all render a `MorphContent`
+  into the bar's one `MorphPopup` card. Each widget assigns its content to a property (not a child —
+  `Pill`'s default property would lay it out inside the pill), sets `parent: root.popupHost` (passed
+  down from `Bar.qml`; `CustomWidget` forwards `popupHost`/`screenName` to the loaded widget) and drives
+  `shown`. While one is open, hovering another slides/reshapes that card into the next popup instead of
+  swapping windows. Content inside it must not use `<popup>.visible`/`.screen` (it's an Item now —
+  use `shown`), and coordinates map into the shared surface (`mapToItem(null, …)`). Click menus (tray,
+  language, workspace) and the notification drawer still use their own windows. A new toggle-row popup
+  also needs its popupId in `toggleRowPopupOpen`.
 - **`Launcher.qml`** (by far the largest file): the SUPER+SHIFT+Q app launcher/menu, including
   its Settings and Autostart folders.
 - Python helper scripts (`quickshell/scripts/*.py`) are invoked as subprocesses by QML for anything

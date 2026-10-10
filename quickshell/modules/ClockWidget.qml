@@ -84,9 +84,12 @@ Pill {
         color: Theme.text
     }
 
-    CalendarPopup {
+    // Set by Bar.qml: the bar's MorphPopup card (see MorphContent.qml).
+    property Item popupHost: null
+    readonly property Item _popupContent: CalendarPopup {
         id: calendarPopup
+        parent: root.popupHost
         anchorItem: root
-        visible: root.popupOpen
+        shown: root.popupOpen
     }
 }

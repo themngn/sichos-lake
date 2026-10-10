@@ -116,15 +116,15 @@ PanelWindow {
     // glyph like its neighbors, so it wants more breathing room on both
     // sides than the uniform 4 * barIconSpacingScale everything else gets.
     Component { id: trayComp; Tray { horizontalPadding: 12 * Theme.barIconSpacingScale } }
-    Component { id: systemUpdateComp; SystemUpdate { screenName: bar.screen.name; horizontalPadding: 4 * Theme.barIconSpacingScale } }
-    Component { id: aiModelUsageComp; AiModelUsage { screenName: bar.screen.name; horizontalPadding: 4 * Theme.barIconSpacingScale } }
+    Component { id: systemUpdateComp; SystemUpdate { screenName: bar.screen.name; popupHost: barMorph.slot; horizontalPadding: 4 * Theme.barIconSpacingScale } }
+    Component { id: aiModelUsageComp; AiModelUsage { screenName: bar.screen.name; popupHost: barMorph.slot; horizontalPadding: 4 * Theme.barIconSpacingScale } }
     Component { id: notificationCenterComp; NotificationCenter { screen: bar.screen; screenName: bar.screen.name; horizontalPadding: 4 * Theme.barIconSpacingScale } }
     Component { id: languageComp; Language { horizontalPadding: 4 * Theme.barIconSpacingScale } }
-    Component { id: bluetoothComp; BluetoothIndicator { screenName: bar.screen.name; horizontalPadding: 4 * Theme.barIconSpacingScale } }
+    Component { id: bluetoothComp; BluetoothIndicator { screenName: bar.screen.name; popupHost: barMorph.slot; horizontalPadding: 4 * Theme.barIconSpacingScale } }
     Component { id: networkComp; NetworkIndicator { horizontalPadding: 4 * Theme.barIconSpacingScale } }
     Component { id: volumeComp; Volume { horizontalPadding: 4 * Theme.barIconSpacingScale } }
     Component { id: backlightComp; Backlight { horizontalPadding: 4 * Theme.barIconSpacingScale } }
-    Component { id: displayComp; DisplaySettings { screenName: bar.screen.name; horizontalPadding: 4 * Theme.barIconSpacingScale } }
+    Component { id: displayComp; DisplaySettings { screenName: bar.screen.name; popupHost: barMorph.slot; horizontalPadding: 4 * Theme.barIconSpacingScale } }
     Component { id: powerProfileComp; PowerProfile { horizontalPadding: 4 * Theme.barIconSpacingScale } }
     Component { id: batteryComp; Battery { horizontalPadding: 4 * Theme.barIconSpacingScale } }
 
@@ -166,6 +166,7 @@ PanelWindow {
     ClockWidget {
         id: clock
         screenName: bar.screen.name
+        popupHost: barMorph.slot
         anchors {
             horizontalCenter: parent.horizontalCenter
             verticalCenter: parent.verticalCenter
@@ -217,10 +218,10 @@ PanelWindow {
         || micMuteToggle.hovered || notificationMuteToggle.hovered || barSoloToggle.hovered
     readonly property bool toggleRowRevealed: toggleRowHover.hovered || bar.toggleRowPopupOpen || bar.anyToggleHovered
 
-    // The one morphing card every toggle-row popup below renders into --
-    // see ToggleMorphPopup.qml.
-    ToggleMorphPopup {
-        id: toggleMorph
+    // The one morphing card every hover popup on this bar renders into --
+    // see MorphPopup.qml.
+    MorphPopup {
+        id: barMorph
         bar: bar
     }
 
@@ -247,7 +248,7 @@ PanelWindow {
 
         SunsetToggle {
             id: sunsetToggle
-            popupHost: toggleMorph.slot
+            popupHost: barMorph.slot
             screenName: bar.screen.name
             revealed: bar.toggleRowRevealed
             active: ShellState.sunsetWarm
@@ -287,13 +288,13 @@ PanelWindow {
         }
         HdrToggle {
             id: hdrToggle
-            popupHost: toggleMorph.slot
+            popupHost: barMorph.slot
             screenName: bar.screen.name
             revealed: bar.toggleRowRevealed
         }
         IdleToggle {
             id: idleToggle
-            popupHost: toggleMorph.slot
+            popupHost: barMorph.slot
             screenName: bar.screen.name
             revealed: bar.toggleRowRevealed
             active: ShellState.idleActive
@@ -307,13 +308,13 @@ PanelWindow {
         }
         GameFocusToggle {
             id: gameFocusToggle
-            popupHost: toggleMorph.slot
+            popupHost: barMorph.slot
             screenName: bar.screen.name
             revealed: bar.toggleRowRevealed
         }
         TransparencyToggle {
             id: transparencyToggle
-            popupHost: toggleMorph.slot
+            popupHost: barMorph.slot
             screenName: bar.screen.name
             revealed: bar.toggleRowRevealed
             opaque: ShellState.transparencyOpaque
@@ -321,7 +322,7 @@ PanelWindow {
         }
         BarSoloToggle {
             id: barSoloToggle
-            popupHost: toggleMorph.slot
+            popupHost: barMorph.slot
             screenName: bar.screen.name
             revealed: bar.toggleRowRevealed
             active: ShellState.barSoloScreen === bar.screen.name
@@ -329,14 +330,14 @@ PanelWindow {
         }
         MicMuteToggle {
             id: micMuteToggle
-            popupHost: toggleMorph.slot
+            popupHost: barMorph.slot
             screenName: bar.screen.name
             revealed: bar.toggleRowRevealed
             source: Pipewire.defaultAudioSource
         }
         NotificationMuteToggle {
             id: notificationMuteToggle
-            popupHost: toggleMorph.slot
+            popupHost: barMorph.slot
             screenName: bar.screen.name
             revealed: bar.toggleRowRevealed
             muted: ShellState.notificationsMuted
@@ -351,7 +352,7 @@ PanelWindow {
         }
         spacing: 4
 
-        Weather { screenName: bar.screen.name }
+        Weather { screenName: bar.screen.name; popupHost: barMorph.slot }
         // User-local, not part of this repo — see CustomWidget.qml's own
         // comment and CustomWidgets.qml. One entry per
         // ~/.config/quickshell/custom/<id>/main.qml found on this machine,
@@ -365,6 +366,8 @@ PanelWindow {
             delegate: CustomWidget {
                 required property string modelData
                 name: modelData
+                screenName: bar.screen.name
+                popupHost: barMorph.slot
             }
         }
     }

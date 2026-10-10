@@ -5,24 +5,9 @@ import Quickshell.Io
 // Idle timeout settings popup panel for IdleToggle.qml.
 // Hover-driven with persistent hover: allows adjusting lock, dim, and screen-off
 // timers and Never toggles smoothly without focus grabs.
-Item {
+MorphContent {
     id: popup
 
-    required property Item anchorItem
-    // Content for ToggleMorphPopup (the bar's one morphing card, shared by
-    // every toggle-row popup): the toggle reparents this into the card and
-    // drives `shown`; the card sizes itself to this item's implicit size,
-    // lines up under anchorItem, and cross-fades between contents.
-    property bool shown: false
-    anchors.top: parent ? parent.top : undefined
-    anchors.horizontalCenter: parent ? parent.horizontalCenter : undefined
-    opacity: shown ? 1 : 0
-    visible: opacity > 0
-    // Outgoing content clears out quickly so the two don't read as a
-    // jumble mid-morph; the incoming one fades in over the full open time.
-    Behavior on opacity {
-        NumberAnimation { duration: shown ? Theme.openDuration : 70; easing.type: Easing.OutCubic }
-    }
     property bool active: false
 
     signal settingsSaved()

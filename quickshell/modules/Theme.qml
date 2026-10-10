@@ -94,8 +94,8 @@ QtObject {
     // Open animation for popups/menus (SurfaceAppear.qml): fade + scale-up.
     readonly property int openDuration: 160
     readonly property real openScaleFrom: 0.94
-    // ToggleMorphPopup: how long the shared toggle-row card takes to slide
-    // and reshape from one popup into the next.
+    // MorphPopup: how long the bar's shared popup card takes to slide and
+    // reshape from one popup into the next.
     readonly property int morphDuration: 220
     // Content width shared by every toggle-row popup, so the morphing card
     // keeps one width and only slides/changes height between them. 260 is

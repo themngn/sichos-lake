@@ -199,28 +199,22 @@ Pill {
         ? Math.max.apply(null, root.daily.map(d => d.tempMax)) : 1
     readonly property var today: root.daily.length ? root.daily[0] : null
 
-    PopupWindow {
+    // Set by Bar.qml: the bar's MorphPopup card (see MorphContent.qml).
+    property Item popupHost: null
+    readonly property Item _popupContent: MorphContent {
         id: popup
-        anchor.item: root
-        anchor.edges: Edges.Bottom
-        anchor.gravity: Edges.Bottom
-        anchor.margins.top: 4
-        color: "transparent"
-        visible: root.popupOpen && root.haveData
+        parent: root.popupHost
+        anchorItem: root
+        shown: root.popupOpen && root.haveData
 
         implicitWidth: 340
         implicitHeight: bg.implicitHeight
 
-        Rectangle {
+        Item {
             id: bg
-            SurfaceAppear { target: bg; shown: popup.visible }
             width: 340
             implicitWidth: 340
             implicitHeight: content.implicitHeight + 2 * Theme.surfacePadding
-            color: Theme.surfaceFor(popup.screen)
-            border.color: Theme.surfaceBorder
-            border.width: Theme.surfaceBorderWidth
-            radius: Theme.surfaceRadius
 
             MouseArea {
                 id: popupMouseArea

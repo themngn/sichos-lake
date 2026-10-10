@@ -23,6 +23,17 @@ Loader {
     id: root
 
     required property string name
+    // Forwarded to the loaded widget when it declares them (an older widget
+    // that doesn't is left alone): the bar's screen, for ShellState's
+    // per-screen popup tracking, and the bar's MorphPopup card, so a
+    // widget's popup can be a MorphContent in the shared morphing card
+    // like the built-in ones.
+    property string screenName: ""
+    property Item popupHost: null
+    onLoaded: {
+        if (item.screenName !== undefined) item.screenName = Qt.binding(() => root.screenName)
+        if (item.popupHost !== undefined) item.popupHost = Qt.binding(() => root.popupHost)
+    }
 
     source: "file://" + Quickshell.env("HOME") + "/.config/quickshell/custom/" + name + "/main.qml"
     // Toggling this off/on (rather than just hiding a loaded instance)

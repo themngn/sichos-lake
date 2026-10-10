@@ -3,21 +3,15 @@ import Quickshell
 
 // Calendar popup panel for ClockWidget.qml.
 // Hover-driven with persistent hover: allows browsing months and inspecting dates smoothly.
-PopupWindow {
+MorphContent {
     id: popup
 
-    required property Item anchorItem
 
-    anchor.item: anchorItem
-    anchor.edges: Edges.Bottom
-    anchor.gravity: Edges.Bottom
-    anchor.margins.top: 4
 
     readonly property bool popupHovered: popupMouseArea.containsMouse
 
     implicitWidth: bg.implicitWidth
     implicitHeight: bg.implicitHeight
-    color: "transparent"
 
     property date viewDate: new Date()
     readonly property date today: new Date()
@@ -49,15 +43,10 @@ PopupWindow {
     readonly property bool viewingCurrentMonth:
         viewDate.getFullYear() === today.getFullYear() && viewDate.getMonth() === today.getMonth()
 
-    Rectangle {
+    Item {
         id: bg
-        SurfaceAppear { target: bg; shown: popup.visible }
         implicitWidth: contentColumn.implicitWidth + 2 * Theme.surfacePadding
         implicitHeight: contentColumn.implicitHeight + 2 * Theme.surfacePadding
-        color: Theme.surfaceFor(popup.screen)
-        border.color: Theme.surfaceBorder
-        border.width: Theme.surfaceBorderWidth
-        radius: Theme.surfaceRadius
 
         MouseArea {
             id: popupMouseArea

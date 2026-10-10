@@ -124,29 +124,23 @@ Pill {
         color: Theme.text
     }
 
-    PopupWindow {
+    // Set by Bar.qml: the bar's MorphPopup card (see MorphContent.qml).
+    property Item popupHost: null
+    readonly property Item _popupContent: MorphContent {
         id: panel
-        anchor.item: root
-        anchor.edges: Edges.Bottom
-        anchor.gravity: Edges.Bottom
-        anchor.margins.top: 4
-        color: "transparent"
-        visible: root.popupOpen
+        parent: root.popupHost
+        anchorItem: root
+        shown: root.popupOpen
 
         readonly property int popupWidth: 260
 
         implicitWidth: popupWidth
         implicitHeight: bg.implicitHeight
 
-        Rectangle {
+        Item {
             id: bg
-            SurfaceAppear { target: bg; shown: panel.visible }
             implicitWidth: panel.popupWidth
             implicitHeight: content.implicitHeight + 2 * Theme.surfacePadding
-            color: Theme.surfaceFor(panel.screen)
-            border.color: Theme.surfaceBorder
-            border.width: Theme.surfaceBorderWidth
-            radius: Theme.surfaceRadius
 
             MouseArea {
                 id: popupMouseArea
