@@ -77,6 +77,10 @@ google-noto-color-emoji-fonts   # renders flag emoji in quickshell/modules/Langu
 xdg-desktop-portal
 xdg-desktop-portal-gtk    # Settings portal backend — needed for GTK4/libadwaita dark-mode signal
 xdg-desktop-portal-hyprland
+hyprpolkitagent           # polkit auth agent (systemd --user unit, enabled by install.sh's
+                          # "==> Hyprland config" step) — without one, polkit-gated actions
+                          # (e.g. mounting a LUKS drive from Nautilus) fail with "Not
+                          # authorized". Same lionheartp/Hyprland COPR.
 
 ## Utilities
 hyprpicker                # color picker, SUPER+C in keybindings.lua (autocopies hex to clipboard)
