@@ -42,7 +42,10 @@ QtObject {
     // since translucent surfaces band there (TODO.md, same reason Bar.qml
     // forces itself opaque under HDR). glassAlpha must stay above the
     // layer rules' ignore_alpha, or Hyprland stops blurring behind cards.
-    readonly property real glassAlpha: 0.55
+    // 0.72, up from 0.55: over a light page 0.55 let too much through and
+    // dim text washed out (paired with hypr blur brightness 0.45, which
+    // darkens the blurred backdrop itself).
+    readonly property real glassAlpha: 0.72
     function glassOn(screen) {
         return !(screen && HdrSettings.active && HdrSettings.isSelected(screen.name))
     }

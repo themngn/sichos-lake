@@ -53,7 +53,7 @@ hl.window_rule({
 -- transparent windows with a translucent card in them -- the launcher and
 -- notification center are whole-screen with a 0.35-alpha dimmed backdrop --
 -- so ignore_alpha limits the blur to pixels at least this opaque: the cards
--- (Theme.glassAlpha, 0.55), not the backdrop or the empty window around a
+-- (Theme.glassAlpha, 0.72), not the backdrop or the empty window around a
 -- card. blur_popups covers the launcher's own popup children.
 hl.layer_rule({
     name         = "sichos-glass-blur",

@@ -47,6 +47,11 @@ hl.config({
             size      = 8,
             passes    = 3,
             vibrancy  = 0.1696,
+            -- Darkens what's seen through the glass (default 0.8172). Over a
+            -- white page the cards' translucent fill came out light gray and
+            -- their dim text unreadable; only quickshell menus are blurred
+            -- (see window_rules.lua), so this touches nothing else.
+            brightness = 0.45,
         },
     },
 
