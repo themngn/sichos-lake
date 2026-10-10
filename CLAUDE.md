@@ -216,7 +216,8 @@ Everything else lives in `quickshell/modules/`:
   deployed `~/.config/quickshell` tree, not in this repo.
 - **Notifications** are split three ways: `Notifications.qml` is the `NotificationServer` and the live
   toasts (including grouping consecutive same-app+summary notifications into one toast while it's on
-  screen); `NotificationHistory.qml` (singleton) is the persisted history in
+  screen) — drawn on **every screen** (a toast window per screen via `Variants`), with hidden/hover state
+  shared by notification id so closing or hovering a toast on one screen applies to all; `NotificationHistory.qml` (singleton) is the persisted history in
   `~/.config/quickshell/notification-history.json`, with its own folding of consecutive repeats, plus
   a non-persisted registry of live `Notification` objects so a history entry can still invoke its
   sender's actions; `NotificationCenter.qml` is the bar bell + drawer. Clicking a toast or center entry
