@@ -74,8 +74,8 @@ PanelWindow {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: osd.mode === "mirror" ? "Mirroring" : "Extended"
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize * 1.2
+                font.family: Theme.uiFontFamily
+                font.pixelSize: Theme.fontSize
                 color: Theme.text
             }
         }

@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 
 // Bar bell icon + full-height notification history drawer, sharing
@@ -16,6 +17,24 @@ Pill {
     property string screenName: ""
 
     readonly property int count: NotificationHistory.entries.length
+
+    // Clicking an entry, same as clicking its toast: the sender's own
+    // "default" action if the notification is still live (e.g. Telegram
+    // opens that exact chat). Once it isn't -- past the grace window, or
+    // after a restart -- the next best thing: focus the app's existing
+    // window, or launch the app if none is open. Either way the entry has
+    // been dealt with, so it's removed and the panel closes (like macOS).
+    function activateEntry(entry) {
+        const live = NotificationHistory.liveFor(entry)
+        const action = live ? live.actions.find(a => a.identifier === "default") : null
+        if (action) {
+            action.invoke()
+        } else {
+            NotificationHistory.focusOrLaunchApp(entry.desktopEntry, entry.appName)
+        }
+        NotificationHistory.remove(entry.id)
+        ShellState.notificationCenterScreen = ""
+    }
     readonly property bool panelOpen: ShellState.notificationCenterScreen === root.screenName
 
     tooltipText: root.count > 0 ? root.count + " notification" + (root.count === 1 ? "" : "s") : "No notifications"
@@ -58,6 +77,15 @@ Pill {
             onClicked: ShellState.notificationCenterScreen = ""
         }
 
+        // Soft macOS-style drop shadow under the card (drawn first, so beneath it).
+        RectangularShadow {
+            anchors.fill: box
+            radius: box.radius
+            offset.y: Theme.surfaceShadowOffset
+            blur: Theme.surfaceShadowBlur
+            color: Theme.surfaceShadow
+        }
+
         Rectangle {
             id: box
             width: 380
@@ -70,12 +98,6 @@ Pill {
                 // corners clipped against the edge.
                 margins: 8
             }
-            // Width of the accent bars marking each entry (and the folded-
-            // entry connector). Used to be box.border.width itself (the old
-            // 4px accent frame); kept as its own value now that the frame is
-            // Theme.surfaceBorderWidth (1px) so the markers don't shrink to a
-            // hairline along with it.
-            readonly property int markerWidth: 4
             color: Theme.surface
             border.color: Theme.surfaceBorder
             border.width: Theme.surfaceBorderWidth
@@ -88,19 +110,31 @@ Pill {
             Column {
                 id: inner
                 anchors.fill: parent
-                anchors.margins: 15
-                spacing: 10
+                anchors.margins: Theme.surfacePadding
+                spacing: Theme.sectionSpacing
 
-                Row {
+                Item {
+                    id: header
                     width: parent.width
-                    height: 25
+                    height: 20
 
-                    Text {
+                    Row {
+                        spacing: 6
+                        anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "[ Notifications ]"
-                        color: Theme.textMuted
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize + 2
+                        Text {
+                            text: ""
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontSize + 1
+                            color: Theme.accent
+                        }
+                        Text {
+                            text: "Notifications"
+                            color: Theme.text
+                            font.family: Theme.uiFontFamily
+                            font.pixelSize: Theme.fontSize
+                            font.bold: true
+                        }
                     }
 
                     Text {
@@ -108,19 +142,23 @@ Pill {
                         anchors.right: parent.right
                         visible: root.count > 0
                         text: "Clear All"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 1
                         color: Theme.accent
 
-                        MouseArea { anchors.fill: parent; onClicked: NotificationHistory.clear() }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: NotificationHistory.clear()
+                        }
                     }
                 }
 
                 Text {
                     visible: root.count === 0
                     text: "No notifications"
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize
+                    font.family: Theme.uiFontFamily
+                    font.pixelSize: Theme.fontSize - 1
                     color: Theme.textDim
                 }
 
@@ -128,196 +166,59 @@ Pill {
                     id: list
                     visible: root.count > 0
                     width: parent.width
-                    height: parent.height - 35
+                    height: parent.height - header.height - parent.spacing
                     clip: true
-                    // NotificationHistory.entries is newest-first (add()
-                    // unshifts) -- that order is load-bearing there (its
-                    // burst-merge check reads entries[0] as "the most
-                    // recent"). Rendering direction is independent of that:
-                    // TopToBottom (the default) puts index 0 (newest) at the
-                    // top with older entries stacked downward below it --
-                    // folding is unaffected either way since it keys off the
-                    // model's entries[0], not how the ListView paints it.
-                    verticalLayoutDirection: ListView.TopToBottom
+                    spacing: 8
                     model: NotificationHistory.entries
 
+                    // Each entry is its own card laid out exactly like the live
+                    // toast (Notifications.qml) -- icon + bold summary + close in
+                    // the header, body, then time -- so a notification looks the
+                    // same before and after it lands here.
                     delegate: Rectangle {
                         id: entryItem
                         required property var modelData
-                        // A folded (count > 1) entry always renders its full
-                        // message list -- there's nothing left to toggle, so
-                        // this just tracks "is this a folded entry" rather
-                        // than a click-driven expand/collapse state.
+                        // A folded run (count > 1: same app + summary, see
+                        // NotificationHistory.add()) lists each message's body
+                        // separately, each with its own close, instead of one body.
                         readonly property bool expanded: entryItem.modelData.count > 1
                         width: list.width
-                        // 14 top (was 10 -- title/description read as too
-                        // close to the top edge, especially with countBadge
-                        // sitting right there too) + 10 bottom.
-                        height: entryContent.height + 24
-                        color: entryMouse.containsMouse ? Theme.hoverFill : "transparent"
+                        height: entryContent.height + 2 * Theme.cardPadding
+                        color: entryMouse.containsMouse ? Theme.hoverFill : Theme.controlFill
+                        border.color: Theme.surfaceBorder
+                        border.width: Theme.surfaceBorderWidth
                         radius: Theme.controlRadius
-
-                        // Width tied to box.markerWidth, not a matching
-                        // literal, so it can't silently drift out of sync
-                        // with line2/the content inset below. entryItem sits
-                        // at inner's own 15px inset (unchanged, same as the
-                        // header above it), so a small leftMargin here
-                        // (one marker width) still reads as a real gap of
-                        // inner.anchors.leftMargin from the panel edge --
-                        // (inner.leftMargin + markerWidth) - markerWidth =
-                        // inner.leftMargin exactly. Grown to
-                        // match that bigger gap (see bar2/entryContent
-                        // below) rather than shrinking it to match a small
-                        // bar-to-bar gap -- pulling the whole list in flush
-                        // against the border looked worse.
-                        Rectangle {
-                            anchors.left: parent.left
-                            anchors.leftMargin: box.markerWidth
-                            anchors.top: parent.top
-                            anchors.bottom: parent.bottom
-                            width: box.markerWidth
-                            color: Theme.accent
-                        }
-
-                        // Second, inner accent bar for a folded (count > 1)
-                        // entry, hanging from countBadge's own bottom edge
-                        // (below, not above it) down to the entry's bottom --
-                        // same "more folded below this" / thread-connector
-                        // look as the live toast's own second bar in
-                        // Notifications.qml. leftMargin is bar1's own
-                        // (markerWidth) + its width + the same
-                        // inner.anchors.leftMargin gap bar1 has from the
-                        // border, so this gap matches that one instead of
-                        // the other way around.
-                        Rectangle {
-                            id: line2
-                            visible: entryItem.modelData.count > 1
-                            anchors.left: parent.left
-                            anchors.leftMargin: box.markerWidth * 2 + inner.anchors.leftMargin
-                            anchors.top: countBadge.bottom
-                            anchors.bottom: parent.bottom
-                            anchors.bottomMargin: 10
-                            width: box.markerWidth
-                            color: Theme.accent
-                        }
-
-                        // Count/dropdown-state badge for a folded entry -- a
-                        // square vertically centered on entryHeader (the
-                        // title row), so title and badge read as the same
-                        // row, with line2 (above) hanging from its bottom
-                        // edge down into the body -- same "more folded below
-                        // this" look as the live toast's own badge in
-                        // Notifications.qml. Can't anchor straight to
-                        // entryHeader.verticalCenter -- it's entryContent's
-                        // child, not this Rectangle's parent/sibling, and
-                        // QtQuick anchoring only allows those two (see
-                        // Notifications.qml's own line2 comment for the same
-                        // restriction). entryContent's 14px topMargin +
-                        // half the header/badge height difference gets the
-                        // same centered result via plain height reference
-                        // instead, which has no such restriction.
-                        Rectangle {
-                            id: countBadge
-                            visible: entryItem.modelData.count > 1
-                            anchors.left: parent.left
-                            anchors.leftMargin: line2.anchors.leftMargin
-                            anchors.top: parent.top
-                            anchors.topMargin: 14 + (entryHeader.height - countBadge.height) / 2
-                            // Square: both sides sized to whichever of
-                            // countNumber's width/height is larger, so the
-                            // content (never square itself for double-digit
-                            // counts) still fits without clipping instead
-                            // of a squashed fit.
-                            width: Math.max(countNumber.width, countNumber.height) + 8
-                            height: width
-                            radius: 0
-                            color: Theme.accent
-
-                            Text {
-                                id: countNumber
-                                anchors.centerIn: parent
-                                // "" + ...: a single (never folded) entry
-                                // has no `count` field at all
-                                // (NotificationHistory.add() only sets one
-                                // on the folded path) -- this Text still
-                                // binds (and warns "Unable to assign
-                                // undefined to QString" without the concat)
-                                // even though the badge stays invisible for it.
-                                text: "" + entryItem.modelData.count
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontSize - 3
-                                font.bold: true
-                                color: Theme.background
-                            }
-                        }
 
                         MouseArea {
                             id: entryMouse
                             anchors.fill: parent
                             hoverEnabled: true
-                            // Dismissing a single entry on any click here
-                            // (the old behavior) meant an accidental click
-                            // while just skimming history lost that record
-                            // permanently -- closing is now exclusively the
-                            // ✕ (closeGlyph) below, same as the live toast
-                            // in Notifications.qml. Folded entries have no
-                            // expand/collapse toggle to click into anymore
-                            // (always rendered expanded), so this MouseArea
-                            // now only exists for the hover highlight above.
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.activateEntry(entryItem.modelData)
                         }
 
                         Column {
                             id: entryContent
                             anchors {
                                 left: parent.left
-                                // Multi (count > 1): countBadge's own right
-                                // edge (x + width, not a fixed guess -- its
-                                // width varies with the digit count and this
-                                // needs to clear it whether the run is "3" or
-                                // "15") + a 6px gap, so the header/body/time
-                                // this margin positions (all of them, not
-                                // just the header row) actually clear the
-                                // badge instead of sitting under/behind it.
-                                // Single: no bar2/badge to leave room for, so
-                                // just bar1's leftMargin + its width + one
-                                // gap -- content sits closer to the edge.
-                                leftMargin: entryItem.modelData.count > 1
-                                    ? countBadge.x + countBadge.width + 6
-                                    : box.markerWidth * 2 + inner.anchors.leftMargin
                                 right: parent.right
-                                rightMargin: 8
-                                // Explicit top instead of verticalCenter --
-                                // entryItem's height (14 top + 10 bottom) is
-                                // asymmetric now, which verticalCenter can't
-                                // express (it'd split the padding evenly).
                                 top: parent.top
-                                topMargin: 14
+                                margins: Theme.cardPadding
                             }
-                            // Was 4 -- too tight specifically above the
-                            // description, where line2/countBadge sit right
-                            // at this same boundary and made it read as even
-                            // less room than it was. bar2's own topMargin
-                            // above already reads this via entryContent.spacing,
-                            // so the bump applies there too automatically.
-                            spacing: 12
+                            spacing: Theme.cardSpacing
 
                             Row {
                                 id: entryHeader
                                 width: parent.width
-                                spacing: 6
+                                spacing: 8
 
                                 Image {
                                     id: entryIcon
-                                    visible: source !== ""
-                                    width: visible ? 18 : 0
-                                    height: 18
-                                    // No `image` field here (unlike the live toast) — history
-                                    // never stores it; see the comment where NotificationHistory.add()
-                                    // is called for why it can't survive being persisted anyway.
-                                    // Falls back to the same bundled plain-bell asset as the
-                                    // live toast in Notifications.qml, for senders that gave
-                                    // no app_icon hint -- see its comment for why this is a
-                                    // bundled SVG rather than a system icon-theme lookup.
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: Theme.notificationIconSize
+                                    height: Theme.notificationIconSize
+                                    sourceSize.width: width
+                                    sourceSize.height: height
                                     source: {
                                         if (!entryItem.modelData.appIcon)
                                             return Qt.resolvedUrl("../assets/notification-default.svg")
@@ -328,30 +229,58 @@ Pill {
                                 }
 
                                 Text {
-                                    width: entryHeader.width - (entryIcon.visible ? entryIcon.width + entryHeader.spacing : 0)
-                                        - closeGlyph.implicitWidth - entryHeader.spacing
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: entryHeader.width - entryIcon.width - closeGlyph.implicitWidth
+                                        - (countBadge.visible ? countBadge.width + entryHeader.spacing : 0)
+                                        - 2 * entryHeader.spacing
                                     text: entryItem.modelData.summary
-                                    font.family: Theme.fontFamily
+                                    font.family: Theme.uiFontFamily
                                     font.pixelSize: Theme.fontSize
                                     font.bold: true
                                     color: Theme.text
                                     elide: Text.ElideRight
                                 }
 
+                                // How many messages are folded into this entry.
+                                Rectangle {
+                                    id: countBadge
+                                    visible: entryItem.expanded
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    height: countNumber.implicitHeight + 2
+                                    width: Math.max(height, countNumber.implicitWidth + 10)
+                                    radius: height / 2
+                                    color: Theme.accent
+
+                                    Text {
+                                        id: countNumber
+                                        anchors.centerIn: parent
+                                        // "" + ...: a single (never folded) entry has
+                                        // no `count` field at all (NotificationHistory.add()
+                                        // only sets one on the folded path) -- this Text
+                                        // still binds (and warns "Unable to assign
+                                        // undefined to QString" without the concat) even
+                                        // though the badge stays invisible for it.
+                                        text: "" + entryItem.modelData.count
+                                        font.family: Theme.uiFontFamily
+                                        font.pixelSize: Theme.fontSize - 3
+                                        font.bold: true
+                                        color: Theme.textOnLight
+                                    }
+                                }
+
                                 Text {
                                     id: closeGlyph
-                                    // Font Awesome "times" -- was an empty
-                                    // string (the PUA codepoint got lost
-                                    // somewhere along the way), which is
-                                    // why this rendered as nothing at all
-                                    // instead of a missing-glyph box.
+                                    anchors.verticalCenter: parent.verticalCenter
                                     text: ""
                                     font.family: Theme.fontFamily
                                     font.pixelSize: Theme.fontSize - 3
-                                    color: Theme.textDim
+                                    color: closeArea.containsMouse ? Theme.text : Theme.textDim
 
                                     MouseArea {
+                                        id: closeArea
                                         anchors.fill: parent
+                                        anchors.margins: -6
+                                        hoverEnabled: true
                                         onClicked: NotificationHistory.remove(entryItem.modelData.id)
                                     }
                                 }
@@ -359,53 +288,22 @@ Pill {
 
                             Text {
                                 visible: !entryItem.expanded && entryItem.modelData.body.length > 0
-                                // Column controls y, not x -- a per-child x
-                                // is still free to set. Multi (count > 1)
-                                // pulls back out from under countBadge's
-                                // wide clearance so body/time sit tight
-                                // against line2 instead of matching the
-                                // title's wider indent -- computed off
-                                // line2's own right edge (+6 gap) rather
-                                // than a fixed guess, so it tracks if
-                                // line2's position ever changes. Single has
-                                // no badge to clear in the first place, so
-                                // it keeps the same left edge as the title
-                                // (x: 0).
-                                x: entryItem.modelData.count > 1
-                                    ? (line2.anchors.leftMargin + line2.width + 6) - entryContent.anchors.leftMargin
-                                    : 0
                                 width: parent.width
                                 text: entryItem.modelData.body
-                                // StyledText, not PlainText — senders like
-                                // Telegram send real markup (<b>, etc.);
-                                // no `elide` alongside maximumLineCount
-                                // here, same reasoning as Notifications.qml's
-                                // toast body (that combination on rich text
-                                // is what caused its "Maximum call stack"
-                                // crash).
                                 textFormat: Text.StyledText
                                 wrapMode: Text.WordWrap
-                                maximumLineCount: 2
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontSize - 2
+                                // No elide on top of maximumLineCount -- see the
+                                // same Text in Notifications.qml for why.
+                                maximumLineCount: 4
+                                font.family: Theme.uiFontFamily
+                                font.pixelSize: Theme.fontSize - 1
                                 color: Theme.textMuted
                             }
 
-                            // Expanded view of a folded entry: every message
-                            // from the run, oldest first. The summary/title
-                            // above already names the sender/chat once, so
-                            // these are just the bodies, not re-labeled per
-                            // message.
                             Column {
                                 visible: entryItem.expanded && entryItem.modelData.bodies !== undefined
-                                // Only ever visible for a folded (count > 1)
-                                // entry -- see modelData.bodies comment
-                                // above -- so this always uses the
-                                // pulled-in-to-line2 offset, same formula as
-                                // the collapsed description/time Text above.
-                                x: (line2.anchors.leftMargin + line2.width + 6) - entryContent.anchors.leftMargin
                                 width: parent.width
-                                spacing: 6
+                                spacing: Theme.cardSpacing
 
                                 Repeater {
                                     model: entryItem.modelData.bodies || []
@@ -414,35 +312,30 @@ Pill {
                                         required property var modelData
                                         required property int index
                                         width: parent.width
-                                        spacing: 6
+                                        spacing: 8
 
                                         Text {
                                             width: parent.width - msgCloseGlyph.implicitWidth - parent.spacing
                                             text: messageItem.modelData.body
                                             textFormat: Text.StyledText
                                             wrapMode: Text.WordWrap
-                                            font.family: Theme.fontFamily
-                                            font.pixelSize: Theme.fontSize - 2
+                                            font.family: Theme.uiFontFamily
+                                            font.pixelSize: Theme.fontSize - 1
                                             color: Theme.textMuted
                                         }
 
-                                        // Dismisses just this one
-                                        // message out of the folded run
-                                        // -- NotificationHistory.removeMessage()
-                                        // collapses the entry back down
-                                        // to a plain single once only
-                                        // one message is left, same as
-                                        // if it had never been folded.
                                         Text {
                                             id: msgCloseGlyph
-                                            // Font Awesome "times", same codepoint as closeGlyph above.
                                             text: ""
                                             font.family: Theme.fontFamily
                                             font.pixelSize: Theme.fontSize - 3
-                                            color: Theme.textDim
+                                            color: msgCloseArea.containsMouse ? Theme.text : Theme.textDim
 
                                             MouseArea {
+                                                id: msgCloseArea
                                                 anchors.fill: parent
+                                                anchors.margins: -6
+                                                hoverEnabled: true
                                                 onClicked: NotificationHistory.removeMessage(entryItem.modelData.id, messageItem.index)
                                             }
                                         }
@@ -451,24 +344,10 @@ Pill {
                             }
 
                             Text {
-                                // Single trailing timestamp for the whole
-                                // entry -- a folded run always renders
-                                // expanded now (see entryItem.expanded), so
-                                // there's no separate collapsed-vs-expanded
-                                // case to hide this behind anymore. For a
-                                // folded entry this is bodies[0].time (the
-                                // first/oldest message in the run), not
-                                // modelData.time (the latest one, still used
-                                // for a plain single entry) -- one time
-                                // reading "when this run started" beats a
-                                // per-message timestamp on every line.
-                                x: entryItem.modelData.count > 1
-                                    ? (line2.anchors.leftMargin + line2.width + 6) - entryContent.anchors.leftMargin
-                                    : 0
                                 text: Qt.formatDateTime(new Date(entryItem.expanded
                                     ? entryItem.modelData.bodies[0].time
                                     : entryItem.modelData.time), "MMM d, HH:mm")
-                                font.family: Theme.fontFamily
+                                font.family: Theme.uiFontFamily
                                 font.pixelSize: Theme.fontSize - 3
                                 color: Theme.textDim
                             }

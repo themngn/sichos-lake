@@ -74,6 +74,8 @@ libnotify                 # HyprQuickFrame dependency (capture notifications)
 ## Dark theme
 adw-gtk3-theme            # adw-gtk3-dark: GTK_THEME (env.lua) + gsettings gtk-theme (autostart.lua)
 google-noto-color-emoji-fonts   # renders flag emoji in quickshell/modules/Language.qml
+rsms-inter-fonts                # "Inter" -- proportional UI text in quickshell popups/OSDs/launcher
+                                # (Theme.uiFontFamily); icon glyphs stay on the Nerd Font
 xdg-desktop-portal
 xdg-desktop-portal-gtk    # Settings portal backend — needed for GTK4/libadwaita dark-mode signal
 xdg-desktop-portal-hyprland

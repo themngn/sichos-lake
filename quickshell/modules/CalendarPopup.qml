@@ -51,11 +51,11 @@ PopupWindow {
 
     Rectangle {
         id: bg
-        implicitWidth: contentColumn.implicitWidth + 24
-        implicitHeight: contentColumn.implicitHeight + 24
+        implicitWidth: contentColumn.implicitWidth + 2 * Theme.surfacePadding
+        implicitHeight: contentColumn.implicitHeight + 2 * Theme.surfacePadding
         color: Theme.surface
         border.color: Theme.surfaceBorder
-        border.width: 1
+        border.width: Theme.surfaceBorderWidth
         radius: Theme.surfaceRadius
 
         MouseArea {
@@ -71,9 +71,9 @@ PopupWindow {
                 left: parent.left
                 right: parent.right
                 top: parent.top
-                margins: 12
+                margins: Theme.surfacePadding
             }
-            spacing: 8
+            spacing: Theme.sectionSpacing
 
             // Menu Title Header
             Item {
@@ -92,7 +92,7 @@ PopupWindow {
                     }
                     Text {
                         text: "Calendar"
-                        font.family: Theme.fontFamily
+                        font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize
                         font.bold: true
                         color: Theme.text
@@ -134,7 +134,7 @@ PopupWindow {
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                     text: Qt.formatDate(popup.viewDate, "MMMM yyyy")
-                    font.family: Theme.fontFamily
+                    font.family: Theme.uiFontFamily
                     font.pixelSize: Theme.fontSize
                     font.bold: true
                     color: Theme.text
@@ -178,7 +178,7 @@ PopupWindow {
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                         text: modelData
-                        font.family: Theme.fontFamily
+                        font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize - 2
                         color: Theme.textMuted
                     }
@@ -199,7 +199,7 @@ PopupWindow {
                             anchors.centerIn: parent
                             visible: cell.modelData !== 0
                             text: cell.modelData
-                            font.family: Theme.fontFamily
+                            font.family: Theme.uiFontFamily
                             font.pixelSize: Theme.fontSize - 1
                             color: cell.isToday ? Theme.textOnLight : Theme.text
                         }

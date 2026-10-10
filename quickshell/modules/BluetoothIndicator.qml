@@ -141,10 +141,10 @@ Pill {
         Rectangle {
             id: bg
             implicitWidth: 280
-            implicitHeight: content.implicitHeight + 24
+            implicitHeight: content.implicitHeight + 2 * Theme.surfacePadding
             color: Theme.surface
             border.color: Theme.surfaceBorder
-            border.width: 1
+            border.width: Theme.surfaceBorderWidth
             radius: Theme.surfaceRadius
 
             HoverHandler {
@@ -157,9 +157,9 @@ Pill {
                     left: parent.left
                     right: parent.right
                     top: parent.top
-                    margins: 12
+                    margins: Theme.surfacePadding
                 }
-                spacing: 10
+                spacing: Theme.sectionSpacing
 
                 // Header
                 Item {
@@ -178,7 +178,7 @@ Pill {
                         }
                         Text {
                             text: "Bluetooth"
-                            font.family: Theme.fontFamily
+                            font.family: Theme.uiFontFamily
                             font.pixelSize: Theme.fontSize
                             font.bold: true
                             color: Theme.text
@@ -189,7 +189,7 @@ Pill {
                         anchors.verticalCenter: parent.verticalCenter
                         text: root.btEnabled ? "On" : "Off"
                         color: root.btEnabled ? Theme.success : Theme.textDim
-                        font.family: Theme.fontFamily
+                        font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize - 1
 
                         MouseArea {
@@ -210,7 +210,7 @@ Pill {
                     visible: !root.btEnabled
                     text: "Turn on Bluetooth to see devices"
                     color: Theme.textDim
-                    font.family: Theme.fontFamily
+                    font.family: Theme.uiFontFamily
                     font.pixelSize: Theme.fontSize - 1
                 }
 
@@ -223,14 +223,14 @@ Pill {
                         id: scanLabel
                         text: root.isScanning ? "Scanning… (" + root.scanRemaining + "s)" : "Devices"
                         color: root.isScanning ? Theme.accent : Theme.textMuted
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize - 1
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 2
                     }
                     Text {
                         anchors.right: parent.right
                         text: root.isScanning ? "Stop" : "Scan"
                         color: Theme.accent
-                        font.family: Theme.fontFamily
+                        font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize - 1
 
                         MouseArea {
@@ -253,7 +253,7 @@ Pill {
                             id: deviceRow
                             required property var modelData
                             width: content.width
-                            height: 26
+                            height: Theme.controlHeight
 
                             Text {
                                 id: deviceName
@@ -265,7 +265,7 @@ Pill {
                                 }
                                 text: deviceRow.modelData.name || deviceRow.modelData.deviceName
                                 color: deviceRow.modelData.connected ? Theme.accent : Theme.text
-                                font.family: Theme.fontFamily
+                                font.family: Theme.uiFontFamily
                                 font.pixelSize: Theme.fontSize - 1
                                 elide: Text.ElideRight
                             }
@@ -283,7 +283,7 @@ Pill {
                                     : deviceRow.modelData.paired ? "Connect"
                                     : "Connect"
                                 color: deviceRow.modelData.connected ? Theme.success : Theme.accent
-                                font.family: Theme.fontFamily
+                                font.family: Theme.uiFontFamily
                                 font.pixelSize: Theme.fontSize - 2
 
                                 MouseArea {
@@ -331,7 +331,7 @@ Pill {
                         visible: root.sortedDevices.length === 0
                         text: root.isScanning ? "Searching… (" + root.scanRemaining + "s)" : "No devices found — try Scan"
                         color: Theme.textDim
-                        font.family: Theme.fontFamily
+                        font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize - 1
                     }
                 }

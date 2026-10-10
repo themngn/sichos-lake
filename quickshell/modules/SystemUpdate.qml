@@ -141,10 +141,10 @@ Pill {
         Rectangle {
             id: bg
             implicitWidth: panel.popupWidth
-            implicitHeight: content.implicitHeight + 24
+            implicitHeight: content.implicitHeight + 2 * Theme.surfacePadding
             color: Theme.surface
             border.color: Theme.surfaceBorder
-            border.width: 1
+            border.width: Theme.surfaceBorderWidth
             radius: Theme.surfaceRadius
 
             MouseArea {
@@ -160,9 +160,9 @@ Pill {
                     left: parent.left
                     right: parent.right
                     top: parent.top
-                    margins: 12
+                    margins: Theme.surfacePadding
                 }
-                spacing: 10
+                spacing: Theme.sectionSpacing
 
                 Row {
                     spacing: 6
@@ -170,11 +170,11 @@ Pill {
                         text: "󰚰"
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontSize + 1
-                        color: Theme.submap
+                        color: Theme.accent
                     }
                     Text {
                         text: "System Update"
-                        font.family: Theme.fontFamily
+                        font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize
                         font.bold: true
                         color: Theme.text
@@ -191,7 +191,7 @@ Pill {
                     width: parent.width
                     text: root._breakdownText()
                     color: Theme.text
-                    font.family: Theme.fontFamily
+                    font.family: Theme.uiFontFamily
                     font.pixelSize: Theme.fontSize - 1
                     wrapMode: Text.Wrap
                 }
@@ -199,7 +199,7 @@ Pill {
                 Text {
                     text: "Last updated: " + root._dateText(root.lastUpdateEpoch)
                     color: Theme.textMuted
-                    font.family: Theme.fontFamily
+                    font.family: Theme.uiFontFamily
                     font.pixelSize: Theme.fontSize - 2
                 }
 
@@ -213,7 +213,7 @@ Pill {
                             ? (root.lastCheckOk ? "Checked " : "Check failed ") + root._dateText(root.checkedAt)
                             : "Not checked yet"
                         color: root.lastCheckOk ? Theme.textDim : Theme.critical
-                        font.family: Theme.fontFamily
+                        font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize - 3
                     }
 
@@ -223,8 +223,8 @@ Pill {
                         anchors.verticalCenter: parent.verticalCenter
                         text: checkProc.running ? "Checking…" : "Check now"
                         color: Theme.accent
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize - 2
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 1
 
                         MouseArea {
                             anchors.fill: parent
@@ -236,21 +236,23 @@ Pill {
 
                 Rectangle {
                     width: parent.width
-                    height: 30
+                    height: Theme.controlHeight
                     radius: Theme.controlRadius
-                    color: root.updating ? Theme.controlFill : Theme.selectedFill
+                    color: root.updating ? Theme.controlFill
+                        : updateArea.containsMouse ? Theme.hoverFill : Theme.selectedFill
 
                     Text {
                         anchors.centerIn: parent
                         text: root.updating ? "Updating…" : "Update All"
                         color: root.updating ? Theme.textDim : Theme.text
-                        font.family: Theme.fontFamily
+                        font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize - 1
-                        font.bold: true
                     }
 
                     MouseArea {
+                        id: updateArea
                         anchors.fill: parent
+                        hoverEnabled: true
                         cursorShape: root.updating ? Qt.ArrowCursor : Qt.PointingHandCursor
                         onClicked: {
                             if (root.updating) return

@@ -205,7 +205,7 @@ Pill {
         visible: root.popupOpen
 
         readonly property int popupWidth: 280
-        readonly property int contentWidth: 256
+        readonly property int contentWidth: popupWidth - 2 * Theme.surfacePadding
 
         width: popupWidth
         implicitWidth: popupWidth
@@ -215,10 +215,10 @@ Pill {
             id: bg
             width: popup.popupWidth
             implicitWidth: popup.popupWidth
-            implicitHeight: content.implicitHeight + 24
+            implicitHeight: content.implicitHeight + 2 * Theme.surfacePadding
             color: Theme.surface
             border.color: Theme.surfaceBorder
-            border.width: 1
+            border.width: Theme.surfaceBorderWidth
             radius: Theme.surfaceRadius
 
             MouseArea {
@@ -233,10 +233,10 @@ Pill {
                 width: popup.contentWidth
                 anchors {
                     top: parent.top
-                    topMargin: 12
+                    topMargin: Theme.surfacePadding
                     horizontalCenter: parent.horizontalCenter
                 }
-                spacing: 12
+                spacing: Theme.sectionSpacing
 
                 // Multi-agent Switcher Tabs (when both running)
                 Row {
@@ -246,9 +246,9 @@ Pill {
 
                     Rectangle {
                         width: Math.floor((popup.contentWidth - 6) / 2)
-                        height: 28
+                        height: Theme.controlHeight
                         radius: Theme.controlRadius
-                        color: root.currentAgent === "claude" ? Theme.selectedFill : Theme.controlFill
+                        color: root.currentAgent === "claude" ? Theme.selectedFill : claudeTabArea.containsMouse ? Theme.hoverFill : Theme.controlFill
                         border.color: root.currentAgent === "claude" ? Theme.accent : Theme.surfaceBorder
                         border.width: 1
 
@@ -264,13 +264,15 @@ Pill {
                             Text {
                                 text: "Claude"
                                 color: root.currentAgent === "claude" ? Theme.text : Theme.textDim
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontSize - 2
+                                font.family: Theme.uiFontFamily
+                                font.pixelSize: Theme.fontSize - 1
                                 font.bold: root.currentAgent === "claude"
                             }
                         }
 
                         MouseArea {
+                            id: claudeTabArea
+                            hoverEnabled: true
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
                             onClicked: root.currentAgent = "claude"
@@ -279,9 +281,9 @@ Pill {
 
                     Rectangle {
                         width: Math.floor((popup.contentWidth - 6) / 2)
-                        height: 28
+                        height: Theme.controlHeight
                         radius: Theme.controlRadius
-                        color: root.currentAgent === "agy" ? Theme.selectedFill : Theme.controlFill
+                        color: root.currentAgent === "agy" ? Theme.selectedFill : agyTabArea.containsMouse ? Theme.hoverFill : Theme.controlFill
                         border.color: root.currentAgent === "agy" ? Theme.accent : Theme.surfaceBorder
                         border.width: 1
 
@@ -297,13 +299,15 @@ Pill {
                             Text {
                                 text: "Antigravity"
                                 color: root.currentAgent === "agy" ? Theme.text : Theme.textDim
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontSize - 2
+                                font.family: Theme.uiFontFamily
+                                font.pixelSize: Theme.fontSize - 1
                                 font.bold: root.currentAgent === "agy"
                             }
                         }
 
                         MouseArea {
+                            id: agyTabArea
+                            hoverEnabled: true
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
                             onClicked: root.currentAgent = "agy"
@@ -331,7 +335,7 @@ Pill {
                         Text {
                             text: root.currentAgent === "claude" ? "Claude Code" : "Antigravity (AGY)"
                             color: Theme.text
-                            font.family: Theme.fontFamily
+                            font.family: Theme.uiFontFamily
                             font.pixelSize: Theme.fontSize - 1
                             font.bold: true
                         }
@@ -350,14 +354,14 @@ Pill {
                             id: fiveHourLabel
                             text: "5h window"
                             color: Theme.textMuted
-                            font.family: Theme.fontFamily
+                            font.family: Theme.uiFontFamily
                             font.pixelSize: Theme.fontSize - 1
                         }
                         Text {
                             anchors.right: parent.right
                             text: root.activeFiveHourPercent !== null ? (Math.round(root.activeFiveHourPercent) >= 100 ? "100%" : Math.round(root.activeFiveHourPercent) + "%") : "—"
                             color: root._barColor(root.activeFiveHourPercent)
-                            font.family: Theme.fontFamily
+                            font.family: Theme.uiFontFamily
                             font.pixelSize: Theme.fontSize - 1
                             font.bold: true
                         }
@@ -365,7 +369,7 @@ Pill {
 
                     Rectangle {
                         width: parent.width
-                        height: 8
+                        height: Theme.trackHeight
                         radius: Theme.trackRadius
                         color: Theme.track
 
@@ -394,7 +398,7 @@ Pill {
                     Text {
                         text: "resets " + root._resetTimeText(root.activeFiveHourResetsAt)
                         color: Theme.textDim
-                        font.family: Theme.fontFamily
+                        font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize - 3
                     }
                 }
@@ -411,14 +415,14 @@ Pill {
                             id: weeklyLabel
                             text: "Weekly"
                             color: Theme.textMuted
-                            font.family: Theme.fontFamily
+                            font.family: Theme.uiFontFamily
                             font.pixelSize: Theme.fontSize - 1
                         }
                         Text {
                             anchors.right: parent.right
                             text: root.activeWeeklyPercent !== null ? (Math.round(root.activeWeeklyPercent) >= 100 ? "100%" : Math.round(root.activeWeeklyPercent) + "%") : "—"
                             color: root._barColor(root.activeWeeklyPercent)
-                            font.family: Theme.fontFamily
+                            font.family: Theme.uiFontFamily
                             font.pixelSize: Theme.fontSize - 1
                             font.bold: true
                         }
@@ -426,7 +430,7 @@ Pill {
 
                     Rectangle {
                         width: parent.width
-                        height: 8
+                        height: Theme.trackHeight
                         radius: Theme.trackRadius
                         color: Theme.track
 
@@ -455,7 +459,7 @@ Pill {
                     Text {
                         text: "resets " + root._resetTimeText(root.activeWeeklyResetsAt)
                         color: Theme.textDim
-                        font.family: Theme.fontFamily
+                        font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize - 3
                     }
                 }
@@ -476,7 +480,7 @@ Pill {
                         width: parent.width
                         text: root.agyTitle
                         color: Theme.textDim
-                        font.family: Theme.fontFamily
+                        font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize - 3
                         elide: Text.ElideRight
                     }

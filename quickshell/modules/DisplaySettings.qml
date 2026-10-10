@@ -365,8 +365,8 @@ Pill {
 
         Rectangle {
             id: bg
-            implicitWidth: column.implicitWidth + 24
-            implicitHeight: column.implicitHeight + 26
+            implicitWidth: column.implicitWidth + 2 * Theme.surfacePadding
+            implicitHeight: column.implicitHeight + 2 * Theme.surfacePadding
             color: Theme.surface
             border.color: Theme.surfaceBorder
             border.width: Theme.surfaceBorderWidth
@@ -379,7 +379,7 @@ Pill {
             Column {
                 id: column
                 anchors.centerIn: parent
-                spacing: 14
+                spacing: Theme.sectionSpacing
 
                 // Header
                 Item {
@@ -391,9 +391,15 @@ Pill {
                         anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
                         Text {
-                            text: "Display"
+                            text: "󰹑"
                             font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSize + 2
+                            font.pixelSize: Theme.fontSize + 1
+                            color: Theme.accent
+                        }
+                        Text {
+                            text: "Display"
+                            font.family: Theme.uiFontFamily
+                            font.pixelSize: Theme.fontSize
                             font.bold: true
                             color: Theme.text
                         }
@@ -409,9 +415,8 @@ Pill {
                 Text {
                     text: "Layout"
                     color: Theme.textMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize
-                    font.bold: true
+                    font.family: Theme.uiFontFamily
+                    font.pixelSize: Theme.fontSize - 2
                 }
 
                 // Miniature top-down map of the real monitor arrangement --
@@ -532,7 +537,7 @@ Pill {
                                 width: (monRect.modelData.model ? parent.width / 2 - 2 : parent.width - 8)
                                 text: monRect.modelData.brand
                                 color: Theme.textMuted
-                                font.family: Theme.fontFamily
+                                font.family: Theme.uiFontFamily
                                 font.pixelSize: Theme.fontSize - 4
                                 elide: Text.ElideRight
                             }
@@ -544,7 +549,7 @@ Pill {
                                 horizontalAlignment: Text.AlignRight
                                 text: monRect.modelData.model
                                 color: Theme.textMuted
-                                font.family: Theme.fontFamily
+                                font.family: Theme.uiFontFamily
                                 font.pixelSize: Theme.fontSize - 4
                                 elide: Text.ElideRight
                             }
@@ -555,7 +560,7 @@ Pill {
                                 width: parent.width / 2 - 2
                                 text: monRect.modelData.name
                                 color: monRect.selected ? Theme.accent : Theme.textMuted
-                                font.family: Theme.fontFamily
+                                font.family: Theme.uiFontFamily
                                 font.pixelSize: Theme.fontSize - 4
                                 elide: Text.ElideRight
                             }
@@ -569,14 +574,14 @@ Pill {
                                     visible: monRect.modelData.vrrCapable
                                     text: "VRR"
                                     color: Theme.accent
-                                    font.family: Theme.fontFamily
+                                    font.family: Theme.uiFontFamily
                                     font.pixelSize: Theme.fontSize - 4
                                 }
                                 Text {
                                     visible: monRect.modelData.hdrCapable
                                     text: "HDR"
                                     color: Theme.accent
-                                    font.family: Theme.fontFamily
+                                    font.family: Theme.uiFontFamily
                                     font.pixelSize: Theme.fontSize - 4
                                 }
                             }
@@ -591,7 +596,7 @@ Pill {
                                 anchors.centerIn: parent
                                 text: "This"
                                 color: Theme.textDim
-                                font.family: Theme.fontFamily
+                                font.family: Theme.uiFontFamily
                                 font.pixelSize: Theme.fontSize - 4
                             }
                         }
@@ -602,8 +607,8 @@ Pill {
                         anchors.centerIn: parent
                         text: "No monitors detected"
                         color: Theme.textDim
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize - 2
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 1
                     }
                 }
 
@@ -616,9 +621,8 @@ Pill {
                 Text {
                     text: "Settings"
                     color: Theme.textMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize
-                    font.bold: true
+                    font.family: Theme.uiFontFamily
+                    font.pixelSize: Theme.fontSize - 2
                 }
 
                 Column {
@@ -846,8 +850,8 @@ Pill {
                                     text: "Resolution ("
                                         + row.aspectLabel(row.modelData.width, row.modelData.height) + ")"
                                     color: Theme.textMuted
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: Theme.fontSize
+                                    font.family: Theme.uiFontFamily
+                                    font.pixelSize: Theme.fontSize - 1
                                 }
 
                                 // Side by side, 3:2 -- "2560x1440" needs more
@@ -881,8 +885,8 @@ Pill {
                                 Text {
                                     text: "Scale"
                                     color: Theme.textMuted
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: Theme.fontSize
+                                    font.family: Theme.uiFontFamily
+                                    font.pixelSize: Theme.fontSize - 1
                                 }
 
                                 // Same button shape as HdrPopup.qml's own On/Off
@@ -905,11 +909,11 @@ Pill {
                                             readonly property bool isActive: row.selectedScale === scaleButton.modelData
                                             width: (scaleButtons.width - 4 * (row.scaleOptions.length - 1))
                                                 / row.scaleOptions.length
-                                            height: 26
+                                            height: Theme.controlHeight
                                             radius: Theme.controlRadius
                                             color: scaleButton.isActive
                                                 ? Theme.selectedFill
-                                                : Theme.controlFill
+                                                : scaleArea.containsMouse ? Theme.hoverFill : Theme.controlFill
                                             border.width: 1
                                             border.color: scaleButton.isActive ? Theme.accent : Theme.surfaceBorder
 
@@ -917,10 +921,12 @@ Pill {
                                                 anchors.centerIn: parent
                                                 text: scaleButton.modelData + "x"
                                                 color: scaleButton.isActive ? Theme.text : Theme.textMuted
-                                                font.family: Theme.fontFamily
-                                                font.pixelSize: Theme.fontSize - 3
+                                                font.family: Theme.uiFontFamily
+                                                font.pixelSize: Theme.fontSize - 1
                                             }
                                             MouseArea {
+                                                id: scaleArea
+                                                hoverEnabled: true
                                                 anchors.fill: parent
                                                 cursorShape: Qt.PointingHandCursor
                                                 onClicked: row.pickScale(scaleButton.modelData)
@@ -937,22 +943,29 @@ Pill {
                                 Text {
                                     text: "Brightness"
                                     color: Theme.textMuted
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: Theme.fontSize
+                                    font.family: Theme.uiFontFamily
+                                    font.pixelSize: Theme.fontSize - 1
                                 }
 
                                 // Brightness slider -- DDC for a desktop monitor,
                                 // the laptop panel's own backlight otherwise (see
                                 // popup.hasBacklight/backlightPercent above).
+                                // A full text line tall (the % label's height), with
+                                // the track centered in it, rather than only as
+                                // tall as the track -- so it's the same height as
+                                // the "No brightness control" line below and the
+                                // popup doesn't change size between monitors.
                                 Row {
                                     visible: row.hasBrightness
                                     width: parent.width
+                                    height: percentText.implicitHeight
                                     spacing: 6
 
                                     Rectangle {
                                         id: track
+                                        anchors.verticalCenter: parent.verticalCenter
                                         width: parent.width - 40
-                                        height: 8
+                                        height: Theme.trackHeight
                                         radius: Theme.trackRadius
                                         color: Theme.track
 
@@ -982,22 +995,24 @@ Pill {
                                         }
                                     }
                                     Text {
+                                        id: percentText
                                         width: 34
-                                        height: track.height
-                                        verticalAlignment: Text.AlignVCenter
+                                        anchors.verticalCenter: parent.verticalCenter
                                         text: row.percent + "%"
                                         color: Theme.textDim
-                                        font.family: Theme.fontFamily
-                                        font.pixelSize: Theme.fontSize - 2
+                                        font.family: Theme.uiFontFamily
+                                        font.pixelSize: Theme.fontSize - 1
                                     }
                                 }
 
                                 Text {
                                     visible: !row.hasBrightness
+                                    height: percentText.implicitHeight
+                                    verticalAlignment: Text.AlignVCenter
                                     text: "No brightness control"
                                     color: Theme.textDim
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: Theme.fontSize - 3
+                                    font.family: Theme.uiFontFamily
+                                    font.pixelSize: Theme.fontSize - 1
                                 }
                             }
 
@@ -1021,8 +1036,8 @@ Pill {
                                 Text {
                                     text: "Options"
                                     color: Theme.textMuted
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: Theme.fontSize
+                                    font.family: Theme.uiFontFamily
+                                    font.pixelSize: Theme.fontSize - 1
                                 }
 
                                 MonitorCheckbox {
@@ -1052,8 +1067,8 @@ Pill {
                         visible: popup.selectedMonitors.length === 0
                         text: "No monitors detected"
                         color: Theme.textDim
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize - 2
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 1
                     }
                 }
             }
@@ -1079,13 +1094,15 @@ Pill {
                 id: checkText
                 width: parent.width
                 elide: Text.ElideRight
-                text: (checkbox.checked ? "[x] " : "[ ] ") + checkbox.label
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize
-                color: checkbox.checked ? Theme.accent : Theme.textMuted
+                text: (checkbox.checked ? "󰄲  " : "󰄱  ") + checkbox.label
+                font.family: Theme.uiFontFamily
+                font.pixelSize: Theme.fontSize - 1
+                color: checkArea.containsMouse ? Theme.text : Theme.textMuted
             }
             MouseArea {
+                id: checkArea
                 anchors.fill: parent
+                hoverEnabled: true
                 enabled: checkbox.capable
                 cursorShape: checkbox.capable ? Qt.PointingHandCursor : Qt.ArrowCursor
                 onClicked: checkbox.toggled()
@@ -1217,7 +1234,7 @@ Pill {
             Rectangle {
                 id: box
                 width: picker.boxWidth
-                height: 26
+                height: Theme.controlHeight
                 radius: Theme.controlRadius
 
                 // Same "sunken control" look on the closed box regardless of
@@ -1237,8 +1254,8 @@ Pill {
                     elide: Text.ElideRight
                     text: picker.current
                     color: Theme.text
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize - 2
+                    font.family: Theme.uiFontFamily
+                    font.pixelSize: Theme.fontSize - 1
                 }
 
                 // Vertical divider ahead of the arrow -- the detail that
@@ -1346,8 +1363,8 @@ Pill {
                                 horizontalAlignment: Text.AlignHCenter
                                 text: optionRow.modelData
                                 color: optionRow.isCurrent ? Theme.accent : Theme.textMuted
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontSize - 2
+                                font.family: Theme.uiFontFamily
+                                font.pixelSize: Theme.fontSize - 1
                             }
                             MouseArea {
                                 id: optionHover

@@ -108,7 +108,7 @@ PanelWindow {
                 id: track
                 anchors.verticalCenter: parent.verticalCenter
                 width: 130
-                height: 8
+                height: Theme.trackHeight
                 radius: Theme.trackRadius
                 color: Theme.track
 
@@ -127,7 +127,7 @@ PanelWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 width: Theme.fontSize * 2.5
                 text: (osd.sink && osd.sink.audio ? Math.round(osd.sink.audio.volume * 100) : 0) + "%"
-                font.family: Theme.fontFamily
+                font.family: Theme.uiFontFamily
                 font.pixelSize: Theme.fontSize
                 color: Theme.text
             }

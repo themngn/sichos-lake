@@ -34,11 +34,11 @@ PopupWindow {
 
     Rectangle {
         id: bg
-        implicitWidth: column.implicitWidth + 20
-        implicitHeight: column.implicitHeight + 16
+        implicitWidth: column.implicitWidth + 2 * Theme.surfacePadding
+        implicitHeight: column.implicitHeight + 2 * Theme.surfacePadding
         color: Theme.surface
         border.color: Theme.surfaceBorder
-        border.width: 1
+        border.width: Theme.surfaceBorderWidth
         radius: Theme.surfaceRadius
 
         Column {
@@ -73,8 +73,8 @@ PopupWindow {
                         }
                         Text {
                             text: popup.nameFor(row.modelData)
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSize
+                            font.family: Theme.uiFontFamily
+                            font.pixelSize: Theme.fontSize - 1
                             color: row.active ? Theme.accent : Theme.text
                         }
                     }

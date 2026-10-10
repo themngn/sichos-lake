@@ -50,6 +50,78 @@ PanelWindow {
     // not worth the complexity of clearing entries out as toasts close.
     property var notificationTimes: ({})
 
+    // Toast grouping: a new notification with the same app + summary +
+    // urgency as a toast that's still on screen joins that toast (count
+    // badge, its body listed under the earlier ones, hide timer restarted)
+    // instead of stacking another near-identical toast -- same idea as
+    // NotificationHistory.add()'s folding for the Notification Center, but
+    // live and only while the group's toast is actually showing; anything
+    // arriving after it hides starts a fresh toast. Every member stays its
+    // own tracked Notification (grace timer, withdrawal, history are all
+    // untouched) -- grouping only decides which delegate draws it.
+    // Plain JS maps, so groupRevision is bumped on every change to make the
+    // delegates' bindings re-evaluate.
+    property var groupLeader: ({})   // group key -> leader id, only while its toast shows
+    property var groupMembers: ({})  // leader id -> [Notification], oldest first
+    property var followerOf: ({})    // member id -> leader id (never drawn on its own)
+    property int groupRevision: 0
+
+    function groupKey(n) {
+        return n.appName + "\n" + n.summary + "\n" + n.urgency
+    }
+
+    function joinGroup(n) {
+        const key = root.groupKey(n)
+        const leaderId = root.groupLeader[key]
+        if (leaderId !== undefined && root.groupMembers[leaderId]) {
+            root.groupMembers[leaderId].push(n)
+            root.followerOf[n.id] = leaderId
+        } else {
+            root.groupLeader[key] = n.id
+            root.groupMembers[n.id] = [n]
+        }
+        root.groupRevision++
+    }
+
+    // The leader's toast hid (timeout, ✕, mute): later arrivals start a new toast.
+    function releaseGroup(leaderId) {
+        for (const k in root.groupLeader)
+            if (root.groupLeader[k] === leaderId) delete root.groupLeader[k]
+        root.groupRevision++
+    }
+
+    // A member's Notification closed (withdrawn, dismissed, grace expiry).
+    function leaveGroup(id) {
+        const leaderId = root.followerOf[id]
+        if (leaderId !== undefined) {
+            // followerOf entry deliberately kept: the delegate is about to
+            // go away anyway, and clearing it would flash it on screen.
+            if (root.groupMembers[leaderId])
+                root.groupMembers[leaderId] = root.groupMembers[leaderId].filter(m => m.id !== id)
+        } else if (root.groupMembers[id]) {
+            const rest = root.groupMembers[id].filter(m => m.id !== id)
+            delete root.groupMembers[id]
+            let key
+            for (const k in root.groupLeader)
+                if (root.groupLeader[k] === id) key = k
+            // Leader withdrawn while its toast is still showing (e.g. the
+            // sender closed the first message once read): the oldest
+            // remaining member takes over the same toast. If the toast
+            // already hid, the rest just stay undrawn -- re-showing them
+            // here would pop an old message up out of nowhere.
+            if (key !== undefined && rest.length > 0) {
+                const next = rest[0].id
+                root.groupMembers[next] = rest
+                delete root.followerOf[next]
+                for (const m of rest.slice(1)) root.followerOf[m.id] = next
+                root.groupLeader[key] = next
+            } else if (key !== undefined) {
+                delete root.groupLeader[key]
+            }
+        }
+        root.groupRevision++
+    }
+
     NotificationServer {
         id: server
         bodySupported: true
@@ -59,13 +131,16 @@ PanelWindow {
         actionsSupported: true
         onNotification: notification => {
             notification.tracked = true
+            NotificationHistory.registerLive(notification)
 
             // Real arrival time -- see root.notificationTimes' own comment
             // for why this is captured here rather than per-delegate, and
             // why lastGeneration is excluded (an existing id must keep its
             // original timestamp, not get overwritten on every reload).
-            if (!notification.lastGeneration)
+            if (!notification.lastGeneration) {
                 root.notificationTimes[notification.id] = Date.now()
+                root.joinGroup(notification)
+            }
 
             // lastGeneration notifications are the same still-open
             // notification being re-announced after a hot-reload
@@ -94,6 +169,9 @@ PanelWindow {
                     appIcon: notification.appIcon,
                     summary: notification.summary,
                     body: notification.body,
+                    // Lets NotificationCenter.qml focus/launch the right app
+                    // when clicked after the live notification is gone.
+                    desktopEntry: notification.desktopEntry,
                     urgency: notification.urgency
                 })
             }
@@ -124,7 +202,10 @@ PanelWindow {
             // whole PanelWindow, and with it whatever was connected here
             // before — without reconnecting, a real withdrawal arriving
             // after even one save-triggered reload would go unnoticed.
+            const notifId = notification.id
             notification.closed.connect(reason => {
+                root.leaveGroup(notifId)
+                NotificationHistory.unregisterLive(notifId)
                 if (reason === NotificationCloseReason.CloseRequested)
                     NotificationHistory.removeByNotifId(notification.id)
                 if (graceTimer) graceTimer.destroy()
@@ -185,7 +266,23 @@ PanelWindow {
                 readonly property bool critical: notification.urgency === NotificationUrgency.Critical
                 readonly property real timeout: notification.expireTimeout > 0
                     ? notification.expireTimeout : root.defaultTimeout(notification)
-                readonly property double time: root.notificationTimes[notification.id] || Date.now()
+                // This toast's group (see joinGroup above): itself plus any
+                // later same-app/summary notifications folded into it.
+                // Followers are never drawn -- their leader shows them.
+                readonly property var members: {
+                    root.groupRevision
+                    // slice(): a fresh array each time, so a push into the
+                    // shared one still registers as a change here.
+                    return (root.groupMembers[notification.id] || [notification]).slice()
+                }
+                readonly property bool isFollower: {
+                    root.groupRevision
+                    return root.followerOf[notification.id] !== undefined
+                }
+                // Click / actions / time follow the newest message, the one
+                // the user is most likely reacting to.
+                readonly property var latest: members[members.length - 1]
+                readonly property double time: root.notificationTimes[latest.id] || Date.now()
                 // The spec's "default" action (activated by clicking the
                 // notification itself, e.g. Claude Code's "bring the
                 // terminal to front") is meant to never appear as its own
@@ -194,7 +291,7 @@ PanelWindow {
                 // empty box even after filtering purely on blank text.
                 // Anything else with a blank/whitespace-only label is
                 // filtered the same way for any other sender doing this.
-                readonly property var visibleActions: notification.actions.filter(
+                readonly property var visibleActions: latest.actions.filter(
                     a => a.identifier !== "default" && a.text.trim().length > 0)
                 // Purely a local display flag now -- see hideTimer below.
                 // Defaults to already-hidden for a notification carried
@@ -221,10 +318,23 @@ PanelWindow {
                 // unaffected either way -- muting only ever skips the toast.
                 property bool hidden: notification.lastGeneration
                 Component.onCompleted: if (ShellState.notificationsMuted) toast.hidden = true
+                onHiddenChanged: if (toast.hidden) root.releaseGroup(notification.id)
+                // A new message joining the group gets the full display time
+                // too. Keyed on this toast's own count growing, not on
+                // `members` changing -- that re-evaluates on every
+                // groupRevision bump, i.e. on any other toast's grouping
+                // change as well.
+                readonly property int memberCount: members.length
+                property int shownCount: 1
+                onMemberCountChanged: {
+                    if (memberCount > shownCount && !toast.hidden && toast.timeout > 0)
+                        hideTimer.restart()
+                    shownCount = memberCount
+                }
 
                 width: column.width
-                height: content.height + 20
-                visible: !toast.hidden
+                height: content.height + 2 * Theme.cardPadding
+                visible: !toast.hidden && !toast.isFollower
                 color: Theme.surface
                 border.color: critical ? Theme.critical : Theme.surfaceBorder
                 border.width: Theme.surfaceBorderWidth
@@ -241,7 +351,9 @@ PanelWindow {
                 // would retire the id immediately, defeating that.
                 Timer {
                     id: hideTimer
-                    running: toast.timeout > 0
+                    // Not while a follower: a member promoted to leader (see
+                    // leaveGroup) then starts with its full display time.
+                    running: toast.timeout > 0 && !toast.isFollower
                     interval: toast.timeout
                     onTriggered: toast.hidden = true
                 }
@@ -255,9 +367,17 @@ PanelWindow {
                     // accidental click on a notification you meant to read
                     // or act on lose it -- closing is now exclusively the
                     // ✕ button below.
+                    // Like the Notification Center's click: the sender's own
+                    // default action, else bring its app up; either way the
+                    // toast has done its job, so it hides (the notification
+                    // itself stays tracked -- history/withdrawal unaffected).
+                    cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        const defaultAction = notification.actions.find(a => a.identifier === "default")
+                        const n = toast.latest
+                        const defaultAction = n.actions.find(a => a.identifier === "default")
                         if (defaultAction) defaultAction.invoke()
+                        else NotificationHistory.focusOrLaunchApp(n.desktopEntry, n.appName)
+                        toast.hidden = true
                     }
                 }
 
@@ -267,9 +387,9 @@ PanelWindow {
                         left: parent.left
                         right: parent.right
                         top: parent.top
-                        margins: 10
+                        margins: Theme.cardPadding
                     }
-                    spacing: 10
+                    spacing: Theme.cardSpacing
 
                     Row {
                         id: headerRow
@@ -279,8 +399,11 @@ PanelWindow {
                         Image {
                             id: appIcon
                             visible: source !== ""
-                            width: visible ? 22 : 0
-                            height: 22
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: visible ? Theme.notificationIconSize : 0
+                            height: Theme.notificationIconSize
+                            sourceSize.width: Theme.notificationIconSize
+                            sourceSize.height: Theme.notificationIconSize
                             // Falls back to a bundled plain-bell asset
                             // (assets/notification-default.svg) rather than
                             // leaving the row icon-less -- senders that skip
@@ -295,28 +418,54 @@ PanelWindow {
                             // a slashed "disabled" bell -- neither reads as
                             // a plain notification icon.
                             source: {
-                                if (notification.image) return notification.image
-                                if (!notification.appIcon)
+                                const n = toast.latest
+                                if (n.image) return n.image
+                                if (!n.appIcon)
                                     return Qt.resolvedUrl("../assets/notification-default.svg")
-                                return notification.appIcon.startsWith("/")
-                                    ? "file://" + notification.appIcon
-                                    : Quickshell.iconPath(notification.appIcon, true)
+                                return n.appIcon.startsWith("/")
+                                    ? "file://" + n.appIcon
+                                    : Quickshell.iconPath(n.appIcon, true)
                             }
                         }
 
                         Text {
+                            anchors.verticalCenter: parent.verticalCenter
                             width: headerRow.width - (appIcon.visible ? appIcon.width + headerRow.spacing : 0)
                                 - closeButton.implicitWidth - headerRow.spacing
+                                - (countBadge.visible ? countBadge.width + headerRow.spacing : 0)
                             text: notification.summary
-                            font.family: Theme.fontFamily
+                            font.family: Theme.uiFontFamily
                             font.pixelSize: Theme.fontSize
                             font.bold: true
                             color: Theme.text
                             elide: Text.ElideRight
                         }
 
+                        // How many messages this toast is showing (see joinGroup)
+                        // -- same badge as NotificationCenter.qml's folded entries.
+                        Rectangle {
+                            id: countBadge
+                            visible: toast.members.length > 1
+                            anchors.verticalCenter: parent.verticalCenter
+                            height: countNumber.implicitHeight + 2
+                            width: Math.max(height, countNumber.implicitWidth + 10)
+                            radius: height / 2
+                            color: Theme.accent
+
+                            Text {
+                                id: countNumber
+                                anchors.centerIn: parent
+                                text: "" + toast.members.length
+                                font.family: Theme.uiFontFamily
+                                font.pixelSize: Theme.fontSize - 3
+                                font.bold: true
+                                color: Theme.textOnLight
+                            }
+                        }
+
                         Text {
                             id: closeButton
+                            anchors.verticalCenter: parent.verticalCenter
                             // Font Awesome "times", same glyph
                             // NotificationCenter.qml's history rows use for
                             // their own close button -- keeps the one
@@ -325,18 +474,48 @@ PanelWindow {
                             text: ""
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontSize - 3
-                            color: Theme.textDim
+                            color: closeArea.containsMouse ? Theme.text : Theme.textDim
 
                             MouseArea {
+                                id: closeArea
+                                hoverEnabled: true
                                 anchors.fill: parent
                                 anchors.margins: -6
-                                onClicked: notification.dismiss()
+                                // Whole group: release first so dismissing the
+                                // leader doesn't promote a member back on screen.
+                                onClicked: {
+                                    const all = toast.members.slice()
+                                    root.releaseGroup(notification.id)
+                                    for (const m of all) m.dismiss()
+                                }
                             }
                         }
                     }
 
+                    // One message: its body, up to 4 lines. A group: the
+                    // newest 3 bodies, oldest first, 2 lines each -- enough to
+                    // follow a burst of chat messages without the toast
+                    // growing without bound; the rest are in the Notification
+                    // Center.
+                    Repeater {
+                        model: toast.members.length > 1 ? toast.members.slice(-3) : []
+                        delegate: Text {
+                            required property var modelData
+                            visible: modelData.body.length > 0
+                            width: content.width
+                            text: modelData.body
+                            textFormat: Text.StyledText
+                            wrapMode: Text.WordWrap
+                            maximumLineCount: 2
+                            font.family: Theme.uiFontFamily
+                            font.pixelSize: Theme.fontSize - 1
+                            color: Theme.textMuted
+                            onLinkActivated: link => Qt.openUrlExternally(link)
+                        }
+                    }
+
                     Text {
-                        visible: notification.body.length > 0
+                        visible: toast.members.length === 1 && notification.body.length > 0
                         width: parent.width
                         text: notification.body
                         // No `elide` on top of maximumLineCount here — that
@@ -347,7 +526,7 @@ PanelWindow {
                         textFormat: Text.StyledText
                         wrapMode: Text.WordWrap
                         maximumLineCount: 4
-                        font.family: Theme.fontFamily
+                        font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize - 1
                         color: Theme.textMuted
                         onLinkActivated: link => Qt.openUrlExternally(link)
@@ -358,7 +537,7 @@ PanelWindow {
                     // show once it lands in history.
                     Text {
                         text: Qt.formatDateTime(new Date(toast.time), "MMM d, HH:mm")
-                        font.family: Theme.fontFamily
+                        font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize - 3
                         color: Theme.textDim
                     }
@@ -374,8 +553,8 @@ PanelWindow {
                                 id: actionButton
                                 required property var modelData
                                 width: actionText.implicitWidth + 16
-                                height: actionText.implicitHeight + 8
-                                color: Theme.controlFill
+                                height: Theme.controlHeight
+                                color: actionArea.containsMouse ? Theme.hoverFill : Theme.controlFill
                                 border.color: Theme.surfaceBorder
                                 border.width: 1
                                 radius: Theme.controlRadius
@@ -384,13 +563,15 @@ PanelWindow {
                                     id: actionText
                                     anchors.centerIn: parent
                                     text: actionButton.modelData.text
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: Theme.fontSize - 2
+                                    font.family: Theme.uiFontFamily
+                                    font.pixelSize: Theme.fontSize - 1
                                     color: Theme.text
                                 }
 
                                 MouseArea {
+                                    id: actionArea
                                     anchors.fill: parent
+                                    hoverEnabled: true
                                     onClicked: actionButton.modelData.invoke()
                                 }
                             }

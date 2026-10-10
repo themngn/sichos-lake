@@ -77,14 +77,14 @@ Item {
             implicitHeight: tooltipLabel.implicitHeight + 10
             color: Theme.surface
             border.color: Theme.surfaceBorder
-            border.width: 1
+            border.width: Theme.surfaceBorderWidth
             radius: Theme.controlRadius
 
             Text {
                 id: tooltipLabel
                 anchors.centerIn: parent
                 text: root.tooltipText
-                font.family: Theme.fontFamily
+                font.family: Theme.uiFontFamily
                 font.pixelSize: Theme.fontSize - 1
                 color: Theme.text
             }

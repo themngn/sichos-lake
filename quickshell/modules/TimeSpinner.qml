@@ -17,7 +17,7 @@ Row {
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
         text: spinner.value < 10 ? "0" + spinner.value : "" + spinner.value
-        font.family: Theme.fontFamily
+        font.family: Theme.uiFontFamily
         font.pixelSize: Theme.fontSize + 2
         color: Theme.text
     }

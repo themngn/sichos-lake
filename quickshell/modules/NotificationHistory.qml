@@ -1,6 +1,7 @@
 pragma Singleton
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Io
 
 // Past notifications shown in the bar's Notification Center popup
@@ -93,6 +94,56 @@ QtObject {
         const rest = idx !== -1 ? adapter.entries.filter((_, i) => i !== idx) : adapter.entries
         adapter.entries = [withId].concat(rest).slice(0, root.maxEntries)
     }
+    // Live Notification objects by namespaced notifId, so a history entry
+    // can still reach its notification's own actions (NotificationCenter's
+    // click -> the sender's "default" action, e.g. Telegram opening that
+    // chat) for as long as it's tracked -- see Notifications.qml's grace
+    // timer for how long that is. Deliberately not part of the persisted
+    // adapter: these are live objects, meaningless after a restart (and
+    // rebuilt from NotificationServer's re-announcement after a hot-reload,
+    // since registerLive() is called for lastGeneration ones too).
+    property var live: ({})
+    function registerLive(notification) {
+        root.live[root.sessionId + ":" + notification.id] = notification
+    }
+    function unregisterLive(notifId) {
+        delete root.live[root.sessionId + ":" + notifId]
+    }
+    // The live notification behind a history entry, if it's still tracked.
+    function liveFor(entry) {
+        const n = entry.notifId !== undefined ? root.live[entry.notifId] : undefined
+        return n && n.tracked ? n : null
+    }
+
+    // Brings up the app behind a notification that has no usable action of
+    // its own (or no longer has a live notification at all): focus its
+    // existing window, or launch it if none is open. Shared by the toast
+    // (Notifications.qml) and Notification Center clicks.
+    function focusOrLaunchApp(desktopEntry, appName) {
+        const app = (desktopEntry && DesktopEntries.byId(desktopEntry))
+            || (appName && DesktopEntries.heuristicLookup(appName))
+            || null
+        // Window classes this app's windows could plausibly carry: the
+        // desktop file's StartupWMClass first (the one that's actually
+        // authoritative), then its id / the sender's names as fallbacks.
+        const classes = [app && app.startupClass, app && app.id, desktopEntry, appName]
+            .filter(c => c)
+            .map(c => c.toLowerCase())
+        const window = Hyprland.toplevels.values.find(t => {
+            const cls = t.lastIpcObject && t.lastIpcObject.class
+            return cls && classes.includes(cls.toLowerCase())
+        })
+        if (window) {
+            // `hyprctl dispatch` doesn't work on this Lua-config build --
+            // hl.dispatch via eval is the supported route (see CLAUDE.md).
+            const addr = "0x" + window.address.replace(/^0x/, "")
+            Quickshell.execDetached(["hyprctl", "eval",
+                "hl.dispatch(hl.dsp.focus({ window = " + JSON.stringify("address:" + addr) + " }))"])
+        } else if (app) {
+            app.execute()
+        }
+    }
+
     function remove(id) {
         adapter.entries = adapter.entries.filter(e => e.id !== id)
     }

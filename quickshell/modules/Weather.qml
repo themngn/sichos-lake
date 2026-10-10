@@ -189,10 +189,10 @@ Pill {
             id: bg
             width: 340
             implicitWidth: 340
-            implicitHeight: content.implicitHeight + 24
+            implicitHeight: content.implicitHeight + 2 * Theme.surfacePadding
             color: Theme.surface
             border.color: Theme.surfaceBorder
-            border.width: 1
+            border.width: Theme.surfaceBorderWidth
             radius: Theme.surfaceRadius
 
             MouseArea {
@@ -204,13 +204,13 @@ Pill {
 
             Column {
                 id: content
-                width: 316
+                width: parent.width - 2 * Theme.surfacePadding
                 anchors {
                     top: parent.top
-                    topMargin: 12
+                    topMargin: Theme.surfacePadding
                     horizontalCenter: parent.horizontalCenter
                 }
-                spacing: 10
+                spacing: Theme.sectionSpacing
 
                 // Menu Title Header
                 Item {
@@ -229,7 +229,7 @@ Pill {
                         }
                         Text {
                             text: "Weather"
-                            font.family: Theme.fontFamily
+                            font.family: Theme.uiFontFamily
                             font.pixelSize: Theme.fontSize
                             font.bold: true
                             color: Theme.text
@@ -240,7 +240,7 @@ Pill {
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
                         text: root.city
-                        font.family: Theme.fontFamily
+                        font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize - 1
                         color: Theme.textMuted
                     }
@@ -268,7 +268,7 @@ Pill {
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             text: Math.round(root.tempC) + "°C"
-                            font.family: Theme.fontFamily
+                            font.family: Theme.uiFontFamily
                             font.pixelSize: Theme.fontSize
                             font.bold: true
                             color: Theme.text
@@ -288,13 +288,13 @@ Pill {
                             Text {
                                 text: "Feels"
                                 color: Theme.textDim
-                                font.family: Theme.fontFamily
+                                font.family: Theme.uiFontFamily
                                 font.pixelSize: Theme.fontSize - 3
                             }
                             Text {
                                 text: "like:"
                                 color: Theme.textDim
-                                font.family: Theme.fontFamily
+                                font.family: Theme.uiFontFamily
                                 font.pixelSize: Theme.fontSize - 3
                             }
                         }
@@ -302,7 +302,7 @@ Pill {
                             anchors.verticalCenter: feelsLabel.verticalCenter
                             text: Math.round(root.feelsLikeC) + "°"
                             color: Theme.textMuted
-                            font.family: Theme.fontFamily
+                            font.family: Theme.uiFontFamily
                             font.pixelSize: Theme.fontSize
                         }
                     }
@@ -323,7 +323,7 @@ Pill {
                             anchors.verticalCenter: humidityIcon.verticalCenter
                             text: root.humidity + "%"
                             color: Theme.textMuted
-                            font.family: Theme.fontFamily
+                            font.family: Theme.uiFontFamily
                             font.pixelSize: Theme.fontSize
                         }
                     }
@@ -344,7 +344,7 @@ Pill {
                             anchors.verticalCenter: windIcon.verticalCenter
                             text: Math.round(root.windKph) + " km/h"
                             color: Theme.textMuted
-                            font.family: Theme.fontFamily
+                            font.family: Theme.uiFontFamily
                             font.pixelSize: Theme.fontSize
                         }
                     }
@@ -353,8 +353,8 @@ Pill {
                 Text {
                     text: "Today"
                     color: Theme.textMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize - 1
+                    font.family: Theme.uiFontFamily
+                    font.pixelSize: Theme.fontSize - 2
                 }
 
                 Row {
@@ -372,7 +372,7 @@ Pill {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: hourDelegate.modelData.hour.substring(0, 2)
                                 color: Theme.textDim
-                                font.family: Theme.fontFamily
+                                font.family: Theme.uiFontFamily
                                 font.pixelSize: Theme.fontSize - 3
                             }
                             Text {
@@ -386,7 +386,7 @@ Pill {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: Math.round(hourDelegate.modelData.tempC) + "°"
                                 color: Theme.text
-                                font.family: Theme.fontFamily
+                                font.family: Theme.uiFontFamily
                                 font.pixelSize: Theme.fontSize - 3
                             }
                             // Empty (not visible:false) so every column keeps
@@ -399,7 +399,7 @@ Pill {
                                 text: (hourDelegate.modelData.precipProb || 0) >= 20
                                     ? hourDelegate.modelData.precipProb + "%" : ""
                                 color: Theme.accent
-                                font.family: Theme.fontFamily
+                                font.family: Theme.uiFontFamily
                                 font.pixelSize: Theme.fontSize - 4
                             }
                         }
@@ -409,8 +409,8 @@ Pill {
                 Text {
                     text: "This Week"
                     color: Theme.textMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize - 1
+                    font.family: Theme.uiFontFamily
+                    font.pixelSize: Theme.fontSize - 2
                 }
 
                 Column {
@@ -433,7 +433,7 @@ Pill {
                                 text: dayDelegate.index === 0 ? "Today"
                                     : Qt.formatDate(new Date(dayDelegate.modelData.date), "ddd")
                                 color: Theme.text
-                                font.family: Theme.fontFamily
+                                font.family: Theme.uiFontFamily
                                 font.pixelSize: Theme.fontSize - 1
                             }
                             Text {
@@ -464,14 +464,14 @@ Pill {
                                 Text {
                                     text: dayDelegate.modelData.precipProb + "%"
                                     color: Theme.textDim
-                                    font.family: Theme.fontFamily
+                                    font.family: Theme.uiFontFamily
                                     font.pixelSize: Theme.fontSize - 3
                                 }
                                 Text {
                                     text: dayDelegate.modelData.precipMm > 0
                                         ? " · " + dayDelegate.modelData.precipMm.toFixed(1) + "mm" : ""
                                     color: Theme.textDim
-                                    font.family: Theme.fontFamily
+                                    font.family: Theme.uiFontFamily
                                     font.pixelSize: Theme.fontSize - 3
                                 }
                             }
@@ -483,7 +483,7 @@ Pill {
                                 text: Math.round(dayDelegate.modelData.tempMin) + "° / "
                                     + Math.round(dayDelegate.modelData.tempMax) + "°"
                                 color: Theme.text
-                                font.family: Theme.fontFamily
+                                font.family: Theme.uiFontFamily
                                 font.pixelSize: Theme.fontSize - 1
                             }
                         }

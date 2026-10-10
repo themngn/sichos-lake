@@ -105,11 +105,11 @@ PopupWindow {
 
     Rectangle {
         id: bg
-        implicitWidth: column.implicitWidth + 24
-        implicitHeight: column.implicitHeight + 20
+        implicitWidth: column.implicitWidth + 2 * Theme.surfacePadding
+        implicitHeight: column.implicitHeight + 2 * Theme.surfacePadding
         color: Theme.surface
         border.color: Theme.surfaceBorder
-        border.width: 1
+        border.width: Theme.surfaceBorderWidth
         radius: Theme.surfaceRadius
 
         HoverHandler {
@@ -119,7 +119,7 @@ PopupWindow {
         Column {
             id: column
             anchors.centerIn: parent
-            spacing: 12
+            spacing: Theme.sectionSpacing
 
             // Menu Title Header
             Item {
@@ -138,7 +138,7 @@ PopupWindow {
                     }
                     Text {
                         text: "Stay Awake"
-                        font.family: Theme.fontFamily
+                        font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize
                         font.bold: true
                         color: Theme.text
@@ -162,7 +162,7 @@ PopupWindow {
                         height: parent.height
                         verticalAlignment: Text.AlignVCenter
                         text: "Lock after"
-                        font.family: Theme.fontFamily
+                        font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize - 1
                         color: Theme.textMuted
                     }
@@ -188,7 +188,7 @@ PopupWindow {
                         height: 22
                         verticalAlignment: Text.AlignVCenter
                         text: "min"
-                        font.family: Theme.fontFamily
+                        font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize - 1
                         color: Theme.textMuted
                     }
@@ -217,7 +217,7 @@ PopupWindow {
                         height: parent.height
                         verticalAlignment: Text.AlignVCenter
                         text: "Dim before lock"
-                        font.family: Theme.fontFamily
+                        font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize - 1
                         color: Theme.textMuted
                     }
@@ -230,7 +230,7 @@ PopupWindow {
                         height: 22
                         verticalAlignment: Text.AlignVCenter
                         text: "sec"
-                        font.family: Theme.fontFamily
+                        font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize - 1
                         color: Theme.textMuted
                     }
@@ -259,7 +259,7 @@ PopupWindow {
                         height: parent.height
                         verticalAlignment: Text.AlignVCenter
                         text: "Screen off"
-                        font.family: Theme.fontFamily
+                        font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize - 1
                         color: Theme.textMuted
                     }
@@ -285,7 +285,7 @@ PopupWindow {
                         height: 22
                         verticalAlignment: Text.AlignVCenter
                         text: "min"
-                        font.family: Theme.fontFamily
+                        font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize - 1
                         color: Theme.textMuted
                     }
@@ -300,18 +300,18 @@ PopupWindow {
             Item {
                 id: saveEntry
                 width: 260
-                height: saveLabel.implicitHeight + 6
+                height: Theme.controlHeight
 
                 Rectangle {
                     anchors.fill: parent
                     radius: Theme.controlRadius
-                    color: saveArea.containsMouse ? Theme.hoverFill : "transparent"
+                    color: saveArea.containsMouse ? Theme.hoverFill : Theme.controlFill
                 }
                 Text {
                     id: saveLabel
                     anchors.centerIn: parent
                     text: "Save"
-                    font.family: Theme.fontFamily
+                    font.family: Theme.uiFontFamily
                     font.pixelSize: Theme.fontSize - 1
                     color: Theme.accent
                 }
@@ -336,9 +336,9 @@ PopupWindow {
 
         Text {
             id: checkText
-            text: (checkbox.checked ? "[x] " : "[ ] ") + checkbox.label
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize - 2
+            text: (checkbox.checked ? "󰄲  " : "󰄱  ") + checkbox.label
+            font.family: Theme.uiFontFamily
+            font.pixelSize: Theme.fontSize - 1
             color: checkArea.containsMouse ? Theme.text : Theme.textMuted
         }
         MouseArea {

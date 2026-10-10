@@ -78,11 +78,11 @@ PopupWindow {
 
     Rectangle {
         id: bg
-        implicitWidth: column.implicitWidth + 24
-        implicitHeight: column.implicitHeight + 20
+        implicitWidth: column.implicitWidth + 2 * Theme.surfacePadding
+        implicitHeight: column.implicitHeight + 2 * Theme.surfacePadding
         color: Theme.surface
         border.color: Theme.surfaceBorder
-        border.width: 1
+        border.width: Theme.surfaceBorderWidth
         radius: Theme.surfaceRadius
 
         HoverHandler {
@@ -92,7 +92,7 @@ PopupWindow {
         Column {
             id: column
             anchors.centerIn: parent
-            spacing: 12
+            spacing: Theme.sectionSpacing
 
             // Menu Title Header
             Item {
@@ -111,7 +111,7 @@ PopupWindow {
                     }
                     Text {
                         text: "Warm Light"
-                        font.family: Theme.fontFamily
+                        font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize
                         font.bold: true
                         color: Theme.text
@@ -136,21 +136,23 @@ PopupWindow {
                         required property var modelData
                         readonly property bool active: popup.active === modelData.on
                         width: 107
-                        height: 26
+                        height: Theme.controlHeight
                         radius: Theme.controlRadius
-                        color: modeButton.active ? Theme.selectedFill : Theme.controlFill
+                        color: modeButton.active ? Theme.selectedFill : modeArea.containsMouse ? Theme.hoverFill : Theme.controlFill
                         border.color: modeButton.active ? Theme.accent : Theme.surfaceBorder
                         border.width: 1
 
                         Text {
                             anchors.centerIn: parent
                             text: modeButton.modelData.label
-                            font.family: Theme.fontFamily
+                            font.family: Theme.uiFontFamily
                             font.pixelSize: Theme.fontSize - 1
                             color: modeButton.active ? Theme.text : Theme.textMuted
                         }
 
                         MouseArea {
+                            id: modeArea
+                            hoverEnabled: true
                             anchors.fill: parent
                             onClicked: popup.setWarm(modeButton.modelData.on)
                         }
@@ -171,8 +173,8 @@ PopupWindow {
 
                 Text {
                     id: scheduleText
-                    text: (popup.scheduleFollow ? "[x] " : "[ ] ") + "Follow schedule"
-                    font.family: Theme.fontFamily
+                    text: (popup.scheduleFollow ? "󰄲  " : "󰄱  ") + "Follow schedule"
+                    font.family: Theme.uiFontFamily
                     font.pixelSize: Theme.fontSize - 1
                     color: scheduleArea.containsMouse ? Theme.text : Theme.textMuted
                 }
@@ -196,22 +198,22 @@ PopupWindow {
                         anchors.left: parent.left
                         text: "Warmth"
                         color: Theme.textMuted
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize - 2
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 1
                     }
                     Text {
                         anchors.right: parent.right
                         text: popup.kelvin + "K"
                         color: popup.active && !popup.scheduleFollow ? Theme.accent : Theme.textDim
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize - 2
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 1
                     }
                 }
 
                 Rectangle {
                     id: track
                     width: parent.width
-                    height: 8
+                    height: Theme.trackHeight
                     radius: Theme.trackRadius
                     color: Theme.track
                     opacity: popup.active && !popup.scheduleFollow ? 1 : 0.5
@@ -249,7 +251,7 @@ PopupWindow {
             Text {
                 text: "Schedule times"
                 color: Theme.textMuted
-                font.family: Theme.fontFamily
+                font.family: Theme.uiFontFamily
                 font.pixelSize: Theme.fontSize - 2
             }
 
@@ -263,7 +265,7 @@ PopupWindow {
                     height: parent.height
                     verticalAlignment: Text.AlignVCenter
                     text: "Day"
-                    font.family: Theme.fontFamily
+                    font.family: Theme.uiFontFamily
                     font.pixelSize: Theme.fontSize - 1
                     color: Theme.textMuted
                 }
@@ -297,7 +299,7 @@ PopupWindow {
                     height: parent.height
                     verticalAlignment: Text.AlignVCenter
                     text: "Night"
-                    font.family: Theme.fontFamily
+                    font.family: Theme.uiFontFamily
                     font.pixelSize: Theme.fontSize - 1
                     color: Theme.textMuted
                 }
@@ -324,18 +326,18 @@ PopupWindow {
             Item {
                 id: saveEntry
                 width: 220
-                height: saveLabel.implicitHeight + 6
+                height: Theme.controlHeight
 
                 Rectangle {
                     anchors.fill: parent
                     radius: Theme.controlRadius
-                    color: saveArea.containsMouse ? Theme.hoverFill : "transparent"
+                    color: saveArea.containsMouse ? Theme.hoverFill : Theme.controlFill
                 }
                 Text {
                     id: saveLabel
                     anchors.centerIn: parent
                     text: "Save schedule"
-                    font.family: Theme.fontFamily
+                    font.family: Theme.uiFontFamily
                     font.pixelSize: Theme.fontSize - 1
                     color: Theme.accent
                 }

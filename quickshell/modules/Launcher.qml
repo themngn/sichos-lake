@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Io
 import Quickshell.Networking
@@ -994,6 +995,15 @@ PanelWindow {
         onClicked: launcher.close()
     }
 
+    // Soft macOS-style drop shadow under the card (drawn first, so beneath it).
+    RectangularShadow {
+        anchors.fill: box
+        radius: box.radius
+        offset.y: Theme.surfaceShadowOffset
+        blur: Theme.surfaceShadowBlur
+        color: Theme.surfaceShadow
+    }
+
     Rectangle {
         id: box
         width: 600
@@ -1010,8 +1020,8 @@ PanelWindow {
 
         Column {
             anchors.fill: parent
-            anchors.margins: 15
-            spacing: 10
+            anchors.margins: Theme.surfacePadding
+            spacing: Theme.sectionSpacing
 
             Row {
                 width: parent.width
@@ -1026,10 +1036,11 @@ PanelWindow {
                     // at) stays visible instead of the "Apps > " prefix.
                     width: 550
                     elide: Text.ElideLeft
-                    text: "[ " + launcher.title + " ]"
-                    color: Theme.textMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize + 2
+                    text: launcher.title
+                    color: Theme.text
+                    font.family: Theme.uiFontFamily
+                    font.pixelSize: Theme.fontSize
+                    font.bold: true
                 }
             }
 
@@ -1219,14 +1230,14 @@ PanelWindow {
                             Text {
                                 text: row.modelData.name
                                 color: (row.modelData.type === "power" || row.modelData.type === "action") && row.modelData.danger ? Theme.critical : Theme.text
-                                font.family: Theme.fontFamily
+                                font.family: Theme.uiFontFamily
                                 font.pixelSize: Theme.fontSize + 3
                             }
                             Text {
                                 visible: row.showPath
                                 text: row.showPath ? launcher.pathFor(row.modelData) : ""
                                 color: Theme.textDim
-                                font.family: Theme.fontFamily
+                                font.family: Theme.uiFontFamily
                                 font.pixelSize: Theme.fontSize - 2
                             }
                         }
@@ -1271,7 +1282,7 @@ PanelWindow {
                             anchors.centerIn: parent
                             text: row.isToggleLike && row.modelData.active ? "On" : "Off"
                             color: row.isToggleLike && row.modelData.active ? Theme.text : Theme.textMuted
-                            font.family: Theme.fontFamily
+                            font.family: Theme.uiFontFamily
                             font.pixelSize: Theme.fontSize - 1
                         }
                     }
@@ -1306,7 +1317,7 @@ PanelWindow {
                             verticalCenter: parent.verticalCenter
                         }
                         text: "⠿"
-                        font.pixelSize: 16
+                        font.pixelSize: Theme.fontSize + 3
                         color: dragArea.pressed ? Theme.accent : Theme.textMuted
 
                         MouseArea {
@@ -1342,7 +1353,7 @@ PanelWindow {
                 height: 20
                 text: "↑↓ move  ❯ select  esc back"
                 color: Theme.textDim
-                font.family: Theme.fontFamily
+                font.family: Theme.uiFontFamily
                 font.pixelSize: Theme.fontSize - 2
             }
         }
