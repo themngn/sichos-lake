@@ -76,14 +76,13 @@ QtObject {
         function undim() { root.idleDimActive = false }
     }
 
-    // Screen (Quickshell ScreenInfo.name) where the notification center
-    // panel is currently open, or "" if closed. Bar.qml instantiates one
-    // NotificationCenter (and its own PanelWindow) per screen, same as
-    // every other right-side widget -- this makes sure only one of those
-    // panels is ever visible at a time, on whichever screen's bell icon
-    // was actually clicked, instead of each one just always rendering on
-    // Quickshell.screens[0] regardless of which bar it belongs to.
-    property string notificationCenterScreen: ""
+    // Whether the notification center drawer is open. One flag for every
+    // screen: Bar.qml instantiates a NotificationCenter (and its own
+    // PanelWindow) per screen, and they all open and close together --
+    // clicking the bell, the backdrop or an entry on any display opens or
+    // closes the drawer on all of them, so it's never left open on a screen
+    // you aren't looking at.
+    property bool notificationCenterOpen: false
 
     // Screen (Quickshell ScreenInfo.name) the bar is pinned to, or "" to
     // show it on every screen. Set from the launcher's Toggles folder or
