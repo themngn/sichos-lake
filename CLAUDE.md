@@ -60,8 +60,17 @@ places — the repo file (what `install.sh` ships to every future machine) and t
   the upstream weston kiosk default which had no cursor rendering). `kernel-install.d/*.install` →
   `/etc/kernel/install.d/` (GRUB boot-menu branding — see its own header comment for why this
   retitles existing BLS entries in `/boot/loader/entries` instead of renaming `/etc/os-release`).
+  `firewalld/localsend.xml` → `/etc/firewalld/services/localsend.xml` (only if firewalld is active).
+
+`TODO.md` tracks known workarounds that aren't real fixes (e.g. the bar going opaque under HDR) — check
+it before "fixing" something that looks odd but is deliberately worked around.
 
 ## Deploying / testing changes
+
+- When hand-deploying several quickshell files at once, its hot-reload can fire mid-copy and fail on a
+  half-copied tree (e.g. `X is not a type` for a file that hasn't landed yet). Check the log
+  (`quickshell log "$(ls -t /run/user/$(id -u)/quickshell/by-id/*/log.qslog | head -1)"`) for
+  "Configuration Loaded", and `touch ~/.config/quickshell/shell.qml` to reload again if it failed.
 
 - `./install.sh` — copies every config in this repo to its target under `$HOME` (idempotent,
   backs up any differing existing file as `<name>.bak`). System-level steps (packages,
@@ -126,26 +135,32 @@ own files.
 
 ### quickshell (`quickshell/`)
 
-`shell.qml` is the entry point (`ShellRoot`), instantiating one `Bar {}` per screen plus singleton
-top-level windows (`Launcher`, `VolumeOSD`, `Notifications`, `NowPlaying`). Everything else lives in
-`quickshell/modules/`:
+`shell.qml` is the entry point (`ShellRoot`). It uses `Variants` to create one `Bar`, `NowPlaying` and
+`IdleDimOverlay` per screen, plus single top-level windows (`Launcher`, the `*OSD`s, `Notifications`).
+Everything else lives in `quickshell/modules/`:
 
 - **Singletons** (`pragma Singleton`): `Theme.qml` (colors/fonts, mirrors the old waybar palette),
-  `ShellState.qml` (cross-window state — sunset mode/warmth, idle-inhibit — that both the per-screen
-  `Bar` and the single `Launcher` need to see), `BarSettings.qml` (which right-side widgets are enabled
+  `ShellState.qml` (cross-window state that both the per-screen `Bar` and the single `Launcher` need to
+  see — sunset, idle-inhibit, bar-solo screen, and `activePopup`/`activePopupScreen`, which allow only one
+  toggle popup open at a time and only on the screen that opened it; also hosts `IpcHandler`s for
+  `quickshell ipc call ...` from keybindings), `BarSettings.qml` (which right-side widgets are enabled
   and in what order, edited from the launcher's Settings > Bar Widgets folder), `AppIndex.qml`.
-- **`Bar.qml`**: left section is workspaces/submap; center is the clock with sunset/idle toggles and
-  weather flanking it; the right section is data-driven — `BarSettings.orderedIds()` picks which widgets
-  render and in what order via a `Loader`/`Component` switch (`componentFor(id)`), so reordering/hiding a
-  widget is a settings change, not a `Bar.qml` edit. Night Light (`SunsetToggle`) and Stay Awake
-  (`IdleToggle`) are a fixed pair outside that system.
-- **`Launcher.qml`** (942 lines, by far the largest file): the SUPER+SHIFT+Q app launcher/menu, including
+- **`Bar.qml`**: left section is workspaces/submap. The center is the clock, which sits at true screen
+  center. To its left is a toggle row (`*Toggle.qml`, all built on `Pill.qml`: Sunset, HDR, Idle,
+  GameFocus, Transparency, BarSolo, MicMute, NotificationMute). The row collapses to zero width and is
+  revealed on hover. A new toggle must be added to `anyToggleHovered`, and to `toggleRowPopupOpen` if it
+  has a popup, or the row will collapse out from under it. The right section is data-driven —
+  `BarSettings.orderedIds()` picks which widgets render and in what order via a `Loader`/`Component`
+  switch (`componentFor(id)`), so reordering/hiding a widget is a settings change, not a `Bar.qml` edit.
+  The toggle row is fixed and outside that system.
+- **`Launcher.qml`** (by far the largest file): the SUPER+SHIFT+Q app launcher/menu, including
   its Settings and Autostart folders.
 - Python helper scripts (`quickshell/scripts/*.py`) are invoked as subprocesses by QML for anything
   better done outside JS — `list-apps.py` (enumerates installed `.desktop` entries as JSON),
   `autostart-launch.py` (launches user-selected autostart apps with each app's real "start minimized"
   CLI flag — see its own header comment for why this repo refuses compositor-side window-hiding hacks),
-  `weather.py`, `claude-usage.py`, `agy-usage.py`.
+  `weather.py`, `claude-usage.py`, `agy-usage.py`, `save-monitor-config.py` (writes the Display
+  widget's changes, including VRR, back into the deployed `~/.config/hypr/monitors.lua`).
 - Config/state written by the launcher (e.g. `~/.config/quickshell/autostart-apps.json`) lives under the
   deployed `~/.config/quickshell` tree, not in this repo.
 
