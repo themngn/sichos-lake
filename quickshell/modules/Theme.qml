@@ -4,8 +4,10 @@ import QtQuick
 QtObject {
     // Theme palette derived from colors.toml (sage/spruce theme)
     readonly property color text: "#f0f9e3"
-    readonly property color textMuted: "#b4bbaa"
-    readonly property color textDim: "#676f71"
+    // Brightened from #b4bbaa / #676f71: on the translucent glass cards
+    // (glassAlpha) the old values washed out over light backgrounds.
+    readonly property color textMuted: "#cbd2c1"
+    readonly property color textDim: "#8f9796"
 
     readonly property color background: "#000000"
     readonly property color cardBackground: "#141c1e"
@@ -42,10 +44,11 @@ QtObject {
     // since translucent surfaces band there (TODO.md, same reason Bar.qml
     // forces itself opaque under HDR). glassAlpha must stay above the
     // layer rules' ignore_alpha, or Hyprland stops blurring behind cards.
-    // 0.72, up from 0.55: over a light page 0.55 let too much through and
-    // dim text washed out (paired with hypr blur brightness 0.45, which
-    // darkens the blurred backdrop itself).
-    readonly property real glassAlpha: 0.72
+    // Legibility over light pages comes from hypr's blur brightness (0.45,
+    // darkens the blurred backdrop) and the brighter textMuted/textDim
+    // above, not from a more opaque card -- 0.72 was tried and lost the
+    // glass look.
+    readonly property real glassAlpha: 0.55
     function glassOn(screen) {
         return !(screen && HdrSettings.active && HdrSettings.isSelected(screen.name))
     }
