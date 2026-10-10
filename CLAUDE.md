@@ -71,6 +71,9 @@ it before "fixing" something that looks odd but is deliberately worked around.
   half-copied tree (e.g. `X is not a type` for a file that hasn't landed yet). Check the log
   (`quickshell log "$(ls -t /run/user/$(id -u)/quickshell/by-id/*/log.qslog | head -1)"`) for
   "Configuration Loaded", and `touch ~/.config/quickshell/shell.qml` to reload again if it failed.
+  When a change adds new `Theme.qml` tokens, copy `Theme.qml` *first*: a reload that picks up the
+  modules before the new Theme floods the log with `Unable to assign [undefined]` warnings. Only the
+  output after the last "Reloading configuration..." line reflects the current files.
 
 - `./install.sh` — copies every config in this repo to its target under `$HOME` (idempotent,
   backs up any differing existing file as `<name>.bak`). System-level steps (packages,
@@ -87,7 +90,9 @@ it before "fixing" something that looks odd but is deliberately worked around.
   on save — no restart needed for most changes. Uses the Lua-config build of Hyprland from the
   `lionheartp/Hyprland` COPR (not the standard `hyprland.conf` format), split into per-concern files
   required from `hyprland.lua` (`monitors`, `autostart`, `env`, `permissions`, `look_and_feel`, `layouts`,
-  `misc`, `input`, `keybindings`, `window_rules`).
+  `misc`, `input`, `keybindings`, `workspaces`, `window_rules`). `workspaces.lua` implements a dynamic
+  workspace pool (SUPER+N binds, monitor hotplug, persisted state under `~/.local/state/sichos/`) —
+  read its header comment before touching workspace behavior.
 - **quickshell config** (`quickshell/`): once deployed to `~/.config/quickshell`, hot-reloads
   automatically on save.
 - To manually verify a deployed change without a full reboot: `hyprctl reload` (Hyprland), or just save
@@ -97,6 +102,12 @@ it before "fixing" something that looks odd but is deliberately worked around.
 - `hyprctl eval 'hl.<call>(...)'` is how one-off Lua calls get injected into the running Hyprland
   instance from a script (see `quickshell/scripts/autostart-launch.py`) — `hyprctl dispatch exec` does
   **not** work on this Lua-config build (no bare global `exec`); only `hl.exec_cmd`/`hl.dsp.exec_cmd` do.
+  `eval` runs in the same Lua VM as the config, so globals a config file defines are callable from it —
+  that's how quickshell reaches logic that must stay in Lua (e.g. `SichosWorkspaces.moveToMonitor(id,
+  "DP-1")` in `workspaces.lua`, used by the bar's workspace right-click menu). Dispatcher argument
+  tables are undocumented in `/usr/share/hypr/stubs/hl.meta.lua`; constructing one with bad args
+  (`hyprctl eval 'hl.dsp.workspace.move({})'`) returns an error naming the required fields, without
+  dispatching anything.
 
 ## Architecture
 
@@ -139,7 +150,8 @@ own files.
 `IdleDimOverlay` per screen, plus single top-level windows (`Launcher`, the `*OSD`s, `Notifications`).
 Everything else lives in `quickshell/modules/`:
 
-- **Singletons** (`pragma Singleton`): `Theme.qml` (colors/fonts, mirrors the old waybar palette),
+- **Singletons** (`pragma Singleton`): `Theme.qml` (palette plus the shared surface/type tokens — see
+  "UI style" below),
   `ShellState.qml` (cross-window state that both the per-screen `Bar` and the single `Launcher` need to
   see — sunset, idle-inhibit, bar-solo screen, and `activePopup`/`activePopupScreen`, which allow only one
   toggle popup open at a time and only on the screen that opened it; also hosts `IpcHandler`s for
@@ -163,6 +175,29 @@ Everything else lives in `quickshell/modules/`:
   widget's changes, including VRR, back into the deployed `~/.config/hypr/monitors.lua`).
 - Config/state written by the launcher (e.g. `~/.config/quickshell/autostart-apps.json`) lives under the
   deployed `~/.config/quickshell` tree, not in this repo.
+- **Notifications** are split three ways: `Notifications.qml` is the `NotificationServer` and the live
+  toasts (including grouping consecutive same-app+summary notifications into one toast while it's on
+  screen); `NotificationHistory.qml` (singleton) is the persisted history in
+  `~/.config/quickshell/notification-history.json`, with its own folding of consecutive repeats, plus
+  a non-persisted registry of live `Notification` objects so a history entry can still invoke its
+  sender's actions; `NotificationCenter.qml` is the bar bell + drawer. Clicking a toast or center entry
+  runs the notification's `default` action, else `NotificationHistory.focusOrLaunchApp()`.
+
+#### UI style
+
+Every popup, OSD, the launcher and notifications share one card style driven entirely by `Theme.qml`
+tokens (`surface*`, `control*`, `hoverFill`/`selectedFill`, `track*`, `card*`, `surfacePadding`,
+`sectionSpacing`, `open*`) — new UI should use those tokens, not color/radius/size literals. Conventions
+the existing popups follow: header = accent Nerd Font icon at `fontSize + 1` + bold title at `fontSize`;
+body text, buttons and checkboxes at `fontSize - 1`; section headings `fontSize - 2` in `textMuted`;
+captions `fontSize - 3`. Text uses `Theme.uiFontFamily` (Inter); anything that renders Nerd Font glyphs
+must keep `Theme.fontFamily` (Inter has none of them). The bar itself stays on the Nerd Font.
+
+Bar popups are hover-driven (`ShellState.activePopup`, one open at a time). A click-driven one (e.g.
+`WorkspaceMenu.qml`) uses `HyprlandFocusGrab`, activated a tick *after* the window shows — bound
+straight to `visible`, the grab can silently fail to take and the menu never closes — plus a
+hover-leave close as a fallback. Open animation is `SurfaceAppear { target: <card>; shown:
+<window>.visible }` inside the card; closing is deliberately instant.
 
 ### Gamepad Overlay Daemon (`sichos-gamepad`)
 
