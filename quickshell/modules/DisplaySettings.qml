@@ -15,21 +15,18 @@ import Quickshell.Io
 // live hardware state, re-read fresh each time the popup opens rather than
 // owned by this config.
 //
-// VRR only has a fire-and-forget write path, unlike brightness: the same
-// hl.monitor() mechanism HdrSettings.qml uses for cm/bitdepth
-// (hl.monitor({output=name, vrr=N}) via `hyprctl eval`) is the correct call
-// per Hyprland's own Lua stub (/usr/share/hypr/stubs/hl.meta.lua lists
-// `vrr? integer|boolean` on the monitor spec), but there's no reliable way
-// to read the *configured* value back to confirm or initialize a checkbox
-// from it -- confirmed live that `hyprctl monitors -j`'s "vrr" field
-// actually reports whether VRR is *currently engaged* (gated on a
-// fullscreen surface demanding it, per that same monitor's own
-// solitaryBlockedBy/tearingBlockedBy fields), not the configured mode, so
-// it stayed false in testing regardless of what was requested. `misc:vrr`
-// (the global mode) IS readable via `hyprctl getoption`, but there's no
-// per-monitor equivalent. So, same as HdrSettings.active, each checkbox
-// here reflects only its own last-issued request (session-only, resets on
-// every quickshell restart) rather than confirmed hardware state.
+// VRR is applied live with the same hl.monitor() mechanism HdrSettings.qml
+// uses for cm/bitdepth (hl.monitor({output=name, vrr=N}) via `hyprctl
+// eval`; /usr/share/hypr/stubs/hl.meta.lua lists `vrr? integer|boolean` on
+// the monitor spec), and -- like mode/scale -- also written into the
+// deployed monitors.lua via save-monitor-config.py so it survives a
+// Hyprland restart. The live state can't be read back: `hyprctl monitors
+// -j`'s "vrr" field reports whether VRR is *currently engaged* (gated on a
+// fullscreen surface demanding it when vrr=2), not the configured mode, and
+// there's no per-monitor getoption. So the checkbox initializes from
+// monitors.lua itself (`save-monitor-config.py --list-vrr`) on every open --
+// that file is what the next Hyprland start will apply, and every toggle
+// here keeps it in step with what was just applied live.
 //
 // "Use this display for HDR" is a thin wrapper around
 // HdrSettings.toggleMonitor -- it only edits which monitors HDR would apply
@@ -136,7 +133,7 @@ Pill {
         readonly property real contentWidth: 300
 
         property var ddcMonitors: []
-        property var vrrEnabled: ({}) // monitor name -> bool, see file header
+        property var vrrEnabled: ({}) // monitor name -> bool, from monitors.lua (see file header)
 
         // Ground truth for every monitor field this popup reads (layout
         // diagram, brand/model, resolution list, refresh rate) -- queried
@@ -272,6 +269,7 @@ Pill {
         }
 
         onVisibleChanged: if (visible) {
+            vrrListProc.running = true
             ddcListProc.running = true
             hdrCapableProc.running = true
             monitorsProc.running = true
@@ -330,6 +328,24 @@ Pill {
             Quickshell.execDetached(args)
         }
 
+        // Any non-zero vrr counts as on (1 = always, 2 = fullscreen-only,
+        // 3 = fullscreen games/video) -- a hand-edited monitors.lua may use
+        // any of them, and the checkbox only distinguishes on/off.
+        Process {
+            id: vrrListProc
+            command: ["python3", Quickshell.env("HOME") + "/.config/quickshell/scripts/save-monitor-config.py", "--list-vrr"]
+            stdout: StdioCollector {
+                onStreamFinished: {
+                    try {
+                        const configured = JSON.parse(text)
+                        const next = {}
+                        for (const name in configured) next[name] = configured[name] > 0
+                        popup.vrrEnabled = next
+                    } catch (e) { /* leave the previous (or empty) map in place */ }
+                }
+            }
+        }
+
         function isVrrEnabled(name) {
             return !!popup.vrrEnabled[name]
         }
@@ -338,8 +354,13 @@ Pill {
             const next = Object.assign({}, popup.vrrEnabled)
             next[name] = !next[name]
             popup.vrrEnabled = next
+            // vrr=2 (fullscreen-only), not 1 (always): with always-on VRR an
+            // idle desktop only redraws on damage, so the iiyama GB2770QSU
+            // (DP-3) sat at its 40Hz FreeSync floor and visibly flickered.
             Quickshell.execDetached(["hyprctl", "eval",
-                'hl.monitor({output="' + name + '",vrr=' + (next[name] ? 1 : 0) + '})'])
+                'hl.monitor({output="' + name + '",vrr=' + (next[name] ? 2 : 0) + '})'])
+            Quickshell.execDetached(["python3", Quickshell.env("HOME") + "/.config/quickshell/scripts/save-monitor-config.py",
+                name, "--vrr", next[name] ? "2" : "0"])
         }
 
         Rectangle {
