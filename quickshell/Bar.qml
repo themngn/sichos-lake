@@ -181,17 +181,16 @@ PanelWindow {
         .includes(ShellState.activePopup)
         && ShellState.activePopupScreen === bar.screen.name
 
-    // Fixed invisible hover target used only to bootstrap the very first
-    // reveal from a fully-collapsed row (width 0 everywhere has no area to
-    // hover into otherwise). Its exact size doesn't need to precisely match
-    // the pills' real footprint -- once growth has begun, `anyToggleHovered`
-    // below (each pill's own real, geometry-accurate MouseArea) takes over
-    // and keeps the row open, which is what actually matters: a fixed zone
-    // sized to the pills' *collapsed* state will always undershoot their
-    // *expanded* one, so hovering squarely on a fully-grown icon (outside
-    // this zone) used to read as "not hovered" and collapse the row out
-    // from under the pointer -- which re-entered the zone and grew again,
-    // producing a rapid open/close flicker. Renders nothing.
+    // Invisible hover target that bootstraps the reveal from a collapsed
+    // row (width 0 everywhere has no area to hover into otherwise). Sized to
+    // the row's fully *expanded* footprint -- every pill's implicitWidth
+    // (unaffected by its collapse animation) plus the Row's spacing -- so the
+    // whole area the row will occupy opens it, not just a strip next to the
+    // clock. `anyToggleHovered` below still keeps it open from each pill's
+    // own MouseArea. (A zone that undershot the expanded row used to make
+    // hovering a fully-grown icon outside it collapse the row and re-grow
+    // it -- a rapid open/close flicker; matching the expanded size avoids
+    // that too.) Renders nothing.
     Item {
         id: toggleHoverZone
         anchors {
@@ -199,7 +198,12 @@ PanelWindow {
             rightMargin: 4
             verticalCenter: parent.verticalCenter
         }
-        width: 180
+        width: {
+            const pills = toggleRow.children
+            let w = 0
+            for (let i = 0; i < pills.length; i++) w += pills[i].implicitWidth
+            return w + toggleRow.spacing * Math.max(0, pills.length - 1)
+        }
         height: Theme.barHeight
 
         HoverHandler { id: toggleRowHover }
