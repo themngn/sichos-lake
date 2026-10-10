@@ -1002,10 +1002,16 @@ PanelWindow {
         offset.y: Theme.surfaceShadowOffset
         blur: Theme.surfaceShadowBlur
         color: Theme.surfaceShadow
+        // Follows the card's open animation (SurfaceAppear) instead of
+        // sitting at full strength under a card that's still fading in.
+        opacity: box.opacity
+        scale: box.scale
+        transformOrigin: box.transformOrigin
     }
 
     Rectangle {
         id: box
+        SurfaceAppear { target: box; shown: launcher.visible; origin: Item.Center }
         width: 600
         height: 788 // 1.5x the original 525
         anchors.centerIn: parent

@@ -140,6 +140,7 @@ Pill {
 
         Rectangle {
             id: bg
+            SurfaceAppear { target: bg; shown: panel.visible }
             implicitWidth: 280
             implicitHeight: content.implicitHeight + 2 * Theme.surfacePadding
             color: Theme.surface

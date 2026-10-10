@@ -84,10 +84,16 @@ Pill {
             offset.y: Theme.surfaceShadowOffset
             blur: Theme.surfaceShadowBlur
             color: Theme.surfaceShadow
+            // Follows the card's open animation (SurfaceAppear) instead of
+            // sitting at full strength under a card that's still fading in.
+            opacity: box.opacity
+            scale: box.scale
+            transformOrigin: box.transformOrigin
         }
 
         Rectangle {
             id: box
+            SurfaceAppear { target: box; shown: panel.visible; origin: Item.Right }
             width: 380
             anchors {
                 top: parent.top

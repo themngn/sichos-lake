@@ -66,6 +66,9 @@ QtObject {
     // here means "fully rounded pill ends" at any bar thickness.
     readonly property int trackRadius: 100
     readonly property int trackHeight: 8
+    // Open animation for popups/menus (SurfaceAppear.qml): fade + scale-up.
+    readonly property int openDuration: 160
+    readonly property real openScaleFrom: 0.94
     // Dims the desktop behind fullscreen overlays (launcher, notification center).
     readonly property color backdrop: Qt.rgba(0, 0, 0, 0.35)
     // Dark text drawn on a light fill (e.g. the calendar's "today" dot).

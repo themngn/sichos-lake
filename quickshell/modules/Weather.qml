@@ -187,6 +187,7 @@ Pill {
 
         Rectangle {
             id: bg
+            SurfaceAppear { target: bg; shown: popup.visible }
             width: 340
             implicitWidth: 340
             implicitHeight: content.implicitHeight + 2 * Theme.surfacePadding

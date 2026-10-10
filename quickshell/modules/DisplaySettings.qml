@@ -365,6 +365,7 @@ Pill {
 
         Rectangle {
             id: bg
+            SurfaceAppear { target: bg; shown: popup.visible }
             implicitWidth: column.implicitWidth + 2 * Theme.surfacePadding
             implicitHeight: column.implicitHeight + 2 * Theme.surfacePadding
             color: Theme.surface
@@ -1321,6 +1322,7 @@ Pill {
             // text floating in space.
             Rectangle {
                 id: listBg
+                SurfaceAppear { target: listBg; shown: listPopup.visible }
                 implicitWidth: picker.boxWidth
                 implicitHeight: optionsColumn.implicitHeight + 4
                 radius: Theme.controlRadius

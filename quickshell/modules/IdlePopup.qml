@@ -105,6 +105,7 @@ PopupWindow {
 
     Rectangle {
         id: bg
+        SurfaceAppear { target: bg; shown: popup.visible }
         implicitWidth: column.implicitWidth + 2 * Theme.surfacePadding
         implicitHeight: column.implicitHeight + 2 * Theme.surfacePadding
         color: Theme.surface
