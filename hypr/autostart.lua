@@ -133,4 +133,8 @@ hl.on("hyprland.start", function ()
   -- Clipboard history listener for SUPER+SHIFT+V (keybindings.lua). Plain
   -- background process, matching sichos-gamepad above, not a systemd unit.
   hl.exec_cmd("wl-paste --watch cliphist store &")
+  -- USB drive automount + mount/unmount notifications (packages.txt). gvfs
+  -- alone only mounts when something asks it to (i.e. with Nautilus open);
+  -- --no-tray pinned explicitly: the notifications are the whole UI.
+  hl.exec_cmd("udiskie --automount --notify --no-tray &")
 end)

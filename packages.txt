@@ -92,7 +92,9 @@ mangohud                  # Vulkan/OpenGL FPS/perf overlay — opt in per-game t
                           # (MANGOHUD=1 %command%, or Lutris's own MangoHud toggle)
 cliphist                  # clipboard history, SUPER+SHIFT+V in keybindings.lua — listener started
                           # in autostart.lua (wl-paste --watch cliphist store)
-fuzzel                    # dmenu-style picker — only used as cliphist's SUPER+SHIFT+V menu for now
+fuzzel                    # dmenu-style picker — cliphist's SUPER+SHIFT+V menu and the emoji picker
+unicode-emoji             # emoji-test.txt, the emoji list hypr/emoji-picker.sh (SUPER+PERIOD) reads
+wtype                     # lets the emoji picker type its pick into the focused window, not just copy it
 btop                      # resource monitor, SUPER+B opens it in a floating kitty (window_rules.lua)
 gvfs-smb                  # SMB backend for Nautilus's "Connect to Server" — without it that dialog
                           # silently fails on any smb:// address
@@ -109,6 +111,15 @@ file-roller               # GNOME Archive Manager — GUI for browsing/creating 
                           # .zip/.tar/etc. by double-click does)
 ffmpegthumbnailer         # video thumbnails in Nautilus (GNOME's thumbnail factory picks this up
                           # automatically via its .thumbnailer spec, no config needed)
+udiskie                   # automounts USB drives and notifies even with Nautilus closed (gvfs only
+                          # mounts on demand from inside Nautilus) — started in autostart.lua
+xdg-user-dirs             # creates ~/Documents, ~/Downloads, etc. — run once by install.sh (its own
+                          # XDG autostart entry only fires once graphical-session.target is active)
+
+## Basic apps
+loupe                     # image viewer — default for image/* (install.sh's "==> Default apps")
+gnome-text-editor         # GUI text editor — default for text/plain
+gnome-calculator          # calculator
 
 ## Optional / not needed
 # firefox — installed conditionally via install.sh's "==> Firefox" section

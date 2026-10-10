@@ -6,7 +6,10 @@
 #     (Element/Vesktop, if selected, also get an org.freedesktop.secrets
 #     flatpak override and a desktop-entry override — see hypr/autostart.lua
 #     for why: without them these Electron apps' safeStorage can't reach a
-#     keyring backend and show a blocking dialog on every launch)
+#     keyring backend and show a blocking dialog on every launch), plus the
+#     adw-gtk3-dark Flatpak theme so sandboxed GTK3 apps match the host
+#   - default apps for images (Loupe) and text (Text Editor), and the
+#     standard ~/Documents, ~/Downloads, ... dirs (xdg-user-dirs-update)
 #   - the JetBrainsMono Nerd Font (not packaged by Fedora; fetched from
 #     upstream nerd-fonts releases)
 #   - the Microsoft core fonts (Arial, Times New Roman, Verdana, ...) into
@@ -360,6 +363,19 @@ else
         echo "    added flathub remote"
     fi
 
+    # Sandboxed GTK3 apps can't see the host's /usr/share/themes, so the
+    # gtk-theme autostart.lua sets (adw-gtk3-dark) silently falls back to
+    # light Adwaita inside them unless the same theme is installed as a
+    # Flatpak extension -- which they then pick up by that name on their own.
+    # libadwaita/GTK4 apps don't need this (they follow color-scheme via the
+    # Settings portal).
+    if flatpak info org.gtk.Gtk3theme.adw-gtk3-dark >/dev/null 2>&1; then
+        echo "    adw-gtk3-dark Flatpak theme already installed"
+    else
+        echo "    installing adw-gtk3-dark Flatpak theme"
+        flatpak install -y --noninteractive flathub org.gtk.Gtk3theme.adw-gtk3-dark
+    fi
+
     for app in ${FLATHUB_APPS:-}; do
         if flatpak info "$app" >/dev/null 2>&1; then
             echo "    $app already installed"
@@ -539,6 +555,31 @@ if [ "${#BASE_PKGS[@]}" -gt 0 ]; then
 else
     echo "    nothing to install"
 fi
+
+echo "==> Default apps (images, text) + user dirs"
+
+# Set explicitly rather than left to whichever installed app's .desktop
+# happens to claim the MIME type first -- confirmed live: with no default
+# set, image/png resolved to com.google.Chrome.desktop. Loupe's own
+# MimeType= list is read at install time instead of copied here, so formats
+# it gains later are picked up on the next run. text/plain is enough for the
+# editor: shared-mime-info makes most text formats (.conf, .log, scripts)
+# subclasses of it, and GIO falls back to the parent type's default.
+if [ -f /usr/share/applications/org.gnome.Loupe.desktop ]; then
+    sed -n 's/^MimeType=//p' /usr/share/applications/org.gnome.Loupe.desktop \
+        | tr ';' '\n' | grep . | xargs xdg-mime default org.gnome.Loupe.desktop
+    echo "    images -> Loupe"
+fi
+if [ -f /usr/share/applications/org.gnome.TextEditor.desktop ]; then
+    xdg-mime default org.gnome.TextEditor.desktop text/plain
+    echo "    text -> Text Editor"
+fi
+# xdg-user-dirs' own /etc/xdg/autostart entry only runs once
+# graphical-session.target is active (see CLAUDE.md), and install.sh is often
+# run from a bare TTY before any graphical login -- so run it directly.
+# Idempotent: it never renames or moves existing dirs.
+xdg-user-dirs-update
+echo "    ~/Documents, ~/Downloads, etc. in place"
 
 echo "==> Multimedia codecs (RPM Fusion freeworld)"
 

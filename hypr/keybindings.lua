@@ -360,6 +360,7 @@ hl.bind(mainMod .. " + C", hl.dsp.exec_cmd("hyprpicker -a")) -- color picker, au
 hl.bind(mainMod .. " + B", hl.dsp.exec_cmd("kitty --class btop -e btop")) -- resource monitor, floated/centered by window_rules.lua
 hl.bind(mainMod .. " + SHIFT + B", hl.dsp.exec_cmd("quickshell ipc call bar toggleSolo")) -- show the bar only on the focused monitor / back to all (see ShellState.barSoloScreen)
 hl.bind(mainMod .. " + SHIFT + V", hl.dsp.exec_cmd("cliphist list | fuzzel --dmenu | cliphist decode | wl-copy")) -- clipboard history picker
+hl.bind(mainMod .. " + PERIOD", hl.dsp.exec_cmd("$HOME/.config/hypr/emoji-picker.sh")) -- emoji picker (types + copies the pick), same key as Windows
 
 -- Screenshots (HyprQuickFrame: https://github.com/Ronin-CK/HyprQuickFrame)
 -- -p (explicit path), not -c (named config): our own quickshell config
