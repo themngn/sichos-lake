@@ -14,7 +14,8 @@
 #   - HyprQuickFrame (github.com/Ronin-CK/HyprQuickFrame), a quickshell-based
 #     screenshot overlay, cloned to ~/.config/quickshell/HyprQuickFrame and
 #     bound to Print/SHIFT+Print/CTRL+Print in keybindings.lua, plus satty
-#     (mineiro/satty COPR) for its "Edit" annotation action
+#     (mineiro/satty COPR) for its "Edit" annotation action — best-effort,
+#     SKIP_SATTY=1 skips it; a failed install only warns
 #   - sichos-gamepad (mdukhota/test1 COPR), native controller overlay daemon
 #   - the kitty config (~/.config/kitty)
 #   - qt6ct with a dark color scheme, so Qt6 apps (Telegram) pick up dark
@@ -895,11 +896,20 @@ echo "    theme installed to ~/.config/hyprquickframe (animations disabled)"
 echo "==> satty (HyprQuickFrame's annotationTool)"
 
 # Not in Fedora or RPM Fusion; not available at all until this COPR is enabled.
-if ! rpm -q satty >/dev/null 2>&1; then
-    sudo dnf copr enable -y mineiro/satty
-    sudo dnf install -y satty
-else
+# Non-fatal (and skippable via SKIP_SATTY=1): it's only HyprQuickFrame's
+# optional "Edit" action, and the COPR lags new Fedora releases — on a fresh
+# F45 install it had no build yet and the conflict aborted the whole script.
+# A failed attempt disables the COPR again so its dead repo can't break the
+# dnf calls in later steps.
+if [ "${SKIP_SATTY:-0}" = "1" ]; then
+    echo "    skipped (SKIP_SATTY=1)"
+elif rpm -q satty >/dev/null 2>&1; then
     echo "    already installed"
+elif sudo dnf copr enable -y mineiro/satty && sudo dnf install -y satty; then
+    echo "    installed"
+else
+    sudo dnf copr disable -y mineiro/satty >/dev/null 2>&1 || true
+    echo "    WARNING: satty unavailable for Fedora $(rpm -E %fedora) — skipped (screenshot Edit action won't work)"
 fi
 
 echo "==> kitty config"
