@@ -63,7 +63,8 @@ PanelWindow {
     readonly property var toggleItems: {
         const items = [
             { type: "toggle", id: "idle", name: "Stay Awake", active: ShellState.idleActive, aliases: ["caffeine", "idle inhibit", "keep awake"] },
-            { type: "toggle", id: "wifi", name: "Wi-Fi", active: Networking.wifiEnabled, aliases: ["wifi", "wireless"] }
+            { type: "toggle", id: "wifi", name: "Wi-Fi", active: Networking.wifiEnabled, aliases: ["wifi", "wireless"] },
+            { type: "toggle", id: "barsolo", name: "Bar on This Screen Only", active: launcher.screen && ShellState.barSoloScreen === launcher.screen.name, aliases: ["hide bar", "single bar", "bar solo"] }
         ]
         if (Bluetooth.defaultAdapter)
             items.push({ type: "toggle", id: "bluetooth", name: "Bluetooth", active: Bluetooth.defaultAdapter.enabled, aliases: ["bt"] })
@@ -772,6 +773,7 @@ PanelWindow {
             if (item.id === "idle") ShellState.idleActive = !ShellState.idleActive
             else if (item.id === "wifi") Networking.wifiEnabled = !Networking.wifiEnabled
             else if (item.id === "bluetooth") Bluetooth.defaultAdapter.enabled = !Bluetooth.defaultAdapter.enabled
+            else if (item.id === "barsolo") ShellState.toggleBarSolo(launcher.screen.name)
             else if (item.id === "use24hour") TimeRegion.setUse24Hour(!TimeRegion.use24Hour)
             return
         }

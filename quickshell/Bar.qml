@@ -20,6 +20,15 @@ PanelWindow {
     implicitHeight: Theme.barHeight
     exclusiveZone: Theme.barHeight
 
+    // "Bar on this screen only" (ShellState.barSoloScreen). Hiding unmaps
+    // the layer surface, so the exclusive zone goes with it and windows
+    // reclaim the space. Falls back to showing everywhere if the pinned
+    // screen isn't connected anymore -- otherwise unplugging that monitor
+    // would leave no bar at all to toggle it back from.
+    visible: ShellState.barSoloScreen === ""
+        || ShellState.barSoloScreen === bar.screen.name
+        || !Quickshell.screens.some(s => s.name === ShellState.barSoloScreen)
+
     // Transparent over an empty desktop, 80% opaque once this monitor's
     // active workspace actually has a window on it — otherwise the bar
     // reads as "floating over the wallpaper" when there's nothing behind
@@ -197,7 +206,7 @@ PanelWindow {
     // above) keeps the whole row revealed -- see toggleHoverZone's comment.
     readonly property bool anyToggleHovered: sunsetToggle.hovered || hdrToggle.hovered
         || idleToggle.hovered || gameFocusToggle.hovered || transparencyToggle.hovered
-        || micMuteToggle.hovered || notificationMuteToggle.hovered
+        || micMuteToggle.hovered || notificationMuteToggle.hovered || barSoloToggle.hovered
     readonly property bool toggleRowRevealed: toggleRowHover.hovered || bar.toggleRowPopupOpen || bar.anyToggleHovered
 
     Row {
@@ -292,6 +301,13 @@ PanelWindow {
                 Quickshell.execDetached(["python3", Quickshell.env("HOME") + "/.config/quickshell/scripts/toggle-transparency.py",
                     ShellState.transparencyOpaque ? "opaque" : "semi"])
             }
+        }
+        BarSoloToggle {
+            id: barSoloToggle
+            screenName: bar.screen.name
+            revealed: bar.toggleRowRevealed
+            active: ShellState.barSoloScreen === bar.screen.name
+            onToggle: ShellState.toggleBarSolo(bar.screen.name)
         }
         MicMuteToggle {
             id: micMuteToggle

@@ -358,6 +358,7 @@ hl.bind(mainMod .. " + CTRL + SHIFT + R", hl.dsp.exec_cmd("pkill quickshell; qui
 hl.bind("CTRL + " .. mainMod .. " + I", hl.dsp.exec_cmd("hyprctl dispatch idleinhibit toggle")) -- toggle idle inhibitor
 hl.bind(mainMod .. " + C", hl.dsp.exec_cmd("hyprpicker -a")) -- color picker, autocopies hex to clipboard
 hl.bind(mainMod .. " + B", hl.dsp.exec_cmd("kitty --class btop -e btop")) -- resource monitor, floated/centered by window_rules.lua
+hl.bind(mainMod .. " + SHIFT + B", hl.dsp.exec_cmd("quickshell ipc call bar toggleSolo")) -- show the bar only on the focused monitor / back to all (see ShellState.barSoloScreen)
 hl.bind(mainMod .. " + SHIFT + V", hl.dsp.exec_cmd("cliphist list | fuzzel --dmenu | cliphist decode | wl-copy")) -- clipboard history picker
 
 -- Screenshots (HyprQuickFrame: https://github.com/Ronin-CK/HyprQuickFrame)

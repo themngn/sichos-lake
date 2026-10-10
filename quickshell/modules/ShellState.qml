@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Hyprland
 
 // Shared state that needs to be visible from more than one top-level window
 // (the per-screen Bar and the single Launcher instance), so it can't just
@@ -51,6 +52,29 @@ QtObject {
     // was actually clicked, instead of each one just always rendering on
     // Quickshell.screens[0] regardless of which bar it belongs to.
     property string notificationCenterScreen: ""
+
+    // Screen (Quickshell ScreenInfo.name) the bar is pinned to, or "" to
+    // show it on every screen. Set from the launcher's Toggles folder or
+    // `quickshell ipc call bar toggleSolo` (SUPER+SHIFT+B) -- both pin to
+    // whichever monitor the toggle was used on. Doesn't persist across a
+    // quickshell restart, same as idleActive above.
+    property string barSoloScreen: ""
+
+    // Toggling from the pinned screen unpins; toggling from any other
+    // screen moves the pin there instead of just unpinning, since hitting
+    // the key on a bar-less monitor almost certainly means "I want it here".
+    function toggleBarSolo(screenName) {
+        root.barSoloScreen = root.barSoloScreen === screenName ? "" : screenName
+    }
+
+    property IpcHandler _barIpc: IpcHandler {
+        target: "bar"
+        function toggleSolo() {
+            const mon = Hyprland.focusedMonitor
+            if (mon) root.toggleBarSolo(mon.name)
+        }
+        function showAll() { root.barSoloScreen = "" }
+    }
 
     // Whether the bar/terminal transparency toggle is in "opaque" mode.
     // kitty.conf's background_opacity line is the actual source of truth
