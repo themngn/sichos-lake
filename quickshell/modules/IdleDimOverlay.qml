@@ -14,6 +14,14 @@ import Quickshell.Wayland
 // alongside it. All state lives in ShellState.idleDimActive (driven by
 // hypridle.conf's on-timeout/on-resume over `quickshell ipc call idledim
 // dim`/`undim`) so every screen's overlay fades in lockstep.
+//
+// Also renders Gaming Focus (GameFocus.qml): every screen other than the one
+// the focused game is on gets dimmed. Same overlay rather than a second one
+// so the two can't stack into a darker-than-either dim, and for the same
+// reason idle-dim replaced brightnessctl -- DDC/backlight brightness is slow,
+// wears the monitor's EEPROM on every focus flip, and simply doesn't exist
+// on some outputs. The game's own screen never gets this surface mapped, so
+// it keeps direct scanout/VRR (see the visible: comment below).
 PanelWindow {
     id: overlay
 
@@ -42,10 +50,23 @@ PanelWindow {
     // a permanently-undimmed bar-height gap at the top of every screen.
     margins.top: -Theme.barHeight
 
+    // Only mapped while dimmed or mid-fade. Left permanently mapped (even
+    // fully transparent), a full-screen Overlay-layer surface shows up in
+    // `hyprctl monitors` as solitaryBlockedBy: OVERLAYS on every output, so
+    // fullscreen games always got composited under it -- with VRR on, the
+    // iiyama (DP-3) swung between 55 and 83Hz on a steady 60fps game and
+    // flickered.
+    readonly property bool gameDim: GameFocus.dimming && GameFocus.gameMonitor !== overlay.modelData.name
+    visible: ShellState.idleDimActive || overlay.gameDim || dim.opacity > 0
+
     Rectangle {
+        id: dim
         anchors.fill: parent
         color: "black"
-        opacity: ShellState.idleDimActive ? 0.75 : 0
-        Behavior on opacity { NumberAnimation { duration: 400 } }
+        opacity: ShellState.idleDimActive ? 0.75 : (overlay.gameDim ? GameFocus.dimAmount : 0)
+        // Faster than idle-dim's leisurely fade: Gaming Focus flips on every
+        // focus change, and alt-tabbing out should light the other screens
+        // back up promptly.
+        Behavior on opacity { NumberAnimation { duration: overlay.gameDim || ShellState.idleDimActive ? 400 : 150 } }
     }
 }

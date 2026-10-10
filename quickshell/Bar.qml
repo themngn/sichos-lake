@@ -159,13 +159,13 @@ PanelWindow {
             verticalCenter: parent.verticalCenter
         }
     }
-    // Whether any of this row's own popups (Sunset/Hdr/Idle) is currently
+    // Whether any of this row's own popups (Sunset/Hdr/Idle/GameFocus) is currently
     // open on THIS screen -- TransparencyToggle has no popup. Keeps the row
     // revealed while a popup is open even after the pointer leaves the row's
     // own bounds for the popup below it (its own window, outside toggleRow's
     // geometry, so toggleRowHover alone would otherwise drop to unhovered
     // and fade the row out from under an still-open popup).
-    readonly property bool toggleRowPopupOpen: ["sunset", "hdr", "idle"].includes(ShellState.activePopup)
+    readonly property bool toggleRowPopupOpen: ["sunset", "hdr", "idle", "gamefocus"].includes(ShellState.activePopup)
         && ShellState.activePopupScreen === bar.screen.name
 
     // Fixed invisible hover target used only to bootstrap the very first
@@ -196,8 +196,8 @@ PanelWindow {
     // MouseArea (real, geometry-accurate, unlike the fixed bootstrap zone
     // above) keeps the whole row revealed -- see toggleHoverZone's comment.
     readonly property bool anyToggleHovered: sunsetToggle.hovered || hdrToggle.hovered
-        || idleToggle.hovered || transparencyToggle.hovered || micMuteToggle.hovered
-        || notificationMuteToggle.hovered
+        || idleToggle.hovered || gameFocusToggle.hovered || transparencyToggle.hovered
+        || micMuteToggle.hovered || notificationMuteToggle.hovered
     readonly property bool toggleRowRevealed: toggleRowHover.hovered || bar.toggleRowPopupOpen || bar.anyToggleHovered
 
     Row {
@@ -277,6 +277,11 @@ PanelWindow {
                 // reasoning as hyprsunset's onScheduleSaved above.
                 Quickshell.execDetached(["systemctl", "--user", "restart", "hypridle.service"])
             }
+        }
+        GameFocusToggle {
+            id: gameFocusToggle
+            screenName: bar.screen.name
+            revealed: bar.toggleRowRevealed
         }
         TransparencyToggle {
             id: transparencyToggle
