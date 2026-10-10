@@ -33,6 +33,34 @@ QtObject {
     // GNOME/Windows DND. Doesn't persist across a quickshell restart, same
     // as idleActive/sunsetWarm above.
     property bool notificationsMuted: false
+    // When a timed mute (NotificationMutePopup's "30 min"/"1 h"/...) ends,
+    // as epoch ms; 0 = muted indefinitely (or not muted at all).
+    property real notificationsMutedUntil: 0
+
+    // minutes > 0 mutes until now + minutes; minutes = 0 mutes indefinitely.
+    // Every unmute (pill click, popup, timer) clears the deadline too, so a
+    // later plain mute doesn't inherit a stale one.
+    function setNotificationsMuted(muted, minutes) {
+        root.notificationsMutedUntil = muted && minutes > 0 ? Date.now() + minutes * 60000 : 0
+        root.notificationsMuted = muted
+    }
+    function muteNotificationsUntil(epochMs) {
+        root.notificationsMutedUntil = epochMs
+        root.notificationsMuted = true
+    }
+    // Checked once a minute (plus on every change) rather than a one-shot
+    // Timer at the deadline -- a timer's interval is wall-clock-blind
+    // across suspend, so after a laptop sleep past the deadline a one-shot
+    // would still wait out its remaining interval.
+    property Timer _dndTimer: Timer {
+        running: root.notificationsMuted && root.notificationsMutedUntil > 0
+        interval: 30000
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: {
+            if (Date.now() >= root.notificationsMutedUntil) root.setNotificationsMuted(false, 0)
+        }
+    }
 
     // Idle-dim state, driven purely over IPC (`quickshell ipc call idledim
     // dim`/`undim`) from hypridle.conf's on-timeout/on-resume — see
@@ -96,6 +124,31 @@ QtObject {
     function _loadTransparency() {
         const m = /background_opacity\s+([\d.]+)/.exec(root._kittyConf.text())
         root.transparencyOpaque = m ? (+m[1] >= 1.0) : false
+    }
+
+    // Pill click and TransparencyPopup's Semi/Opaque buttons both land here.
+    // The bar flips its own state immediately for a snappy icon;
+    // toggle-transparency.py makes kitty agree (kitty.conf + live windows).
+    function setTransparencyOpaque(opaque) {
+        root.transparencyOpaque = opaque
+        root._pushTransparency()
+    }
+    function _pushTransparency() {
+        Quickshell.execDetached(["python3", Quickshell.env("HOME") + "/.config/quickshell/scripts/toggle-transparency.py",
+            root.transparencyOpaque ? "opaque" : "semi", String(BarSettings.terminalOpacity)])
+    }
+    // TransparencyPopup's terminal-opacity slider (semi mode's level). The
+    // value lives in BarSettings, not kitty.conf: while opaque, kitty.conf
+    // says 1.0, so it can't also remember the semi level to return to.
+    // Pushing to kitty is debounced -- each push rewrites kitty.conf and
+    // runs `kitty @` once per open window, too much to do per drag pixel.
+    function setTerminalOpacity(v) {
+        BarSettings.terminalOpacity = Math.round(Math.max(0.5, Math.min(0.95, v)) * 100) / 100
+        if (!root.transparencyOpaque) _terminalOpacityTimer.restart()
+    }
+    property Timer _terminalOpacityTimer: Timer {
+        interval: 200
+        onTriggered: root._pushTransparency()
     }
 
     // Whether the filter is warm right now — the single source of truth

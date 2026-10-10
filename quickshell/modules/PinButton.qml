@@ -1,7 +1,7 @@
 import QtQuick
 
-// Pin icon for the top-right of a toggle popup's header (SunsetPopup,
-// IdlePopup, HdrPopup, GameFocusPopup, MicPopup). Pinned (the default): the
+// Pin icon for the top-right of a toggle popup's header (every *Popup.qml
+// of Bar.qml's toggle row). Pinned (the default): the
 // toggle stays visible in the collapsed toggle row while it's on. Unpinned:
 // it collapses with the rest of the row even while on, showing only on hover
 // -- see BarSettings.isPinned() and each *Toggle.qml's `shown`.

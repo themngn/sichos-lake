@@ -171,13 +171,14 @@ PanelWindow {
             verticalCenter: parent.verticalCenter
         }
     }
-    // Whether any of this row's own popups (Sunset/Hdr/Idle/GameFocus) is currently
-    // open on THIS screen -- TransparencyToggle has no popup. Keeps the row
+    // Whether any of this row's own popups (every toggle has one) is currently
+    // open on THIS screen. Keeps the row
     // revealed while a popup is open even after the pointer leaves the row's
     // own bounds for the popup below it (its own window, outside toggleRow's
     // geometry, so toggleRowHover alone would otherwise drop to unhovered
     // and fade the row out from under an still-open popup).
-    readonly property bool toggleRowPopupOpen: ["sunset", "hdr", "idle", "gamefocus", "mic"].includes(ShellState.activePopup)
+    readonly property bool toggleRowPopupOpen: ["sunset", "hdr", "idle", "gamefocus", "transparency", "barsolo", "mic", "notifmute"]
+        .includes(ShellState.activePopup)
         && ShellState.activePopupScreen === bar.screen.name
 
     // Fixed invisible hover target used only to bootstrap the very first
@@ -297,13 +298,10 @@ PanelWindow {
         }
         TransparencyToggle {
             id: transparencyToggle
+            screenName: bar.screen.name
             revealed: bar.toggleRowRevealed
             opaque: ShellState.transparencyOpaque
-            onToggle: {
-                ShellState.transparencyOpaque = !ShellState.transparencyOpaque
-                Quickshell.execDetached(["python3", Quickshell.env("HOME") + "/.config/quickshell/scripts/toggle-transparency.py",
-                    ShellState.transparencyOpaque ? "opaque" : "semi"])
-            }
+            onToggle: ShellState.setTransparencyOpaque(!ShellState.transparencyOpaque)
         }
         BarSoloToggle {
             id: barSoloToggle
@@ -320,9 +318,10 @@ PanelWindow {
         }
         NotificationMuteToggle {
             id: notificationMuteToggle
+            screenName: bar.screen.name
             revealed: bar.toggleRowRevealed
             muted: ShellState.notificationsMuted
-            onToggle: ShellState.notificationsMuted = !ShellState.notificationsMuted
+            onToggle: ShellState.setNotificationsMuted(!ShellState.notificationsMuted, 0)
         }
     }
     Row {

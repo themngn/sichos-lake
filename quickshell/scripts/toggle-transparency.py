@@ -11,8 +11,8 @@ allow_remote_control/listen_on comment) — windows launched before that config
 change existed won't have a socket to reach, so they need one restart to pick
 up the toggle at all; every later toggle updates them live.
 
-Called from Bar.qml's TransparencyToggle with the target mode ("opaque" or
-"semi") — the bar owns and flips its own ShellState.transparencyOpaque
+Called from ShellState.setTransparencyOpaque/setTerminalOpacity with the
+target mode ("opaque" or "semi") and optionally the semi opacity — the bar owns and flips its own ShellState.transparencyOpaque
 immediately for a snappy icon, so this script only needs to make the rest of
 the system agree with that, not report back.
 """
@@ -29,6 +29,13 @@ OPACITY = {"semi": "0.8", "opaque": "1.0"}
 def main() -> None:
     mode = sys.argv[1] if len(sys.argv) > 1 else "semi"
     opacity = OPACITY.get(mode, OPACITY["semi"])
+    # Optional semi-mode level from TransparencyPopup's slider
+    # (BarSettings.terminalOpacity); ignored in opaque mode.
+    if mode == "semi" and len(sys.argv) > 2:
+        try:
+            opacity = f"{min(0.95, max(0.5, float(sys.argv[2]))):.2f}"
+        except ValueError:
+            pass
 
     text = KITTY_CONF.read_text()
     text = re.sub(r"^background_opacity\s+[\d.]+", f"background_opacity {opacity}",

@@ -87,13 +87,15 @@ QtObject {
         adapter.order = ids
     }
 
-    // Whether a toggle-row pill (SunsetToggle, IdleToggle, HdrToggle,
-    // GameFocusToggle, MicMuteToggle -- by their popupId) stays visible in the
+    // Whether a toggle-row pill (every *Toggle.qml in Bar.qml's toggle row,
+    // by its popupId) stays visible in the
     // collapsed toggle row while it's on. Pinned is the default (the original
     // behavior); unpinning makes an active toggle collapse with the rest of
     // the row and only show on hover. Set from the pin icon in each toggle's
     // popup header (PinButton.qml). Stored as the unpinned set, so only
     // changes from the default are written.
+    property alias terminalOpacity: adapter.terminalOpacity
+
     function isPinned(id) {
         return adapter.unpinnedToggles.indexOf(id) === -1
     }
@@ -124,6 +126,9 @@ QtObject {
             id: adapter
             property var disabled: []
             property var unpinnedToggles: []
+            // Terminal (kitty) opacity in the transparency toggle's "semi"
+            // mode -- see ShellState.setTerminalOpacity.
+            property real terminalOpacity: 0.8
             property var order: ["claude-usage", "system-update", "tray", "language", "bluetooth", "network",
                                   "volume", "backlight", "display", "powerprofile", "battery", "notifications"]
         }

@@ -44,6 +44,9 @@ Item {
         0xf06b0: [0, -66, 61, 60],  // update (SystemUpdate)
         0xf0e17: [-1, -70, 62, 68], // calendar
         0xf0e51: [-1, -64, 62, 56], // monitor (DisplaySettings)
+        0xf042: [0, -66, 60, 60],   // adjust (Transparency)
+        0xf009a: [0, -71, 61, 70],  // bell (NotificationMute)
+        0xf009b: [0, -66, 60, 61],  // bell-off (NotificationMute)
         // custom/alert-widget (header + history badges)
         0xf0565: [-1, -73, 62, 74], // shield-check
         0xf0026: [0, -62, 60, 52],  // alert
