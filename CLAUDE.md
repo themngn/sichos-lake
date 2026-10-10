@@ -75,6 +75,23 @@ it before "fixing" something that looks odd but is deliberately worked around.
   modules before the new Theme floods the log with `Unable to assign [undefined]` warnings. Only the
   output after the last "Reloading configuration..." line reflects the current files.
 
+- **Measuring/inspecting UI offline.** A throwaway QML file can be run as its own quickshell instance
+  (`timeout 10 quickshell -p /path/to/test.qml`) alongside the live one — keep it in the scratchpad, not
+  the repo. Gotchas: `console.log` output doesn't show, use `console.warn`; a `Repeater` directly under
+  `ShellRoot` creates nothing (it needs an Item parent), so wrap content in a `FloatingWindow`; render,
+  then `item.grabToImage(r => { r.saveToFile(...); Qt.quit() })` from a `Timer`, and analyze the PNG with
+  `magick ... -threshold 25% -trim -format "%@" info:` to get real pixel bounds (this is how
+  `HeaderIcon`'s `_measured` table was produced: glyph at pixelSize 100, pen origin at a known x, baseline
+  at `y + baselineOffset` = y+102 for JetBrainsMono Nerd Font Mono). Nerd Font codepoints above U+FFFF
+  can be written as `"\u{f0590}"` in QML strings. Run such shell loops under `bash`, not the default zsh
+  — zsh doesn't word-split unquoted `$VAR`, so `for c in $LIST` silently iterates once.
+- **Screenshotting a real bar popup** without hovering: there's no IPC to open one, so temporarily add an
+  `IpcHandler { target: "dbgpopup"; function open(id: string, screen: string): void { root.activePopup =
+  id; root.activePopupScreen = screen } }` to the *deployed* `ShellState.qml` only, then
+  `quickshell ipc call dbgpopup open weather DP-2` + `grim -g "x,y wxh" out.png` (popup ids are the
+  modules' `popupId` strings: calendar, hdr, ai-model-usage, idle, gamefocus, mic, bluetooth, display,
+  system-update, sunset, weather). Restore the deployed file from the repo afterwards and confirm with
+  `quickshell ipc show` that `dbgpopup` is gone.
 - `./install.sh` — copies every config in this repo to its target under `$HOME` (idempotent,
   backs up any differing existing file as `<name>.bak`). System-level steps (packages,
   Plymouth, SDDM) run via `sudo` and prompt for a password. Flags: `--vm` (force software rendering
@@ -171,8 +188,20 @@ Everything else lives in `quickshell/modules/`:
   better done outside JS — `list-apps.py` (enumerates installed `.desktop` entries as JSON),
   `autostart-launch.py` (launches user-selected autostart apps with each app's real "start minimized"
   CLI flag — see its own header comment for why this repo refuses compositor-side window-hiding hacks),
-  `weather.py`, `claude-usage.py`, `agy-usage.py`, `save-monitor-config.py` (writes the Display
+  `weather.py` (IP-geolocated Open-Meteo current/8-hour/7-day forecast incl. per-hour `isDay` for
+  night icons; caches to `~/.config/quickshell/weather-cache.json`, which `Weather.qml` reads on startup
+  — `Weather.qml`'s "This week" range bars all share one week-wide min..max scale so days compare at a
+  glance, iOS-style, with a dot for the current temperature on today's bar), `claude-usage.py`, `agy-usage.py`, `save-monitor-config.py` (writes the Display
   widget's changes, including VRR, back into the deployed `~/.config/hypr/monitors.lua`).
+- **Custom widgets** (`CustomWidget { name: "..." }`, `modules/CustomWidget.qml`) load
+  `~/.config/quickshell/custom/<name>/main.qml` — user-local, often a symlink to a dir outside this repo
+  (e.g. `alert-widget` → `~/Work/alert-widget`). To use shared modules from such a file, `import
+  qs.modules`: it resolves to the *same* singleton instances the shell uses (verified in a throwaway
+  instance with the same symlinked layout — one `Theme` creation, same identity). A relative `import
+  "../../modules"` does **not** work: `pragma Singleton` isn't honored for a URL-loaded file outside the
+  config's import scan, so `Theme.*` reads `undefined`. The Loader resolves its source only once — editing
+  a custom widget needs a full quickshell restart (`quickshell kill; hyprctl eval
+  'hl.exec_cmd("quickshell")'`), not a hot-reload.
 - Config/state written by the launcher (e.g. `~/.config/quickshell/autostart-apps.json`) lives under the
   deployed `~/.config/quickshell` tree, not in this repo.
 - **Notifications** are split three ways: `Notifications.qml` is the `NotificationServer` and the live
@@ -188,10 +217,24 @@ Everything else lives in `quickshell/modules/`:
 Every popup, OSD, the launcher and notifications share one card style driven entirely by `Theme.qml`
 tokens (`surface*`, `control*`, `hoverFill`/`selectedFill`, `track*`, `card*`, `surfacePadding`,
 `sectionSpacing`, `open*`) — new UI should use those tokens, not color/radius/size literals. Conventions
-the existing popups follow: header = accent Nerd Font icon at `fontSize + 1` + bold title at `fontSize`;
+the existing popups follow: header = `HeaderIcon { glyph: ... }` + bold title at `fontSize` in a `Row`;
 body text, buttons and checkboxes at `fontSize - 1`; section headings `fontSize - 2` in `textMuted`;
 captions `fontSize - 3`. Text uses `Theme.uiFontFamily` (Inter); anything that renders Nerd Font glyphs
 must keep `Theme.fontFamily` (Inter has none of them). The bar itself stays on the Nerd Font.
+
+**Nerd Font glyph sizing/centering.** Nerd Font Mono icons don't share an ink-to-em ratio and sit on
+the text baseline, so a plain `Text` at a given `pixelSize` reads smaller than adjacent text and visibly
+low, and different glyphs at one `pixelSize` look different sizes. The bar solves this with
+`BarIcon.qml` + `Theme.barIconInkHeight`; popup headers with `HeaderIcon.qml`, which fits each glyph's
+*ink* into a `Theme.headerIconSize` box (an ink height, not a font size; width capped at 1.1×) and
+centers it — for bold Inter the title's line-box middle and cap-height middle coincide within 0.25px, so
+plain Row centering then lines icon and title up. Don't trust `TextMetrics.tightBoundingRect` for these
+glyphs: its top is correct but its **bottom is clamped to the baseline**, so glyphs whose ink ends above
+it (cloud, gamepad) get measured too tall and render small and high; its width is also just the advance
+(every glyph reports 60 at 100px). `HeaderIcon` therefore carries a `_measured` table of real ink bounds
+(at pixelSize 100, relative to pen origin/baseline) for every header glyph in use, falling back to
+`tightBoundingRect` for unknown ones — **a new header glyph must be measured and added to that table**
+(see "Measuring/inspecting UI offline" below).
 
 Bar popups are hover-driven (`ShellState.activePopup`, one open at a time). A click-driven one (e.g.
 `WorkspaceMenu.qml`) uses `HyprlandFocusGrab`, activated a tick *after* the window shows — bound

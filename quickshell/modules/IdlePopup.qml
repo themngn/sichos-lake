@@ -137,10 +137,8 @@ PopupWindow {
                     spacing: 6
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    Text {
-                        text: "\udb80\udd76"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize + 1
+                    HeaderIcon {
+                        glyph: "\udb80\udd76"
                         color: popup.active ? Theme.accent : Theme.textDim
                     }
                     Text {

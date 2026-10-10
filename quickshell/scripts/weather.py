@@ -12,7 +12,7 @@ Emits one JSON line:
   "tempC": float|null, "code": int|null, "isDay": bool|null, "city": str,
   "feelsLikeC": float|null, "humidity": int|null, "windKph": float|null,
   "hourly": [{"hour": "HH:00", "tempC": float, "code": int,
-              "precipProb": int}, ...],  (next 8h)
+              "precipProb": int, "isDay": bool}, ...],  (next 8h)
   "daily": [{"date": "YYYY-MM-DD", "code": int, "tempMax": float,
              "tempMin": float, "precipProb": int, "precipMm": float}, ...]  (7 days)
 }
@@ -68,7 +68,7 @@ def fetch_live():
     lat, lon = geo["lat"], geo["lon"]
     url = (f"{FORECAST_URL}?latitude={lat}&longitude={lon}"
            "&current=temperature_2m,weather_code,is_day,apparent_temperature,relative_humidity_2m,wind_speed_10m"
-           "&hourly=temperature_2m,weather_code,precipitation_probability"
+           "&hourly=temperature_2m,weather_code,precipitation_probability,is_day"
            "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum"
            "&timezone=auto&forecast_days=7")
     data = fetch_json(url)
@@ -87,11 +87,13 @@ def fetch_live():
     temps = hourly.get("temperature_2m", [])
     codes = hourly.get("weather_code", [])
     precip_probs = hourly.get("precipitation_probability", [])
+    is_days = hourly.get("is_day", [])
     now = current.get("time", "")
     now_hour = now[:13] + ":00" if len(now) >= 13 else ""
     start = times.index(now_hour) if now_hour in times else 0
-    for t, temp, code, precip in list(zip(times, temps, codes, precip_probs))[start:start + 8]:
-        result["hourly"].append({"hour": t[11:16], "tempC": temp, "code": code, "precipProb": precip})
+    for t, temp, code, precip, day in list(zip(times, temps, codes, precip_probs, is_days))[start:start + 8]:
+        result["hourly"].append({"hour": t[11:16], "tempC": temp, "code": code, "precipProb": precip,
+                                 "isDay": bool(day)})
 
     daily = data.get("daily", {})
     for date, code, tmax, tmin, precip, precip_mm in zip(

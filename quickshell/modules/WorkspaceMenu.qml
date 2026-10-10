@@ -166,11 +166,8 @@ PopupWindow {
             Row {
                 spacing: 6
                 bottomPadding: 4
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "󰍹"
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize + 1
+                HeaderIcon {
+                    glyph: "󰍹"
                     color: Theme.accent
                 }
                 Text {

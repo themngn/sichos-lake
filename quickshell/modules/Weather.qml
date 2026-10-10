@@ -173,6 +173,32 @@ Pill {
         onTriggered: weatherProc.running = true
     }
 
+    // Short description of a WMO code, for the hero line under the
+    // temperature (same grouping as iconFor, a bit finer for intensity).
+    function textFor(code) {
+        if (code === 0) return "Clear"
+        if (code === 1) return "Mostly clear"
+        if (code === 2) return "Partly cloudy"
+        if (code === 3) return "Overcast"
+        if (code === 45 || code === 48) return "Fog"
+        if ([51, 53, 55].indexOf(code) !== -1) return "Drizzle"
+        if ([56, 57, 66, 67].indexOf(code) !== -1) return "Freezing rain"
+        if (code === 61 || code === 80) return "Light rain"
+        if (code === 63 || code === 81) return "Rain"
+        if (code === 65 || code === 82) return "Heavy rain"
+        if ([71, 73, 75, 77, 85, 86].indexOf(code) !== -1) return "Snow"
+        if ([95, 96, 99].indexOf(code) !== -1) return "Thunderstorm"
+        return ""
+    }
+
+    // Week-wide temperature span: every day's range bar is laid out on this
+    // shared scale, so the bars line up and read against each other.
+    readonly property real weekMin: root.daily.length
+        ? Math.min.apply(null, root.daily.map(d => d.tempMin)) : 0
+    readonly property real weekMax: root.daily.length
+        ? Math.max.apply(null, root.daily.map(d => d.tempMax)) : 1
+    readonly property var today: root.daily.length ? root.daily[0] : null
+
     PopupWindow {
         id: popup
         anchor.item: root
@@ -222,10 +248,8 @@ Pill {
                         spacing: 6
                         anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
-                        Text {
-                            text: "󰖐"
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSize + 1
+                        HeaderIcon {
+                            glyph: "󰖐"
                             color: Theme.accent
                         }
                         Text {
@@ -247,112 +271,157 @@ Pill {
                     }
                 }
 
-                // Current conditions: icon+temp, feels-like, humidity,
-                // and wind spread across four equal-width slots spanning
-                // the full popup width, same "divide the width evenly"
-                // approach as the hourly forecast row further down.
+                // Hero: big icon + temperature + condition on the left,
+                // today's high/low on the right.
                 Item {
                     width: parent.width
-                    height: headerIcon.implicitHeight
+                    height: Math.max(heroLeft.implicitHeight, heroRight.implicitHeight)
 
                     Row {
+                        id: heroLeft
+                        anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
-                        x: 0
-                        spacing: 8
+                        spacing: 12
+
                         Text {
-                            id: headerIcon
+                            anchors.verticalCenter: parent.verticalCenter
                             text: root.iconFor(root.code, root.isDay)
                             font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSize * 3
+                            font.pixelSize: Math.round(Theme.fontSize * 3.6)
                             color: Theme.text
                         }
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Math.round(root.tempC) + "°C"
-                            font.family: Theme.uiFontFamily
-                            font.pixelSize: Theme.fontSize
-                            font.bold: true
-                            color: Theme.text
-                        }
-                    }
-
-                    Row {
-                        anchors.verticalCenter: parent.verticalCenter
-                        x: parent.width * 0.30
-                        visible: root.feelsLikeC !== null
-                        spacing: 8
-
                         Column {
-                            id: feelsLabel
                             anchors.verticalCenter: parent.verticalCenter
-                            spacing: 1
                             Text {
-                                text: "Feels"
-                                color: Theme.textDim
+                                text: Math.round(root.tempC) + "°"
                                 font.family: Theme.uiFontFamily
-                                font.pixelSize: Theme.fontSize - 3
+                                font.pixelSize: Math.round(Theme.fontSize * 2.6)
+                                font.weight: Font.DemiBold
+                                color: Theme.text
                             }
                             Text {
-                                text: "like:"
-                                color: Theme.textDim
+                                text: root.textFor(root.code)
+                                visible: text !== ""
                                 font.family: Theme.uiFontFamily
-                                font.pixelSize: Theme.fontSize - 3
+                                font.pixelSize: Theme.fontSize - 1
+                                color: Theme.textMuted
                             }
-                        }
-                        Text {
-                            anchors.verticalCenter: feelsLabel.verticalCenter
-                            text: Math.round(root.feelsLikeC) + "°"
-                            color: Theme.textMuted
-                            font.family: Theme.uiFontFamily
-                            font.pixelSize: Theme.fontSize
                         }
                     }
 
-                    Row {
+                    Column {
+                        id: heroRight
+                        anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        x: parent.width * 0.58
-                        visible: root.feelsLikeC !== null
-                        spacing: 6
-                        Text {
-                            id: humidityIcon
-                            text: ""
-                            color: Theme.textDim
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSize + 3
-                        }
-                        Text {
-                            anchors.verticalCenter: humidityIcon.verticalCenter
-                            text: root.humidity + "%"
-                            color: Theme.textMuted
-                            font.family: Theme.uiFontFamily
-                            font.pixelSize: Theme.fontSize
+                        visible: root.today !== null
+                        spacing: 4
+
+                        Repeater {
+                            model: root.today ? [
+                                { label: "High", value: root.today.tempMax },
+                                { label: "Low", value: root.today.tempMin }
+                            ] : []
+                            delegate: Row {
+                                id: hlRow
+                                required property var modelData
+                                anchors.right: parent.right
+                                spacing: 6
+                                Text {
+                                    anchors.baseline: hlValue.baseline
+                                    text: hlRow.modelData.label
+                                    font.family: Theme.uiFontFamily
+                                    font.pixelSize: Theme.fontSize - 3
+                                    color: Theme.textDim
+                                }
+                                Text {
+                                    id: hlValue
+                                    text: Math.round(hlRow.modelData.value) + "°"
+                                    font.family: Theme.uiFontFamily
+                                    font.pixelSize: Theme.fontSize - 1
+                                    color: Theme.text
+                                }
+                            }
                         }
                     }
+                }
+
+                // Feels like / humidity / wind: three equal cells on one
+                // strip, so they share a baseline instead of being placed at
+                // hand-picked x-fractions of the width.
+                Rectangle {
+                    width: parent.width
+                    height: statsRow.implicitHeight + 16
+                    radius: Theme.controlRadius
+                    color: Theme.controlFill
+                    visible: root.feelsLikeC !== null
 
                     Row {
-                        anchors.verticalCenter: parent.verticalCenter
-                        x: parent.width * 0.80
-                        visible: root.feelsLikeC !== null
-                        spacing: 6
-                        Text {
-                            id: windIcon
-                            text: ""
-                            color: Theme.textDim
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSize + 3
-                        }
-                        Text {
-                            anchors.verticalCenter: windIcon.verticalCenter
-                            text: Math.round(root.windKph) + " km/h"
-                            color: Theme.textMuted
-                            font.family: Theme.uiFontFamily
-                            font.pixelSize: Theme.fontSize
+                        id: statsRow
+                        anchors.centerIn: parent
+                        width: parent.width
+
+                        Repeater {
+                            model: [
+                                { icon: "", label: "Feels like",
+                                  value: Math.round(root.feelsLikeC) + "°" },
+                                { icon: "", label: "Humidity",
+                                  value: root.humidity + "%" },
+                                { icon: "", label: "Wind",
+                                  value: Math.round(root.windKph) + " km/h" }
+                            ]
+                            delegate: Item {
+                                id: statCell
+                                required property var modelData
+                                required property int index
+                                width: statsRow.width / 3
+                                height: statCol.implicitHeight
+
+                                Rectangle {
+                                    visible: statCell.index > 0
+                                    anchors.left: parent.left
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 1
+                                    height: parent.height
+                                    color: Theme.separator
+                                }
+
+                                Column {
+                                    id: statCol
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    spacing: 2
+                                    Row {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        spacing: 5
+                                        Text {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: statCell.modelData.icon
+                                            font.family: Theme.fontFamily
+                                            font.pixelSize: Theme.fontSize + 1
+                                            color: Theme.accent
+                                        }
+                                        Text {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: statCell.modelData.value
+                                            font.family: Theme.uiFontFamily
+                                            font.pixelSize: Theme.fontSize - 1
+                                            color: Theme.text
+                                        }
+                                    }
+                                    Text {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: statCell.modelData.label
+                                        font.family: Theme.uiFontFamily
+                                        font.pixelSize: Theme.fontSize - 3
+                                        color: Theme.textMuted
+                                    }
+                                }
+                            }
                         }
                     }
                 }
 
                 Text {
-                    text: "Today"
+                    text: "Next hours"
                     color: Theme.textMuted
                     font.family: Theme.uiFontFamily
                     font.pixelSize: Theme.fontSize - 2
@@ -366,29 +435,35 @@ Pill {
                         delegate: Column {
                             id: hourDelegate
                             required property var modelData
-                            width: content.width / 8
-                            spacing: 3
+                            required property int index
+                            width: content.width / Math.max(1, root.hourly.length)
+                            spacing: 4
 
                             Text {
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                text: hourDelegate.modelData.hour.substring(0, 2)
-                                color: Theme.textDim
+                                text: hourDelegate.index === 0 ? "Now"
+                                    : hourDelegate.modelData.hour.substring(0, 2)
+                                color: hourDelegate.index === 0 ? Theme.text : Theme.textDim
                                 font.family: Theme.uiFontFamily
                                 font.pixelSize: Theme.fontSize - 3
+                                font.bold: hourDelegate.index === 0
                             }
                             Text {
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                text: root.iconFor(hourDelegate.modelData.code, true)
+                                // Older caches (before weather.py emitted a
+                                // per-hour isDay) fall back to the day icon.
+                                text: root.iconFor(hourDelegate.modelData.code,
+                                    hourDelegate.modelData.isDay !== undefined ? hourDelegate.modelData.isDay : true)
                                 color: Theme.text
                                 font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontSize * 2
+                                font.pixelSize: Math.round(Theme.fontSize * 2.8)
                             }
                             Text {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: Math.round(hourDelegate.modelData.tempC) + "°"
                                 color: Theme.text
                                 font.family: Theme.uiFontFamily
-                                font.pixelSize: Theme.fontSize - 3
+                                font.pixelSize: Theme.fontSize - 1
                             }
                             // Empty (not visible:false) so every column keeps
                             // the same height whether or not it has a
@@ -408,15 +483,19 @@ Pill {
                 }
 
                 Text {
-                    text: "This Week"
+                    text: "This week"
                     color: Theme.textMuted
                     font.family: Theme.uiFontFamily
                     font.pixelSize: Theme.fontSize - 2
                 }
 
+                // Day | icon | rain chance | low ━━━━ high. Fixed-width
+                // columns so every row's range bar starts and ends at the
+                // same x; the bar fills the week-wide span (weekMin..weekMax)
+                // from this day's low to its high.
                 Column {
                     width: parent.width
-                    spacing: 6
+                    spacing: 4
 
                     Repeater {
                         model: root.daily
@@ -424,68 +503,126 @@ Pill {
                             id: dayDelegate
                             required property var modelData
                             required property int index
+                            readonly property bool rainy: (modelData.precipProb || 0) >= 20
                             width: content.width
-                            height: dayIcon.implicitHeight
+                            height: Math.round(Theme.fontSize * 2.8)
 
                             Text {
                                 id: dayName
+                                anchors.left: parent.left
                                 anchors.verticalCenter: parent.verticalCenter
-                                width: 44
+                                width: 42
                                 text: dayDelegate.index === 0 ? "Today"
                                     : Qt.formatDate(new Date(dayDelegate.modelData.date), "ddd")
                                 color: Theme.text
                                 font.family: Theme.uiFontFamily
                                 font.pixelSize: Theme.fontSize - 1
+                                font.bold: dayDelegate.index === 0
                             }
                             Text {
                                 id: dayIcon
-                                anchors {
-                                    left: dayName.right
-                                    leftMargin: 8
-                                    verticalCenter: parent.verticalCenter
-                                }
+                                anchors.left: dayName.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 40
+                                horizontalAlignment: Text.AlignHCenter
                                 text: root.iconFor(dayDelegate.modelData.code, true)
                                 color: Theme.text
                                 font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontSize * 2
+                                font.pixelSize: Math.round(Theme.fontSize * 2.8)
                             }
-                            Row {
-                                anchors {
-                                    verticalCenter: parent.verticalCenter
-                                    left: dayIcon.right
-                                    leftMargin: 8
-                                }
-                                spacing: 3
-                                Text {
-                                    text: ""
-                                    color: dayDelegate.modelData.precipProb >= 20 ? Theme.accent : Theme.textDim
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: Theme.fontSize - 3
-                                }
-                                Text {
-                                    text: dayDelegate.modelData.precipProb + "%"
-                                    color: Theme.textDim
-                                    font.family: Theme.uiFontFamily
-                                    font.pixelSize: Theme.fontSize - 3
-                                }
-                                Text {
-                                    text: dayDelegate.modelData.precipMm > 0
-                                        ? " · " + dayDelegate.modelData.precipMm.toFixed(1) + "mm" : ""
-                                    color: Theme.textDim
-                                    font.family: Theme.uiFontFamily
-                                    font.pixelSize: Theme.fontSize - 3
+                            // Rain chance only when it's worth noticing --
+                            // the slot keeps its width either way.
+                            Item {
+                                id: rainSlot
+                                anchors.left: dayIcon.right
+                                anchors.leftMargin: 6
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 38
+                                height: parent.height
+                                Row {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    visible: dayDelegate.rainy
+                                    spacing: 2
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: ""
+                                        color: Theme.accent
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: Theme.fontSize - 3
+                                    }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: dayDelegate.modelData.precipProb + "%"
+                                        color: Theme.accent
+                                        font.family: Theme.uiFontFamily
+                                        font.pixelSize: Theme.fontSize - 3
+                                    }
                                 }
                             }
                             Text {
-                                anchors {
-                                    right: parent.right
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                text: Math.round(dayDelegate.modelData.tempMin) + "° / "
-                                    + Math.round(dayDelegate.modelData.tempMax) + "°"
+                                id: lowText
+                                anchors.left: rainSlot.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 30
+                                horizontalAlignment: Text.AlignRight
+                                text: Math.round(dayDelegate.modelData.tempMin) + "°"
+                                color: Theme.textMuted
+                                font.family: Theme.uiFontFamily
+                                font.pixelSize: Theme.fontSize - 1
+                            }
+                            Text {
+                                id: highText
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 30
+                                horizontalAlignment: Text.AlignRight
+                                text: Math.round(dayDelegate.modelData.tempMax) + "°"
                                 color: Theme.text
                                 font.family: Theme.uiFontFamily
                                 font.pixelSize: Theme.fontSize - 1
+                            }
+                            Rectangle {
+                                id: rangeTrack
+                                anchors.left: lowText.right
+                                anchors.leftMargin: 10
+                                anchors.right: highText.left
+                                anchors.rightMargin: 4
+                                anchors.verticalCenter: parent.verticalCenter
+                                height: 4
+                                radius: Theme.trackRadius
+                                color: Theme.track
+
+                                readonly property real span: Math.max(1, root.weekMax - root.weekMin)
+                                function xFor(t) {
+                                    return (t - root.weekMin) / span * width
+                                }
+
+                                Rectangle {
+                                    x: rangeTrack.xFor(dayDelegate.modelData.tempMin)
+                                    width: Math.max(parent.height,
+                                        rangeTrack.xFor(dayDelegate.modelData.tempMax) - x)
+                                    height: parent.height
+                                    radius: Theme.trackRadius
+                                    gradient: Gradient {
+                                        orientation: Gradient.Horizontal
+                                        GradientStop { position: 0; color: Theme.accent }
+                                        GradientStop { position: 1; color: Theme.success }
+                                    }
+                                }
+                                // Today only: where the current temperature
+                                // sits within the day's range.
+                                Rectangle {
+                                    visible: dayDelegate.index === 0
+                                    width: 8
+                                    height: 8
+                                    radius: 4
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    x: Math.max(0, Math.min(rangeTrack.width,
+                                        rangeTrack.xFor(root.tempC))) - width / 2
+                                    color: Theme.text
+                                    border.color: Theme.surface
+                                    border.width: 2
+                                }
                             }
                         }
                     }

@@ -167,10 +167,8 @@ Pill {
 
                 Row {
                     spacing: 6
-                    Text {
-                        text: "󰚰"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize + 1
+                    HeaderIcon {
+                        glyph: "󰚰"
                         color: Theme.accent
                     }
                     Text {

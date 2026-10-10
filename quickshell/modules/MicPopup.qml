@@ -72,10 +72,8 @@ PopupWindow {
                     spacing: 6
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    Text {
-                        text: popup.muted ? "󰍭" : "󰍬"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize + 1
+                    HeaderIcon {
+                        glyph: popup.muted ? "󰍭" : "󰍬"
                         color: popup.muted ? Theme.danger : Theme.accent
                     }
                     Text {

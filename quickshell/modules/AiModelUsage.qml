@@ -327,11 +327,9 @@ Pill {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 6
 
-                        Text {
-                            text: root.currentAgent === "claude" ? "󰚩" : "󱚣"
+                        HeaderIcon {
+                            glyph: root.currentAgent === "claude" ? "󰚩" : "󱚣"
                             color: Theme.accent
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSize
                         }
                         Text {
                             text: root.currentAgent === "claude" ? "Claude Code" : "Antigravity (AGY)"

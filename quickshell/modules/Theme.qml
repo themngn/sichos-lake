@@ -111,6 +111,11 @@ QtObject {
     // surfaces still use fontFamily -- Inter has no Nerd Font glyphs.
     readonly property string uiFontFamily: "Inter"
     readonly property int fontSize: 13
+    // Visible (ink) height of the accent glyph in the top-left corner of
+    // every popup/menu header -- HeaderIcon.qml scales each glyph to this,
+    // so it's an ink height, not a font pixelSize. A bit taller than the
+    // bold title's cap height so the icon leads the line.
+    readonly property int headerIconSize: fontSize + 3
 
     readonly property int barHeight: 24
 
