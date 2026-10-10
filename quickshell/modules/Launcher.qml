@@ -578,7 +578,27 @@ PanelWindow {
             if (launcher.initials(item.name).toLowerCase().startsWith(q)) best = 1
             else if ((item.aliases || []).some(a => launcher.initials(a).toLowerCase().startsWith(q))) best = 1
         }
+        // Punctuation-blind fallback, only when nothing above matched — so
+        // "stalker" finds "S.T.A.L.K.E.R. 2: Heart of Chornobyl" and "stalker
+        // 2" still works despite the colon. Both sides get the same stripping
+        // (the typed query may itself contain dots), and it's ranked by the
+        // same tiers on the stripped name. An explicit punctuation list
+        // rather than [^\w\s], which would also strip Cyrillic letters.
+        if (best === Infinity) {
+            const sq = launcher.stripPunct(q)
+            if (sq) {
+                for (const n of [item.name].concat(item.aliases || [])) {
+                    const sn = launcher.stripPunct(n)
+                    if (!sn.toLowerCase().includes(sq)) continue
+                    const rank = launcher.matchRank(sn, sq)
+                    if (rank < best) best = rank
+                }
+            }
+        }
         return best
+    }
+    function stripPunct(s) {
+        return s.replace(/[.,:;!?'"`’‘“”()\[\]{}\-_\/\\&+*#@~|™®©]/g, "").replace(/\s+/g, " ").trim()
     }
     readonly property var filtered: {
         const q = launcher.query.toLowerCase()
