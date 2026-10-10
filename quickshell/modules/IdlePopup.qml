@@ -127,7 +127,7 @@ Item {
 
             // Menu Title Header
             Item {
-                width: 260
+                width: Theme.togglePopupWidth
                 height: 20
 
                 PinButton {
@@ -156,11 +156,11 @@ Item {
 
             // Lock
             Column {
-                width: 260
+                width: Theme.togglePopupWidth
                 spacing: 4
 
                 Row {
-                    width: 260
+                    width: Theme.togglePopupWidth
                     height: 22
                     spacing: 6
                     opacity: popup.lockNever ? 0.4 : 1
@@ -210,12 +210,12 @@ Item {
 
             // Dim before lock
             Column {
-                width: 260
+                width: Theme.togglePopupWidth
                 spacing: 4
                 opacity: popup.lockNever ? 0.4 : 1
 
                 Row {
-                    width: 260
+                    width: Theme.togglePopupWidth
                     height: 22
                     spacing: 6
                     opacity: popup.dimNever ? 0.4 : 1
@@ -253,11 +253,11 @@ Item {
 
             // Screen off
             Column {
-                width: 260
+                width: Theme.togglePopupWidth
                 spacing: 4
 
                 Row {
-                    width: 260
+                    width: Theme.togglePopupWidth
                     height: 22
                     spacing: 6
                     opacity: popup.offNever ? 0.4 : 1
@@ -307,7 +307,7 @@ Item {
 
             Item {
                 id: saveEntry
-                width: 260
+                width: Theme.togglePopupWidth
                 height: Theme.controlHeight
 
                 Rectangle {

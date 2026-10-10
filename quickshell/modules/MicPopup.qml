@@ -62,7 +62,7 @@ Item {
             spacing: Theme.sectionSpacing
 
             Item {
-                width: 240
+                width: Theme.togglePopupWidth
                 height: 20
 
                 PinButton {
@@ -99,7 +99,7 @@ Item {
 
             Row {
                 visible: popup.hasAudio
-                width: 240
+                width: Theme.togglePopupWidth
                 spacing: 6
 
                 Repeater {
@@ -111,7 +111,7 @@ Item {
                         id: modeButton
                         required property var modelData
                         readonly property bool active: popup.muted === modelData.muted
-                        width: 117
+                        width: (Theme.togglePopupWidth - 6) / 2
                         height: Theme.controlHeight
                         radius: Theme.controlRadius
                         color: modeButton.active ? Theme.selectedFill : modeArea.containsMouse ? Theme.hoverFill : Theme.controlFill
@@ -138,7 +138,7 @@ Item {
 
             Column {
                 visible: popup.hasAudio
-                width: 240
+                width: Theme.togglePopupWidth
                 spacing: 4
 
                 Item {
@@ -186,7 +186,7 @@ Item {
 
             Column {
                 visible: popup.inputs.length > 0
-                width: 240
+                width: Theme.togglePopupWidth
                 spacing: 2
 
                 Text {
@@ -203,7 +203,7 @@ Item {
                         id: deviceRow
                         required property var modelData
                         readonly property bool current: popup.source !== null && popup.source.id === modelData.id
-                        width: 240
+                        width: Theme.togglePopupWidth
                         height: Theme.controlHeight
                         radius: Theme.controlRadius
                         color: deviceArea.containsMouse ? Theme.hoverFill : "transparent"

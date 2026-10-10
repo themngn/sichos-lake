@@ -100,7 +100,7 @@ Item {
 
             // Menu Title Header
             Item {
-                width: 220
+                width: Theme.togglePopupWidth
                 height: 20
 
                 PinButton {
@@ -131,7 +131,7 @@ Item {
             // directly. Fully independent of the "Follow schedule" switch
             // below: clicking either of these never touches scheduleFollow.
             Row {
-                width: 220
+                width: Theme.togglePopupWidth
                 spacing: 6
 
                 Repeater {
@@ -143,7 +143,7 @@ Item {
                         id: modeButton
                         required property var modelData
                         readonly property bool active: popup.active === modelData.on
-                        width: 107
+                        width: (Theme.togglePopupWidth - 6) / 2
                         height: Theme.controlHeight
                         radius: Theme.controlRadius
                         color: modeButton.active ? Theme.selectedFill : modeArea.containsMouse ? Theme.hoverFill : Theme.controlFill
@@ -176,7 +176,7 @@ Item {
             // gets to decide going forward, so forcing on/off here never
             // knocks this switch off the way an earlier version did.
             Item {
-                width: 220
+                width: Theme.togglePopupWidth
                 height: scheduleText.implicitHeight
 
                 Text {
@@ -196,7 +196,7 @@ Item {
 
             // Warmth slider in increments of 100K
             Column {
-                width: 220
+                width: Theme.togglePopupWidth
                 spacing: 4
 
                 Item {
@@ -251,7 +251,7 @@ Item {
             }
 
             Rectangle {
-                width: 220
+                width: Theme.togglePopupWidth
                 height: 1
                 color: Theme.separator
             }
@@ -264,7 +264,7 @@ Item {
             }
 
             Row {
-                width: 220
+                width: Theme.togglePopupWidth
                 height: 22
                 spacing: 6
 
@@ -298,7 +298,7 @@ Item {
             }
 
             Row {
-                width: 220
+                width: Theme.togglePopupWidth
                 height: 22
                 spacing: 6
 
@@ -333,7 +333,7 @@ Item {
 
             Item {
                 id: saveEntry
-                width: 220
+                width: Theme.togglePopupWidth
                 height: Theme.controlHeight
 
                 Rectangle {
@@ -360,7 +360,7 @@ Item {
     }
 
     function _kelvinAt(x) {
-        const fraction = Math.max(0, Math.min(1, x / 220))
+        const fraction = Math.max(0, Math.min(1, x / Theme.togglePopupWidth))
         const raw = popup.minKelvin + fraction * (popup.maxKelvin - popup.minKelvin)
         return Math.round(raw / 100) * 100
     }

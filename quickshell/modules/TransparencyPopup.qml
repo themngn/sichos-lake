@@ -48,7 +48,7 @@ Item {
             spacing: Theme.sectionSpacing
 
             Item {
-                width: 220
+                width: Theme.togglePopupWidth
                 height: 20
 
                 PinButton {
@@ -76,7 +76,7 @@ Item {
             }
 
             Flow {
-                width: 220
+                width: Theme.togglePopupWidth
                 spacing: 6
 
                 Repeater {
@@ -88,7 +88,7 @@ Item {
                         id: modeButton
                         required property var modelData
                         readonly property bool active: ShellState.transparencyOpaque === modelData.opaque
-                        width: 107
+                        width: (Theme.togglePopupWidth - 6) / 2
                         height: Theme.controlHeight
                         radius: Theme.controlRadius
                         color: modeButton.active ? Theme.selectedFill : modeArea.containsMouse ? Theme.hoverFill : Theme.controlFill
@@ -118,7 +118,7 @@ Item {
             // what "Opaque" is for). Applies live while in semi mode; while
             // opaque it just presets the level to come back to.
             Column {
-                width: 220
+                width: Theme.togglePopupWidth
                 spacing: 4
 
                 Item {
@@ -167,7 +167,7 @@ Item {
             }
 
             Text {
-                width: 220
+                width: Theme.togglePopupWidth
                 wrapMode: Text.WordWrap
                 text: ShellState.transparencyOpaque
                     ? "Bar and terminals fully opaque"

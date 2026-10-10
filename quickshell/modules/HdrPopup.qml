@@ -73,7 +73,7 @@ Item {
 
             // Menu Title Header
             Item {
-                width: 240
+                width: Theme.togglePopupWidth
                 height: 20
 
                 PinButton {
@@ -102,7 +102,7 @@ Item {
 
             // Mode switch
             Row {
-                width: 240
+                width: Theme.togglePopupWidth
                 spacing: 6
 
                 Repeater {
@@ -114,7 +114,7 @@ Item {
                         id: modeButton
                         required property var modelData
                         readonly property bool isActive: HdrSettings.active === modeButton.modelData.on
-                        width: 117
+                        width: (Theme.togglePopupWidth - 6) / 2
                         height: Theme.controlHeight
                         radius: Theme.controlRadius
                         color: modeButton.isActive ? Theme.selectedFill : modeArea.containsMouse ? Theme.hoverFill : Theme.controlFill
@@ -140,7 +140,7 @@ Item {
             }
 
             Rectangle {
-                width: 240
+                width: Theme.togglePopupWidth
                 height: 1
                 color: Theme.separator
             }
@@ -153,7 +153,7 @@ Item {
             }
 
             Column {
-                width: 240
+                width: Theme.togglePopupWidth
                 spacing: 6
                 opacity: HdrSettings.active ? 1 : 0.5
 
@@ -193,7 +193,7 @@ Item {
         property bool capable: true
         signal toggled()
 
-        width: 240
+        width: Theme.togglePopupWidth
         height: checkText.implicitHeight
         opacity: checkbox.capable ? 1 : 0.4
 

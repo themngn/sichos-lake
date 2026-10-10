@@ -53,7 +53,7 @@ Item {
             spacing: Theme.sectionSpacing
 
             Item {
-                width: 240
+                width: Theme.togglePopupWidth
                 height: 20
 
                 PinButton {
@@ -81,7 +81,7 @@ Item {
             }
 
             Column {
-                width: 240
+                width: Theme.togglePopupWidth
                 spacing: 2
 
                 Repeater {
@@ -94,7 +94,7 @@ Item {
                             ? ShellState.barSoloScreen === "" || !Quickshell.screens.some(s => s.name === ShellState.barSoloScreen)
                             : ShellState.barSoloScreen === modelData
                         readonly property var screenObj: Quickshell.screens.find(s => s.name === modelData) || null
-                        width: 240
+                        width: Theme.togglePopupWidth
                         height: Theme.controlHeight
                         radius: Theme.controlRadius
                         color: screenArea.containsMouse ? Theme.hoverFill : "transparent"
@@ -149,7 +149,7 @@ Item {
             }
 
             Text {
-                width: 240
+                width: Theme.togglePopupWidth
                 wrapMode: Text.WordWrap
                 text: "Click the bar icon to keep the bar on this screen only"
                 color: Theme.textDim

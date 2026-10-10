@@ -45,7 +45,7 @@ Item {
             spacing: Theme.sectionSpacing
 
             Item {
-                width: 220
+                width: Theme.togglePopupWidth
                 height: 20
 
                 PinButton {
@@ -73,7 +73,7 @@ Item {
             }
 
             Row {
-                width: 220
+                width: Theme.togglePopupWidth
                 spacing: 6
 
                 Repeater {
@@ -85,7 +85,7 @@ Item {
                         id: modeButton
                         required property var modelData
                         readonly property bool active: GameFocus.enabled === modelData.on
-                        width: 107
+                        width: (Theme.togglePopupWidth - 6) / 2
                         height: Theme.controlHeight
                         radius: Theme.controlRadius
                         color: modeButton.active ? Theme.selectedFill : modeArea.containsMouse ? Theme.hoverFill : Theme.controlFill
@@ -113,7 +113,7 @@ Item {
             // Dim amount, 5% steps. Takes effect live on any currently
             // dimmed screen (the overlay binds straight to dimAmount).
             Column {
-                width: 220
+                width: Theme.togglePopupWidth
                 spacing: 4
 
                 Item {
@@ -164,7 +164,7 @@ Item {
             }
 
             Text {
-                width: 220
+                width: Theme.togglePopupWidth
                 wrapMode: Text.WordWrap
                 text: !GameFocus.enabled ? "Off"
                     : GameFocus.dimming ? "Game focused on " + GameFocus.gameMonitor

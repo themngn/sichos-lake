@@ -91,6 +91,10 @@ QtObject {
     // ToggleMorphPopup: how long the shared toggle-row card takes to slide
     // and reshape from one popup into the next.
     readonly property int morphDuration: 220
+    // Content width shared by every toggle-row popup, so the morphing card
+    // keeps one width and only slides/changes height between them. 260 is
+    // what IdlePopup's timer rows need; the others used 220/240 before.
+    readonly property int togglePopupWidth: 260
     // The big glyph on every OSD (OsdIcon.qml): the box it sits in, and the
     // size of the square its ink is scaled to fit, whatever the glyph's own
     // proportions.

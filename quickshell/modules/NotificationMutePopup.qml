@@ -64,7 +64,7 @@ Item {
             spacing: Theme.sectionSpacing
 
             Item {
-                width: 240
+                width: Theme.togglePopupWidth
                 height: 20
 
                 PinButton {
@@ -92,7 +92,7 @@ Item {
             }
 
             Flow {
-                width: 240
+                width: Theme.togglePopupWidth
                 spacing: 6
 
                 Repeater {
@@ -104,7 +104,7 @@ Item {
                         id: modeButton
                         required property var modelData
                         readonly property bool active: ShellState.notificationsMuted === modelData.muted
-                        width: 117
+                        width: (Theme.togglePopupWidth - 6) / 2
                         height: Theme.controlHeight
                         radius: Theme.controlRadius
                         color: modeButton.active ? Theme.selectedFill : modeArea.containsMouse ? Theme.hoverFill : Theme.controlFill
@@ -131,7 +131,7 @@ Item {
             }
 
             Column {
-                width: 240
+                width: Theme.togglePopupWidth
                 spacing: 6
 
                 Text {
@@ -142,7 +142,7 @@ Item {
                 }
 
                 Flow {
-                    width: 240
+                    width: Theme.togglePopupWidth
                     spacing: 6
 
                     Repeater {
@@ -156,7 +156,7 @@ Item {
                             id: modeButton
                             required property var modelData
                             readonly property bool active: false
-                            width: 117
+                            width: (Theme.togglePopupWidth - 6) / 2
                             height: Theme.controlHeight
                             radius: Theme.controlRadius
                             color: modeButton.active ? Theme.selectedFill : modeArea.containsMouse ? Theme.hoverFill : Theme.controlFill
@@ -186,7 +186,7 @@ Item {
             }
 
             Text {
-                width: 240
+                width: Theme.togglePopupWidth
                 wrapMode: Text.WordWrap
                 text: popup.untilText()
                 color: Theme.textDim
