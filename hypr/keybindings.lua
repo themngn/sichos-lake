@@ -302,7 +302,17 @@ local function retrainIfWedged(name)
     if mirrorActive then return end
     hl.timer(function()
         local m = hl.get_monitor(name)
-        local wedged = not m or not m.width or m.width == 0 or not m.height or m.height == 0
+        -- Not connected at all (undocked at config load/reload) is not
+        -- "wedged" -- there's no link to retrain. Treating it as wedged used
+        -- to disable an absent output, and since that disable is a persistent
+        -- monitor rule while the re-enable below is just an hl.timer (which
+        -- dies with the Lua VM on the next `hyprctl reload`, i.e. any config
+        -- save), the disabled rule could outlive its re-enable -- confirmed
+        -- live (2026-09-27): plugging the dock in later had DP-1/DP-2 each
+        -- disabled the instant they connected, zero modesets, stuck off.
+        -- A later plug-in is covered by the monitor.added hook below instead.
+        if not m then return end
+        local wedged = not m.width or m.width == 0 or not m.height or m.height == 0
         if not wedged then return end -- negotiated fine on its own
 
         hl.monitor({ output = name, disabled = true })
