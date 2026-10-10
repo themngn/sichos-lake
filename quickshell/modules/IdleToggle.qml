@@ -16,7 +16,9 @@ Pill {
     signal toggle()
     signal settingsSaved()
 
-    readonly property bool shown: root.active || root.revealed
+    // While on, stays visible in the collapsed row only if pinned (the
+    // default; BarSettings, via PinButton in the popup).
+    readonly property bool shown: root.revealed || (root.active && BarSettings.isPinned("idle"))
     opacity: root.shown ? (root.active ? 1 : 0.5) : 0
     Behavior on opacity {
         NumberAnimation { duration: 150; easing.type: Easing.OutQuad }

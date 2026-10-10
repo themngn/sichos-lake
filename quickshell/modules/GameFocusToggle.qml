@@ -14,7 +14,9 @@ Pill {
     readonly property bool armed: GameFocus.enabled
     readonly property bool dimming: GameFocus.dimming
 
-    readonly property bool shown: root.armed || root.revealed
+    // While on, stays visible in the collapsed row only if pinned (the
+    // default; BarSettings, via PinButton in the popup).
+    readonly property bool shown: root.revealed || (root.armed && BarSettings.isPinned("gamefocus"))
     opacity: root.shown ? (root.armed ? 1 : 0.5) : 0
     Behavior on opacity {
         NumberAnimation { duration: 150; easing.type: Easing.OutQuad }

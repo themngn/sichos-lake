@@ -87,6 +87,22 @@ QtObject {
         adapter.order = ids
     }
 
+    // Whether a toggle-row pill (SunsetToggle, IdleToggle, HdrToggle,
+    // GameFocusToggle, MicMuteToggle -- by their popupId) stays visible in the
+    // collapsed toggle row while it's on. Pinned is the default (the original
+    // behavior); unpinning makes an active toggle collapse with the rest of
+    // the row and only show on hover. Set from the pin icon in each toggle's
+    // popup header (PinButton.qml). Stored as the unpinned set, so only
+    // changes from the default are written.
+    function isPinned(id) {
+        return adapter.unpinnedToggles.indexOf(id) === -1
+    }
+    function togglePin(id) {
+        adapter.unpinnedToggles = root.isPinned(id)
+            ? adapter.unpinnedToggles.concat([id])
+            : adapter.unpinnedToggles.filter(n => n !== id)
+    }
+
     // Lets `quickshell ipc call barsettings reload` re-read the file from
     // outside the process — needed because FileView's watchChanges doesn't
     // actually pick up writes made by another process (tested live: editing
@@ -107,6 +123,7 @@ QtObject {
         adapter: JsonAdapter {
             id: adapter
             property var disabled: []
+            property var unpinnedToggles: []
             property var order: ["claude-usage", "system-update", "tray", "language", "bluetooth", "network",
                                   "volume", "backlight", "display", "powerprofile", "battery", "notifications"]
         }

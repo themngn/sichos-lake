@@ -127,6 +127,12 @@ PopupWindow {
                 width: 260
                 height: 20
 
+                PinButton {
+                    toggleId: "idle"
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
                 Row {
                     spacing: 6
                     anchors.left: parent.left

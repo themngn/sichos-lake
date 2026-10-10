@@ -62,6 +62,12 @@ PopupWindow {
                 width: 240
                 height: 20
 
+                PinButton {
+                    toggleId: "mic"
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
                 Row {
                     spacing: 6
                     anchors.left: parent.left

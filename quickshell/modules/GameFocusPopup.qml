@@ -45,6 +45,12 @@ PopupWindow {
                 width: 220
                 height: 20
 
+                PinButton {
+                    toggleId: "gamefocus"
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
                 Row {
                     spacing: 6
                     anchors.left: parent.left

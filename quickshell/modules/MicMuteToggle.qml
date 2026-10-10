@@ -49,7 +49,9 @@ Pill {
     // it happened to be left.
     Component.onCompleted: Quickshell.execDetached(["brightnessctl", "-d", "platform::micmute", "set", root.muted ? "1" : "0"])
 
-    readonly property bool shown: root.muted || root.revealed
+    // While on, stays visible in the collapsed row only if pinned (the
+    // default; BarSettings, via PinButton in the popup).
+    readonly property bool shown: root.revealed || (root.muted && BarSettings.isPinned("mic"))
     opacity: root.shown ? (root.muted ? 1 : 0.5) : 0
     Behavior on opacity {
         NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
