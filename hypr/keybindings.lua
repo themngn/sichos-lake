@@ -123,20 +123,39 @@ hl.bind(mainMod .. " + J", hl.dsp.layout("togglesplit"))    -- dwindle only
 local STATE_DIR  = (os.getenv("XDG_STATE_HOME") or (os.getenv("HOME") .. "/.local/state")) .. "/sichos"
 local STATE_FILE = STATE_DIR .. "/hypr-displaymode.lua"
 
-local function loadMirrorActive()
+-- The state file holds { mirror = bool, workspaces = snapshot-or-nil } (see
+-- snapshotWorkspaces() below for the snapshot). Older versions of this file
+-- wrote a bare boolean, still accepted.
+local function loadDisplayState()
     local chunk = loadfile(STATE_FILE)
     local ok, result = false, nil
     if chunk then ok, result = pcall(chunk) end
-    if ok and type(result) == "boolean" then return result end
-    return false
+    if ok and type(result) == "boolean" then return { mirror = result } end
+    if ok and type(result) == "table" then return result end
+    return { mirror = false }
 end
 
-local function saveMirrorActive(active)
+local function serialize(v)
+    local t = type(v)
+    if t == "number" or t == "boolean" then return tostring(v) end
+    if t == "string" then return string.format("%q", v) end
+    if t == "table" then
+        local parts = {}
+        for k, val in pairs(v) do
+            local key = type(k) == "string" and ("[" .. string.format("%q", k) .. "]") or ("[" .. tostring(k) .. "]")
+            table.insert(parts, key .. " = " .. serialize(val))
+        end
+        return "{ " .. table.concat(parts, ", ") .. " }"
+    end
+    return "nil"
+end
+
+local function saveDisplayState(state)
     local escapedDir = STATE_DIR:gsub("'", "'\\''")
     os.execute("mkdir -p -- '" .. escapedDir .. "'")
     local f = io.open(STATE_FILE, "w")
     if not f then return end
-    f:write("return " .. tostring(active) .. "\n")
+    f:write("return " .. serialize(state) .. "\n")
     f:close()
 end
 
@@ -253,8 +272,84 @@ local function applyDisplayMode(active)
     end
 end
 
-local mirrorActive = loadMirrorActive()
+local displayState = loadDisplayState()
+local mirrorActive = displayState.mirror == true
 applyDisplayMode(mirrorActive)
+
+-- ---- workspace restore across mirror -> extend ----
+-- Mirroring takes the external outputs out of the layout, so Hyprland moves
+-- every workspace they owned onto the remaining panel; switching back to
+-- extend then leaves them all there (plus whatever workspaces.lua's
+-- monitor.added pool logic hands the returning outputs). So before mirroring,
+-- record per monitor which workspace was on screen and which workspaces it
+-- owned, and put that back once the outputs have actually returned.
+-- Persisted with the mirror flag, so a config save (full Lua VM reset, see
+-- above) while mirrored doesn't lose it.
+
+-- { [monitor name] = { active = id, owned = { id, ... } } }
+local function snapshotWorkspaces()
+    local snapshot = {}
+    for _, m in ipairs(hl.get_monitors()) do
+        snapshot[m.name] = { active = m.active_workspace and m.active_workspace.id or nil, owned = {} }
+    end
+    for _, ws in ipairs(hl.get_workspaces()) do
+        -- Only real workspaces worth putting back: on screen or holding
+        -- windows. Special (scratchpad) workspaces aren't per-monitor.
+        if not ws.special and ws.id > 0 and ws.monitor and snapshot[ws.monitor.name]
+            and (ws.visible or (ws.windows or 0) > 0) then
+            table.insert(snapshot[ws.monitor.name].owned, ws.id)
+        end
+    end
+    return snapshot
+end
+
+-- Outputs come back asynchronously after hl.monitor({ mirror = "none" }), and
+-- can briefly report a 0x0 mode while renegotiating (see parseMonitorsConfig's
+-- comment), so this polls until every saved output that's still configured is
+-- back with a real mode -- giving up waiting after RESTORE_WAIT_TRIES and
+-- restoring whatever is there, so an output unplugged while mirrored can't
+-- block the rest.
+local RESTORE_POLL_MS    = 250
+local RESTORE_WAIT_TRIES = 20
+
+local function restoreWorkspaces(snapshot, attempt)
+    attempt = attempt or 0
+    if attempt < RESTORE_WAIT_TRIES then
+        for name in pairs(snapshot) do
+            if extendLayout[name] or name == INTERNAL_PANEL then
+                local m = hl.get_monitor(name)
+                if not m or not m.width or m.width == 0 then
+                    hl.timer(function() restoreWorkspaces(snapshot, attempt + 1) end,
+                        { timeout = RESTORE_POLL_MS, type = "oneshot" })
+                    return
+                end
+            end
+        end
+    end
+
+    -- Ownership first, then what's on screen: moving a workspace that's
+    -- currently shown somewhere would otherwise disturb a monitor that was
+    -- already restored.
+    for name, saved in pairs(snapshot) do
+        if hl.get_monitor(name) then
+            for _, id in ipairs(saved.owned or {}) do
+                local ws = hl.get_workspace(tostring(id))
+                if ws and ws.monitor and ws.monitor.name ~= name then
+                    hl.dispatch(hl.dsp.workspace.move({ workspace = tostring(id), monitor = name }))
+                end
+            end
+        end
+    end
+    for name, saved in pairs(snapshot) do
+        local m = hl.get_monitor(name)
+        -- Only if it still exists: a workspace emptied (and so recycled)
+        -- while mirrored is left to workspaces.lua's pool logic instead of
+        -- being recreated empty here.
+        if m and saved.active and hl.get_workspace(tostring(saved.active)) then
+            m:set_workspace({ workspace = tostring(saved.active) })
+        end
+    end
+end
 
 -- LTTPR link-training recovery: a monitor flapping (disconnect/reconnect)
 -- through a dock or long/active DP cable -- see workspaces.lua's own
@@ -339,8 +434,21 @@ hl.bind(mainMod .. " + P", function()
     if #otherOutputNames() == 0 then return end -- nothing to mirror/extend (undocked)
 
     mirrorActive = not mirrorActive
-    saveMirrorActive(mirrorActive)
-    applyDisplayMode(mirrorActive)
+    if mirrorActive then
+        -- Snapshot while every output is still in the layout.
+        displayState = { mirror = true, workspaces = snapshotWorkspaces() }
+        saveDisplayState(displayState)
+        applyDisplayMode(true)
+    else
+        local snapshot = displayState.workspaces
+        displayState = { mirror = false }
+        saveDisplayState(displayState)
+        applyDisplayMode(false)
+        if snapshot then
+            hl.timer(function() restoreWorkspaces(snapshot) end,
+                { timeout = RESTORE_POLL_MS * 2, type = "oneshot" })
+        end
+    end
 
     -- Windows-11-style transient OSD (DisplayModeOSD.qml), same as the
     -- volume/backlight ones -- there's no PipeWire property or sysfs file to
