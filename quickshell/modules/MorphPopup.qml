@@ -41,12 +41,21 @@ PopupWindow {
         for (const c of list) {
             if (host._hooked.indexOf(c) === -1) {
                 host._hooked.push(c)
-                c.shownChanged.connect(host._updateActive)
+                c.shownChanged.connect(host._scheduleUpdate)
             }
         }
         host._contents = list
         host._updateActive()
     }
+    // Switching popups flips two contents' `shown` in one go (old -> false,
+    // new -> true), but their change signals arrive one at a time in
+    // creation order. Picking the active content synchronously on each one
+    // could land on "none shown" in between -- closing the card and
+    // re-opening it (no morph) -- whenever the old content's signal came
+    // first, which made morphing work in only one direction along the bar.
+    // Deferring to after both have settled sees the old -> new switch
+    // directly. (Qt.callLater collapses repeat calls in the same tick.)
+    function _scheduleUpdate() { Qt.callLater(host._updateActive) }
     function _updateActive() {
         host.activeContent = host._contents.find(c => c.shown === true) || null
     }
