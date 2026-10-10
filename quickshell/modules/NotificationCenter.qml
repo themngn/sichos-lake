@@ -12,8 +12,8 @@ Pill {
 
     // Set by Bar.qml to this instance's own screen/name, same pattern as
     // Weather/AiModelUsage/BluetoothIndicator -- `screen` is what the
-    // PanelWindow below actually renders on. Open/closed is shared across
-    // screens (ShellState.notificationCenterOpen).
+    // PanelWindow below actually renders on, `screenName` is just the
+    // string key ShellState.notificationCenterScreen compares against.
     property var screen: null
     property string screenName: ""
 
@@ -34,12 +34,12 @@ Pill {
             NotificationHistory.focusOrLaunchApp(entry.desktopEntry, entry.appName)
         }
         NotificationHistory.remove(entry.id)
-        ShellState.notificationCenterOpen = false
+        ShellState.notificationCenterScreen = ""
     }
-    readonly property bool panelOpen: ShellState.notificationCenterOpen
+    readonly property bool panelOpen: ShellState.notificationCenterScreen === root.screenName
 
     tooltipText: root.count > 0 ? root.count + " notification" + (root.count === 1 ? "" : "s") : "No notifications"
-    onClicked: ShellState.notificationCenterOpen = !ShellState.notificationCenterOpen
+    onClicked: ShellState.notificationCenterScreen = root.panelOpen ? "" : root.screenName
 
     // Ink heights (fontTools glyf bbox, units/1000em): bell-badge 700,
     // plain bell 684 -- close enough that a shared correction covers both,
@@ -77,7 +77,7 @@ Pill {
 
         MouseArea {
             anchors.fill: parent
-            onClicked: ShellState.notificationCenterOpen = false
+            onClicked: ShellState.notificationCenterScreen = ""
         }
 
         // Soft drop shadow under the card (drawn first, so beneath it) -- solid
