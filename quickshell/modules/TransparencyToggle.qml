@@ -14,7 +14,7 @@ Pill {
     property bool revealed: true
     signal toggle()
 
-    tooltipText: root.opaque ? "Opaque (click for semi-transparent)" : "Semi-transparent (click for opaque)"
+    tooltipText: root.opaque ? "Opaque" : "Semi-transparent"
     readonly property bool shown: root.opaque || root.revealed
     opacity: root.shown ? (root.opaque ? 1 : 0.5) : 0
     Behavior on opacity {

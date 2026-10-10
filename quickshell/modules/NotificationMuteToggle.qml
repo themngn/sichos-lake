@@ -13,7 +13,7 @@ Pill {
     property bool revealed: true
     signal toggle()
 
-    tooltipText: root.muted ? "Notifications muted (click to unmute)" : "Notifications on (click to mute)"
+    tooltipText: root.muted ? "Notifications muted" : "Notifications on"
 
     // Same red as MicMuteToggle's mutedColor -- kept local rather than
     // hoisted into Theme.qml for the same reason that one is: it belongs to

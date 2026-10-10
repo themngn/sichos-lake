@@ -12,7 +12,7 @@ Pill {
     property bool revealed: true
     signal toggle()
 
-    tooltipText: root.active ? "Bar on this screen only (click to show on all)" : "Bar on all screens (click for this screen only)"
+    tooltipText: root.active ? "Bar on this screen only" : "Bar on all screens"
     readonly property bool shown: root.active || root.revealed
     opacity: root.shown ? (root.active ? 1 : 0.5) : 0
     Behavior on opacity {

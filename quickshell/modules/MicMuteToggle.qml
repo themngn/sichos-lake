@@ -16,7 +16,7 @@ Pill {
     property bool revealed: true
 
     readonly property bool muted: root.source && root.source.audio ? root.source.audio.muted : false
-    tooltipText: !root.source ? "No microphone" : (root.muted ? "Mic muted (click to unmute)" : "Mic live (click to mute)")
+    tooltipText: !root.source ? "No microphone" : (root.muted ? "Mic muted" : "Mic live")
 
     // Matches the custom alert-widget's (~/.config/quickshell/custom/alert-widget)
     // colRed — not in Theme.qml since that widget lives outside this repo, but
