@@ -112,7 +112,7 @@ Pill {
 
     function cliIconForToplevel(t) {
         const cls = root.classForToplevel(t)
-        if (cls.toLowerCase() !== "kitty") return null
+        if (!cls || cls.toLowerCase() !== "kitty") return null
         const pid = t.lastIpcObject ? t.lastIpcObject.pid : null
         if (!pid) return null
         const key = root.kittyCliMap[String(pid)]
@@ -179,6 +179,13 @@ Pill {
             return a.id - b.id
         })
         return list
+    }
+
+    // Right-click menu: move/swap a workspace across monitors. Shows nothing
+    // (stays closed) for a workspace where no such option is possible.
+    WorkspaceMenu {
+        id: workspaceMenu
+        poolSize: root.poolSize
     }
 
     Row {
@@ -264,7 +271,19 @@ Pill {
                     id: wsMouse
                     anchors.fill: parent
                     hoverEnabled: true
-                    onClicked: modelData.placeholder ? Hyprland.dispatch("workspace " + modelData.id) : modelData.activate()
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    onClicked: mouse => {
+                        if (mouse.button === Qt.RightButton) {
+                            // Fresh model names for the menu's monitor labels.
+                            Hyprland.refreshMonitors()
+                            // Close any hover popup first (one popup at a time).
+                            ShellState.activePopup = ""
+                            workspaceMenu.anchorItem = wsItem
+                            workspaceMenu.workspace = modelData
+                            return
+                        }
+                        modelData.placeholder ? Hyprland.dispatch("workspace " + modelData.id) : modelData.activate()
+                    }
                 }
             }
         }

@@ -430,3 +430,64 @@ for i = 1, 10 do
     hl.bind(mainMod .. " + SHIFT + " .. key,       function() moveWindowToWorkspace(id, false) end)
     hl.bind(mainMod .. " + SHIFT + ALT + " .. key, function() moveWindowToWorkspace(id, true) end)
 end
+
+----------------------------------------------
+---- BAR: move / swap a workspace across monitors ----
+----------------------------------------------
+
+-- Called from the quickshell bar's workspace right-click menu
+-- (quickshell/modules/WorkspaceMenu.qml) via
+-- `hyprctl eval 'SichosWorkspaces.moveToMonitor(id, "DP-2")'`. Globals, not
+-- locals, because that's the only way an eval reaches into this file -- and
+-- re-defined on every config load, so they always see the current Lua VM
+-- (see the file-level comment on reinitLuaState()). The bar decides which
+-- options to *show* from its own live view of the same state; these re-check
+-- everything here anyway, since that view can be a tick stale.
+SichosWorkspaces = {}
+
+-- Moves workspace `id` onto `target` and shows it there. If it was the
+-- workspace on screen on its old monitor, that monitor is refilled with the
+-- lowest Available Pool workspace (same Tier-1 pick bindMonitor() uses) instead
+-- of whatever placeholder Hyprland's own moveWorkspaceToMonitor would plug the
+-- gap with -- and without a free pool workspace the move is refused, since the
+-- old monitor would otherwise be left on an id outside the pool.
+function SichosWorkspaces.moveToMonitor(id, target)
+    local key = tostring(id)
+    local ws  = hl.get_workspace(key)
+    if not ws or ws.special or not ws.monitor or not hl.get_monitor(target) then return end
+    local source = ws.monitor.name
+    if source == target then return end
+
+    -- Captured up front: `ws` may reflect live state, and it changes once
+    -- the move below is dispatched.
+    local wasVisible = ws.visible
+    local refill = nil
+    if wasVisible then
+        refill = lowestPoolWorkspace()
+        if not refill then return end
+    end
+
+    hl.dispatch(hl.dsp.workspace.move({ workspace = key, monitor = target }))
+    -- A workspace that was on screen stays on screen across the move
+    -- (moveWorkspaceToMonitor's SWITCHINGISACTIVE path); a hidden one only
+    -- changes owner, so bring it up explicitly -- "move it there" should mean
+    -- you can see it there either way.
+    if not wasVisible then
+        hl.dispatch(hl.dsp.focus({ workspace = key }))
+    end
+
+    if refill then
+        local mon = hl.get_monitor(source)
+        if mon then mon:set_workspace({ workspace = tostring(refill) }) end
+    end
+end
+
+-- Swaps the workspace on screen on `id`'s monitor with the one on screen on
+-- `target`. Only meaningful while `id` is the one on screen (swap_monitors
+-- acts on each monitor's active workspace), so anything else is ignored.
+function SichosWorkspaces.swapWithMonitor(id, target)
+    local ws = hl.get_workspace(tostring(id))
+    if not ws or ws.special or not ws.visible or not ws.monitor or not hl.get_monitor(target) then return end
+    if ws.monitor.name == target then return end
+    hl.dispatch(hl.dsp.workspace.swap_monitors({ monitor1 = ws.monitor.name, monitor2 = target }))
+end
