@@ -612,22 +612,34 @@ echo "==> dnf-automatic (unattended security updates)"
 if [ "${SKIP_DNF_AUTOMATIC:-1}" = "1" ]; then
     echo "    skipped"
 else
-    if ! rpm -q dnf-automatic >/dev/null 2>&1; then
+    # dnf5 era: "dnf-automatic" is only a virtual Provides of
+    # dnf5-plugin-automatic, so `rpm -q dnf-automatic` (by name) never
+    # matches -- --whatprovides does.
+    if ! rpm -q --whatprovides dnf-automatic >/dev/null 2>&1; then
         sudo dnf install -y dnf-automatic
     fi
+    # Under dnf5 the package ships its defaults in
+    # /usr/share/dnf5/dnf5-plugins/automatic.conf ("do not edit") and only
+    # %ghost-owns /etc/dnf/automatic.conf, which is a host-overrides layer
+    # applied on top (dnf5-automatic(8)) and doesn't exist after install --
+    # the old dnf4-style `sed -i` on it failed and, under `set -e`, aborted
+    # the whole script. So write just the overrides instead.
     # security only, not upgrade_type=default -- feature/version bumps stay a
     # deliberate action via gnome-software/install.sh, this only closes the gap
-    # for CVEs between those manual sessions. emit_via=stdio instead of the
-    # config's default email: no local MTA is set up on this box, so mail
+    # for CVEs between those manual sessions. emit_via=stdio (dnf5's default
+    # too, pinned explicitly): no local MTA is set up on this box, so email
     # delivery would just fail silently. Sits right after the Btrfs snapshot
     # step above on purpose -- snapper's timeline timer means an unattended
     # update that breaks something is still one `snapper rollback` away.
-    sudo sed -i \
-        -e 's/^upgrade_type = .*/upgrade_type = security/' \
-        -e 's/^apply_updates = .*/apply_updates = yes/' \
-        -e 's/^emit_via = .*/emit_via = stdio/' \
-        /etc/dnf/automatic.conf
-    sudo systemctl enable --now dnf-automatic.timer
+    cat <<'EOF' | sudo tee /etc/dnf/automatic.conf >/dev/null
+[commands]
+upgrade_type = security
+apply_updates = yes
+
+[emitters]
+emit_via = stdio
+EOF
+    sudo systemctl enable --now dnf5-automatic.timer
     echo "    installed, security updates applied automatically (daily)"
 fi
 
