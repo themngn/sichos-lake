@@ -54,8 +54,10 @@ PanelWindow {
 
     Image {
         id: cover
-        readonly property string artUrl: NowPlayingState.spotify ? (NowPlayingState.spotify.trackArtUrl || "") : ""
-        visible: artUrl !== ""
+        // Local copy downloaded once by NowPlayingState (see artPath there
+        // for the crash this avoids), so synchronous loading is cheap and
+        // never leaves an in-flight load behind on a source change.
+        visible: NowPlayingState.artPath !== ""
         anchors {
             top: parent.top
             left: parent.left
@@ -63,8 +65,8 @@ PanelWindow {
         width: visible ? root.coverSize : 0
         height: root.coverSize
         fillMode: Image.PreserveAspectCrop
-        asynchronous: true
-        source: artUrl
+        asynchronous: false
+        source: NowPlayingState.artPath
     }
 
     Text {

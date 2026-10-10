@@ -1,6 +1,7 @@
 pragma Singleton
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Quickshell.Services.Mpris
 
 // Shared "now playing" toast state, factored out of NowPlaying.qml so it can
@@ -26,6 +27,54 @@ QtObject {
     readonly property string trackTitle: root.spotify ? (root.spotify.trackTitle || "") : ""
 
     property bool visible: false
+
+    // Local file:// copy of the current track's cover, or "" while none is
+    // downloaded yet. NowPlaying.qml used to point its Image straight at
+    // Spotify's https trackArtUrl, which crashed quickshell outright
+    // (SIGSEGV in QQuickPixmap::clear -> QObject::disconnect, confirmed
+    // from the crash report) on a track change: each per-screen window
+    // had its own async network load in flight, and switching source
+    // mid-load disconnected from a reply Qt had already torn down.
+    // Downloading once here and handing every window a local file (loaded
+    // synchronously there) leaves no network reply for Qt to clean up.
+    property string artPath: ""
+    readonly property string artUrl: root.spotify ? (root.spotify.trackArtUrl || "") : ""
+    readonly property string _artDir: Quickshell.env("XDG_RUNTIME_DIR") + "/sichos-nowplaying"
+    property string _artFetching: ""
+
+    onArtUrlChanged: {
+        root.artPath = ""
+        if (root.artUrl !== "" && !_artProc.running) root._fetchArt()
+    }
+
+    function _fetchArt() {
+        root._artFetching = root.artUrl
+        // Spotify's art URLs end in a stable per-image hash, so it doubles
+        // as the file name; everything else in the dir is a previous
+        // track's cover and gets dropped so this never grows.
+        const name = root.artUrl.replace(/.*\//, "").replace(/[^A-Za-z0-9]/g, "") || "cover"
+        _artProc.dest = root._artDir + "/" + name
+        _artProc.command = ["sh", "-c",
+            'mkdir -p "$1" && find "$1" -type f ! -path "$2" -delete; [ -s "$2" ] || { curl -sfL --max-time 15 -o "$2.part" "$3" && mv "$2.part" "$2"; }',
+            "sh", root._artDir, _artProc.dest, root.artUrl]
+        _artProc.running = true
+    }
+
+    property Process _artProc: Process {
+        id: _artProc
+        property string dest: ""
+        onExited: (code) => {
+            // Track changed again mid-download -- fetch the new one instead
+            // of showing a stale cover.
+            if (root._artFetching !== root.artUrl) {
+                if (root.artUrl !== "") root._fetchArt()
+                return
+            }
+            if (code === 0) root.artPath = "file://" + _artProc.dest
+        }
+    }
+
+    Component.onCompleted: if (root.artUrl !== "") root._fetchArt()
 
     // "Artist: " prefix — frozen (not re-animated) across a track change
     // where the artist stays the same, so back-to-back tracks off the same
