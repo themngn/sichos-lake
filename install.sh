@@ -661,6 +661,35 @@ else
     echo "    installed to ~/.local/share/fonts/JetBrainsMonoNerdFont"
 fi
 
+echo "==> Microsoft core fonts"
+
+# Arial/Times New Roman/Verdana/etc. — not packaged by Fedora or RPM Fusion
+# (licence forbids redistribution). The usual Fedora route, the
+# msttcore-fonts-installer RPM, just wraps this same download in a
+# system-wide rpm build; fetching the original corefonts .exe cabinets from
+# SourceForge and cabextract-ing the .ttf files into ~/.local/share/fonts
+# does the same thing with no sudo, mirroring the Nerd Font step above.
+if fc-list | grep -qi "Times New Roman"; then
+    echo "    already installed"
+else
+    MSFONTS_TMP="$(mktemp -d)"
+    MSFONTS_DIR="$HOME/.local/share/fonts/MSCoreFonts"
+    mkdir -p "$MSFONTS_DIR"
+    echo "    downloading from SourceForge corefonts"
+    for cab in andale32 arial32 arialb32 comic32 courie32 georgi32 impact32 \
+               times32 trebuc32 verdan32 webdin32; do
+        if curl -fsSL --retry 3 -o "$MSFONTS_TMP/$cab.exe" \
+                "https://downloads.sourceforge.net/corefonts/$cab.exe"; then
+            cabextract -q -L -F '*.ttf' -d "$MSFONTS_DIR" "$MSFONTS_TMP/$cab.exe"
+        else
+            echo "    WARNING: failed to download $cab.exe, skipping"
+        fi
+    done
+    rm -rf "$MSFONTS_TMP"
+    fc-cache -f "$MSFONTS_DIR" >/dev/null
+    echo "    installed to ~/.local/share/fonts/MSCoreFonts"
+fi
+
 echo "==> Hyprland config"
 
 for f in "$HERE"/hypr/*; do
