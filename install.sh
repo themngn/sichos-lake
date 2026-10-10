@@ -9,6 +9,8 @@
 #     keyring backend and show a blocking dialog on every launch)
 #   - the JetBrainsMono Nerd Font (not packaged by Fedora; fetched from
 #     upstream nerd-fonts releases)
+#   - the Microsoft core fonts (Arial, Times New Roman, Verdana, ...) into
+#     ~/.local/share/fonts/MSCoreFonts, from SourceForge's corefonts cabinets
 #   - the Hyprland Lua config (~/.config/hypr)
 #   - the full quickshell config (~/.config/quickshell)
 #   - HyprQuickFrame (github.com/Ronin-CK/HyprQuickFrame), a quickshell-based
@@ -1140,12 +1142,24 @@ echo "    retitled existing boot entries"
 
 echo "==> Plymouth 'unlock' theme"
 
-if ! rpm -q plymouth-plugin-script >/dev/null 2>&1; then
-    echo "    installing plymouth-plugin-script"
-    sudo dnf install -y plymouth-plugin-script
-else
-    echo "    plymouth-plugin-script already installed"
-fi
+# plymouth-plugin-label is load-bearing, not just for the script's Image.Text:
+# without a label plugin, ply_console_viewer_preferred() decides "text
+# rendering isn't working" and leaves every display's console_viewer NULL,
+# and plymouth 26.134 (F45) then segfaults on the very first sprite refresh
+# (script_lib_sprite_refresh -> ply_console_viewer_hide(NULL), fixed upstream
+# in plymouth MR !400, Aug 2026) — boot dies to a backtrace instead of the
+# LUKS prompt. Stock Fedora only avoids it because the default spinner/bgrt
+# theme pulls the label plugin in; a minimal install with only this theme
+# doesn't. The package ships label-freetype.so, which
+# plymouth-populate-initrd picks up (plus a fallback font) on its own.
+for pkg in plymouth-plugin-script plymouth-plugin-label; do
+    if ! rpm -q "$pkg" >/dev/null 2>&1; then
+        echo "    installing $pkg"
+        sudo dnf install -y "$pkg"
+    else
+        echo "    $pkg already installed"
+    fi
+done
 
 sudo mkdir -p /usr/share/plymouth/themes/unlock
 sudo cp "$HERE"/plymouth/unlock/* /usr/share/plymouth/themes/unlock/

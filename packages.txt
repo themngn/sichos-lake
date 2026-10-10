@@ -15,6 +15,8 @@ unzip                     # extracts the JetBrainsMono Nerd Font zip in install.
                           # "==> JetBrainsMono Nerd Font" step — not guaranteed
                           # present on a minimal Fedora install the way curl (a
                           # hard Requires of the rpm package itself) is
+cabextract                # unpacks the Microsoft core fonts cabinets in install.sh's
+                          # "==> Microsoft core fonts" step
 nautilus                 # $fileManager in hyprland.lua/programs.lua (SUPER+E, SUPER+SHIFT+F)
 hyprpaper                # autostart.lua: wallpaper daemon
 hyprlock                  # screen locker (SUPER+L, keybindings.lua) — from the same
