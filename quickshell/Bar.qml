@@ -32,7 +32,8 @@ PanelWindow {
         || ShellState.barSoloScreen === bar.screen.name
         || !Quickshell.screens.some(s => s.name === ShellState.barSoloScreen)
 
-    // Transparent over an empty desktop, 80% opaque once this monitor's
+    // Transparent over an empty desktop, semi-opaque (BarSettings.terminalOpacity,
+    // the transparency popup's slider -- the same level kitty uses) once this monitor's
     // active workspace actually has a window on it — otherwise the bar
     // reads as "floating over the wallpaper" when there's nothing behind
     // it to separate from, and gets a real backdrop the moment there is.
@@ -63,7 +64,7 @@ PanelWindow {
         return Hyprland.toplevels.values.some(t => t.workspace && t.workspace.id === wsId)
     }
 
-    readonly property color opaqueBackground: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, 0.8)
+    readonly property color opaqueBackground: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, BarSettings.terminalOpacity)
     readonly property color fullyOpaqueBackground: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, 1.0)
     // Confirmed live: on a bitdepth=10 (HDR, see HdrSettings.apply) output,
     // any non-opaque bar surface bands/noises constantly — worse the closer

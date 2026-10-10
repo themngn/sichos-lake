@@ -126,8 +126,9 @@ QtObject {
             id: adapter
             property var disabled: []
             property var unpinnedToggles: []
-            // Terminal (kitty) opacity in the transparency toggle's "semi"
-            // mode -- see ShellState.setTerminalOpacity.
+            // Opacity in the transparency toggle's "semi" mode, shared by
+            // kitty and the bar's backdrop over windows (Bar.qml's
+            // opaqueBackground) -- see ShellState.setTerminalOpacity.
             property real terminalOpacity: 0.8
             property var order: ["claude-usage", "system-update", "tray", "language", "bluetooth", "network",
                                   "volume", "backlight", "display", "powerprofile", "battery", "notifications"]

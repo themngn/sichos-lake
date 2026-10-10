@@ -2,7 +2,7 @@ import QtQuick
 import Quickshell
 
 // Transparency popup for TransparencyToggle.qml: Semi/Opaque switch plus the
-// terminal's opacity in semi mode. Same MorphContent shape
+// semi mode's opacity (kitty and the bar). Same MorphContent shape
 // as GameFocusPopup.qml. Both go through ShellState (setTransparencyOpaque/
 // setTerminalOpacity), which owns pushing the change to kitty.
 MorphContent {
@@ -99,7 +99,7 @@ MorphContent {
                 }
             }
 
-            // Semi mode's terminal opacity, 50-95% in 5% steps (100% is
+            // Semi mode's opacity for kitty and the bar, 50-95% in 5% steps (100% is
             // what "Opaque" is for). Applies live while in semi mode; while
             // opaque it just presets the level to come back to.
             Column {
@@ -111,7 +111,7 @@ MorphContent {
                     height: 14
                     Text {
                         anchors.left: parent.left
-                        text: "Terminal opacity"
+                        text: "Opacity"
                         color: Theme.textMuted
                         font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize - 1
@@ -156,7 +156,7 @@ MorphContent {
                 wrapMode: Text.WordWrap
                 text: ShellState.transparencyOpaque
                     ? "Bar and terminals fully opaque"
-                    : "Bar transparent over an empty desktop; terminals at " + Math.round(BarSettings.terminalOpacity * 100) + "%"
+                    : "Bar and terminals at " + Math.round(BarSettings.terminalOpacity * 100) + "%; bar clear over an empty desktop"
                 color: Theme.textDim
                 font.family: Theme.uiFontFamily
                 font.pixelSize: Theme.fontSize - 2
