@@ -26,5 +26,6 @@ ShellRoot {
     BacklightOSD {}
     KbdBacklightOSD {}
     DisplayModeOSD {}
+    MicOSD {}
     Notifications {}
 }

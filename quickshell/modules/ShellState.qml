@@ -12,6 +12,10 @@ QtObject {
 
     // Name of currently active open hover popup (e.g. "ai-model-usage", "sunset", "idle", "weather", "calendar", or "")
     // When any popup is open, hovering over another bar widget opens it IMMEDIATELY without delay.
+    // Which OSD (VolumeOSD, BacklightOSD, ...) popped most recently. They all
+    // share one spot on screen, so each hides itself as soon as a different
+    // one takes over instead of stacking on top of it.
+    property string activeOsd: ""
     property string activePopup: ""
 
     // Screen (Quickshell ScreenInfo.name) that opened activePopup. Each per-screen

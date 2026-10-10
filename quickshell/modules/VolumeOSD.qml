@@ -29,13 +29,28 @@ PanelWindow {
     }
     margins.bottom: 90
 
-    implicitWidth: 260
+    // Same width on every OSD; the content stretches to fill it (see the Row
+    // below). Same visible padding on both sides: the icon's box is wider than
+    // its ink, so the left margin is reduced by that slack.
+    readonly property real leftPadding: Theme.surfacePadding - (Theme.osdIconBox - Theme.osdIconSize) / 2
+    implicitWidth: Theme.osdWidth
     implicitHeight: 64
 
     Connections {
         target: osd.sink ? osd.sink.audio : null
         function onVolumeChanged() { osd.pop() }
         function onMutedChanged() { osd.pop() }
+    }
+
+    // Only the most recent OSD shows: another one popping hides this one.
+    Connections {
+        target: ShellState
+        function onActiveOsdChanged() {
+            if (ShellState.activeOsd !== "volume") {
+                hideTimer.stop()
+                osd.visible = false
+            }
+        }
     }
 
     Timer {
@@ -47,22 +62,9 @@ PanelWindow {
     function pop() {
         osd.visible = true
         hideTimer.restart()
+        ShellState.activeOsd = "volume"
     }
 
-    // Per-icon correction: these Nerd Font glyphs don't share a consistent
-    // bounding box within their advance cell. Measured directly from the
-    // font's glyf table (ink height in font units, 1000/em): mute/zero 508
-    // (nf-md-volume_mute), low 431 (nf-fa-volume_down), medium 421
-    // (nf-fa-volume), high 432 (nf-fa-volume_up) — scaled here so all four
-    // render at the same effective visual height instead of Nerd Font's
-    // inconsistent one.
-    function iconScale() {
-        const ic = osd.icon()
-        if (ic === "") return 1.179
-        if (ic === "") return 1.207
-        if (ic === "") return 1.176
-        return 1.0
-    }
 
     function icon() {
         if (!sink || !sink.audio) return ""
@@ -81,36 +83,36 @@ PanelWindow {
         border.color: Theme.surfaceBorder
         border.width: Theme.surfaceBorderWidth
 
+        // Left-anchored, not centered: centering the whole row put the
+        // icon at a different x on every OSD (it depends on what follows it).
+        // Spans the card; the slider (or the label) takes whatever width the
+        // icon doesn't, so nothing leaves dead space at the right edge.
         Row {
-            anchors.centerIn: parent
+            id: content
+            anchors.left: parent.left
+            anchors.leftMargin: osd.leftPadding
+            anchors.right: parent.right
+            anchors.rightMargin: Theme.surfacePadding
+            anchors.verticalCenter: parent.verticalCenter
             spacing: 14
 
-            Item {
+            OsdIcon {
+                id: osdIcon
                 anchors.verticalCenter: parent.verticalCenter
-                width: Theme.fontSize * 3
-                height: Theme.fontSize * 3
-
-                Text {
-                    // Left-aligned, not centered: these icons vary in width
-                    // (more sound waves = wider), and centering would shift
-                    // the speaker-cone part of the glyph side to side as it
-                    // changes. Left-aligning pins the cone to one spot.
-                    anchors {
-                        left: parent.left
-                        leftMargin: 10
-                        verticalCenter: parent.verticalCenter
-                    }
-                    text: osd.icon()
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize * 3 * osd.iconScale()
-                    color: osd.sink && osd.sink.audio && osd.sink.audio.muted ? Theme.textDim : Theme.text
-                }
+                glyph: osd.icon()
+                color: osd.sink && osd.sink.audio && osd.sink.audio.muted ? Theme.textDim : Theme.text
+                // The volume glyphs grow to the right (more sound waves), so
+                // pin their left edge rather than centering them. Ink left
+                // edge per glyph at pixelSize 100, measured; the widest
+                // glyphs fill the cell (0).
+                alignLeft: true
+                inkLeft: ({ "\uefcf": 6, "\uf027": 9 })[glyph] || 0
             }
 
             Rectangle {
                 id: track
                 anchors.verticalCenter: parent.verticalCenter
-                width: 130
+                width: content.width - osdIcon.width - percentText.width - 2 * content.spacing
                 height: Theme.trackHeight
                 radius: Theme.trackRadius
                 color: Theme.track
@@ -127,8 +129,11 @@ PanelWindow {
                 // Fixed width (wide enough for "100%") so the digit count
                 // changing (0% vs 50% vs 100%) doesn't shift/reflow the
                 // rest of the row.
+                id: percentText
                 anchors.verticalCenter: parent.verticalCenter
                 width: Theme.fontSize * 2.5
+                // Right-aligned so a short value ("7%") doesn't leave a gap at the card's edge.
+                horizontalAlignment: Text.AlignRight
                 text: (osd.sink && osd.sink.audio ? Math.round(osd.sink.audio.volume * 100) : 0) + "%"
                 font.family: Theme.uiFontFamily
                 font.pixelSize: Theme.fontSize

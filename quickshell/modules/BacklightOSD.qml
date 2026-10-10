@@ -43,8 +43,23 @@ PanelWindow {
     }
     margins.bottom: 90
 
-    implicitWidth: 260
+    // Same width on every OSD; the content stretches to fill it (see the Row
+    // below). Same visible padding on both sides: the icon's box is wider than
+    // its ink, so the left margin is reduced by that slack.
+    readonly property real leftPadding: Theme.surfacePadding - (Theme.osdIconBox - Theme.osdIconSize) / 2
+    implicitWidth: Theme.osdWidth
     implicitHeight: 64
+
+    // Only the most recent OSD shows: another one popping hides this one.
+    Connections {
+        target: ShellState
+        function onActiveOsdChanged() {
+            if (ShellState.activeOsd !== "backlight") {
+                hideTimer.stop()
+                osd.visible = false
+            }
+        }
+    }
 
     Timer {
         id: hideTimer
@@ -55,6 +70,7 @@ PanelWindow {
     function pop() {
         osd.visible = true
         hideTimer.restart()
+        ShellState.activeOsd = "backlight"
     }
 
     // Same moon-phase glyph set as Backlight.qml's icon() -- kept identical
@@ -73,30 +89,30 @@ PanelWindow {
         border.color: Theme.surfaceBorder
         border.width: Theme.surfaceBorderWidth
 
+        // Left-anchored, not centered: centering the whole row put the
+        // icon at a different x on every OSD (it depends on what follows it).
+        // Spans the card; the slider (or the label) takes whatever width the
+        // icon doesn't, so nothing leaves dead space at the right edge.
         Row {
-            anchors.centerIn: parent
+            id: content
+            anchors.left: parent.left
+            anchors.leftMargin: osd.leftPadding
+            anchors.right: parent.right
+            anchors.rightMargin: Theme.surfacePadding
+            anchors.verticalCenter: parent.verticalCenter
             spacing: 14
 
-            Item {
+            OsdIcon {
+                id: osdIcon
                 anchors.verticalCenter: parent.verticalCenter
-                width: Theme.fontSize * 3
-                height: Theme.fontSize * 3
-
-                Text {
-                    anchors.centerIn: parent
-                    text: osd.icon()
-                    font.family: Theme.fontFamily
-                    // Material Design brightness glyphs ink ~600/1000em
-                    // (fontTools glyf bbox) -- same scale Backlight.qml uses.
-                    font.pixelSize: Theme.fontSize * 3 * 600 / 1000
-                    color: Theme.text
-                }
+                glyph: osd.icon()
+                color: Theme.text
             }
 
             Rectangle {
                 id: track
                 anchors.verticalCenter: parent.verticalCenter
-                width: 130
+                width: content.width - osdIcon.width - percentText.width - 2 * content.spacing
                 height: Theme.trackHeight
                 radius: Theme.trackRadius
                 color: Theme.track
@@ -112,6 +128,9 @@ PanelWindow {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 width: Theme.fontSize * 2.5
+                // Right-aligned so a short value ("7%") doesn't leave a gap at the card's edge.
+                horizontalAlignment: Text.AlignRight
+                id: percentText
                 text: osd.percent + "%"
                 font.family: Theme.uiFontFamily
                 font.pixelSize: Theme.fontSize

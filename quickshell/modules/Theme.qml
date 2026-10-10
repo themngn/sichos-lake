@@ -88,6 +88,13 @@ QtObject {
     // Open animation for popups/menus (SurfaceAppear.qml): fade + scale-up.
     readonly property int openDuration: 160
     readonly property real openScaleFrom: 0.94
+    // The big glyph on every OSD (OsdIcon.qml): the box it sits in, and the
+    // size of the square its ink is scaled to fit, whatever the glyph's own
+    // proportions.
+    readonly property int osdIconBox: fontSize * 3
+    readonly property int osdIconSize: 30
+    // Every OSD's width, whatever it shows.
+    readonly property int osdWidth: 260
     // Dims the desktop behind fullscreen overlays (launcher, notification center).
     readonly property color backdrop: Qt.rgba(0, 0, 0, 0.35)
     // Dark text drawn on a light fill (e.g. the calendar's "today" dot).
