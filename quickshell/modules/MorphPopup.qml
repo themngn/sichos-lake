@@ -106,7 +106,7 @@ PopupWindow {
         }
     }
 
-    Rectangle {
+    Squircle {
         id: card
         SurfaceAppear { target: card; shown: host.visible }
         // Deferred a tick: contents reparent in here while their own
@@ -134,9 +134,9 @@ PopupWindow {
         height: card.targetHeight
         clip: true
         color: Theme.surfaceFor(host.screen)
-        border.color: Theme.surfaceBorder
-        border.width: Theme.surfaceBorderWidth
-        radius: Theme.surfaceRadius
+        borderColor: Theme.surfaceBorder
+        borderWidth: Theme.surfaceBorderWidth
+        radius: Theme.surfaceSquircleRadius
 
         Behavior on x {
             enabled: host._morph

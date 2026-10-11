@@ -108,6 +108,18 @@ QtObject {
     readonly property int osdIconSize: 30
     // Every OSD's width, whatever it shows.
     readonly property int osdWidth: 260
+    // Squircle.qml corners (continuous, iOS-style): every surface card --
+    // OSDs, popups, menus, launcher, pickers, notifications. Controls
+    // inside them still use plain controlRadius Rectangles.
+    // Smoothing 0.6 is Apple's (0 = plain arcs). At the same radius a
+    // squircle corner reads tighter than a circular one -- the curve starts
+    // further out but bends later -- so it takes a slightly larger radius to
+    // look as round as surfaceRadius.
+    readonly property real cornerSmoothing: 0.5
+    readonly property int surfaceSquircleRadius: 14
+    // OSDs are short (64px) single-row cards; the surface radius made them
+    // read as pills.
+    readonly property int osdSquircleRadius: 10
     // Dims the desktop behind fullscreen overlays (launcher, notification center).
     readonly property color backdrop: Qt.rgba(0, 0, 0, 0.35)
     // Dark text drawn on a light fill (e.g. the calendar's "today" dot).

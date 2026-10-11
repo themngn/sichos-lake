@@ -99,7 +99,7 @@ Pill {
             transformOrigin: box.transformOrigin
         }
 
-        Rectangle {
+        Squircle {
             id: box
             SurfaceAppear { target: box; shown: panel.visible; origin: Item.Right }
             width: 380
@@ -113,9 +113,9 @@ Pill {
                 margins: 8
             }
             color: Theme.surfaceFor(panel.screen)
-            border.color: Theme.surfaceBorder
-            border.width: Theme.surfaceBorderWidth
-            radius: Theme.surfaceRadius
+            borderColor: Theme.surfaceBorder
+            borderWidth: Theme.surfaceBorderWidth
+            radius: Theme.surfaceSquircleRadius
 
             // Swallows clicks so they don't fall through to the outer
             // click-to-close MouseArea.

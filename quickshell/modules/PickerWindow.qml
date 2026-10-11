@@ -111,16 +111,16 @@ PanelWindow {
         transformOrigin: box.transformOrigin
     }
 
-    Rectangle {
+    Squircle {
         id: box
         SurfaceAppear { target: box; shown: win.visible; origin: Item.Center }
         width: win.cardWidth
         height: win.cardHeight
         anchors.centerIn: parent
         color: Theme.surfaceFor(win.screen)
-        border.color: Theme.surfaceBorder
-        border.width: Theme.surfaceBorderWidth
-        radius: Theme.surfaceRadius
+        borderColor: Theme.surfaceBorder
+        borderWidth: Theme.surfaceBorderWidth
+        radius: Theme.surfaceSquircleRadius
 
         MouseArea { anchors.fill: parent }
 

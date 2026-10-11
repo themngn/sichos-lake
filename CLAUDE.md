@@ -257,7 +257,10 @@ Everything else lives in `quickshell/modules/`:
 
 Every popup, OSD, the launcher and notifications share one card style driven entirely by `Theme.qml`
 tokens (`surface*`, `control*`, `hoverFill`/`selectedFill`, `track*`, `card*`, `surfacePadding`,
-`sectionSpacing`, `open*`) — new UI should use those tokens, not color/radius/size literals. Conventions
+`sectionSpacing`, `open*`) — new UI should use those tokens, not color/radius/size literals. Surface
+cards are `Squircle.qml` (continuous corners via QtQuick.Shapes; `radius: Theme.surfaceSquircleRadius`,
+`Theme.cornerSmoothing`, and `borderColor`/`borderWidth` instead of `border.*`), not `Rectangle` —
+controls inside them stay plain `controlRadius` Rectangles. Conventions
 the existing popups follow: header = `HeaderIcon { glyph: ... }` + bold title at `fontSize` in a `Row`;
 body text, buttons and checkboxes at `fontSize - 1`; section headings `fontSize - 2` in `textMuted`;
 captions `fontSize - 3`. Text uses `Theme.uiFontFamily` (Inter); anything that renders Nerd Font glyphs

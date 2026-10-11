@@ -327,7 +327,7 @@ Scope {
                 Repeater {
                     model: server.trackedNotifications
 
-                    delegate: Rectangle {
+                    delegate: Squircle {
                         id: toast
                         required property var modelData
                         readonly property var notification: modelData
@@ -383,9 +383,9 @@ Scope {
                         height: content.height + 2 * Theme.cardPadding
                         visible: !toast.hidden && !toast.isFollower
                         color: Theme.surfaceFor(win.screen)
-                        border.color: critical ? Theme.critical : Theme.surfaceBorder
-                        border.width: Theme.surfaceBorderWidth
-                        radius: Theme.surfaceRadius
+                        borderColor: critical ? Theme.critical : Theme.surfaceBorder
+                        borderWidth: Theme.surfaceBorderWidth
+                        radius: Theme.surfaceSquircleRadius
 
                         // Only ever hides the toast popup -- does not touch the
                         // underlying notification (no expire()/dismiss()/tracked

@@ -76,12 +76,12 @@ PanelWindow {
         return ""
     }
 
-    Rectangle {
+    Squircle {
         anchors.fill: parent
-        radius: Theme.surfaceRadius
+        radius: Theme.osdSquircleRadius
         color: Theme.surfaceFor(osd.screen)
-        border.color: Theme.surfaceBorder
-        border.width: Theme.surfaceBorderWidth
+        borderColor: Theme.surfaceBorder
+        borderWidth: Theme.surfaceBorderWidth
 
         // Left-anchored, not centered: centering the whole row put the
         // icon at a different x on every OSD (it depends on what follows it).

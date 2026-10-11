@@ -1010,16 +1010,16 @@ PanelWindow {
         transformOrigin: box.transformOrigin
     }
 
-    Rectangle {
+    Squircle {
         id: box
         SurfaceAppear { target: box; shown: launcher.visible; origin: Item.Center }
         width: 600
         height: 788 // 1.5x the original 525
         anchors.centerIn: parent
         color: Theme.surfaceFor(launcher.screen)
-        border.color: Theme.surfaceBorder
-        border.width: Theme.surfaceBorderWidth
-        radius: Theme.surfaceRadius
+        borderColor: Theme.surfaceBorder
+        borderWidth: Theme.surfaceBorderWidth
+        radius: Theme.surfaceSquircleRadius
 
         // Swallows clicks so they don't fall through to the outer
         // click-to-close MouseArea.

@@ -32,15 +32,15 @@ PopupWindow {
         return (codeInfo[code] && codeInfo[code].name) || code.toUpperCase()
     }
 
-    Rectangle {
+    Squircle {
         id: bg
         SurfaceAppear { target: bg; shown: popup.visible }
         implicitWidth: column.implicitWidth + 2 * Theme.surfacePadding
         implicitHeight: column.implicitHeight + 2 * Theme.surfacePadding
         color: Theme.surfaceFor(popup.screen)
-        border.color: Theme.surfaceBorder
-        border.width: Theme.surfaceBorderWidth
-        radius: Theme.surfaceRadius
+        borderColor: Theme.surfaceBorder
+        borderWidth: Theme.surfaceBorderWidth
+        radius: Theme.surfaceSquircleRadius
 
         Column {
             id: column

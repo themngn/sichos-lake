@@ -247,16 +247,16 @@ PanelWindow {
         transformOrigin: card.transformOrigin
     }
 
-    Rectangle {
+    Squircle {
         id: card
         SurfaceAppear { target: card; shown: menu.visible; origin: Item.Center }
         anchors.centerIn: parent
         width: (menu.closing ? closingContent : content).width + 2 * Theme.surfacePadding
         height: (menu.closing ? closingContent : content).height + 2 * Theme.surfacePadding
         color: Theme.surfaceFor(menu.screen)
-        border.color: Theme.surfaceBorder
-        border.width: Theme.surfaceBorderWidth
-        radius: Theme.surfaceRadius
+        borderColor: Theme.surfaceBorder
+        borderWidth: Theme.surfaceBorderWidth
+        radius: Theme.surfaceSquircleRadius
 
         MouseArea { anchors.fill: parent }
 

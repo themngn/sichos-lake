@@ -125,15 +125,15 @@ PopupWindow {
         onTriggered: menu.close()
     }
 
-    Rectangle {
+    Squircle {
         id: bg
         SurfaceAppear { target: bg; shown: menu.visible }
         implicitWidth: column.implicitWidth + 2 * Theme.surfacePadding
         implicitHeight: column.implicitHeight + 2 * Theme.surfacePadding
         color: Theme.surfaceFor(menu.screen)
-        border.color: Theme.surfaceBorder
-        border.width: Theme.surfaceBorderWidth
-        radius: Theme.surfaceRadius
+        borderColor: Theme.surfaceBorder
+        borderWidth: Theme.surfaceBorderWidth
+        radius: Theme.surfaceSquircleRadius
 
         focus: true
         Keys.onEscapePressed: menu.close()

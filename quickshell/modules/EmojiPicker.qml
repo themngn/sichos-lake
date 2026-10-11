@@ -581,7 +581,7 @@ PickerWindow {
         // cell, so they stay put while the tone block above them resizes
         // with whichever form is highlighted; a fixed width when there are
         // forms for the same reason.
-        Rectangle {
+        Squircle {
             id: tonePopup
             property real anchorX: 0
             property real anchorY: 0
@@ -591,13 +591,13 @@ PickerWindow {
             x: Math.max(0, Math.min(bodyRoot.width - width, anchorX - width / 2))
             y: Math.max(0, anchorY - height - 4)
             z: 10
-            radius: Theme.surfaceRadius
+            radius: Theme.surfaceSquircleRadius
             // Solid, not surfaceRaisedFor(): it floats over the card's own
             // content, which the compositor blur (window backdrop only)
             // can't soften -- the glass tint let the grid show through.
             color: Theme.surfaceRaised
-            border.color: Theme.surfaceBorder
-            border.width: Theme.surfaceBorderWidth
+            borderColor: Theme.surfaceBorder
+            borderWidth: Theme.surfaceBorderWidth
 
             SurfaceAppear { target: tonePopup; shown: tonePopup.visible; origin: Item.Bottom }
 
