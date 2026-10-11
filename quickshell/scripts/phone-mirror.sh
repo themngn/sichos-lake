@@ -74,6 +74,11 @@ if [ "$1" = wake ]; then
     exec 8>"${XDG_RUNTIME_DIR:-/tmp}/sichos-phone-wake.lock"
     flock -n 8 || exit 0
     echo $$ > "$WAKE_PID"
+    # 8>&- (and 9>&- on get-state below): if the adb server isn't running
+    # yet, this adb call forks it as a long-lived daemon that inherits every
+    # open fd -- including the flock fd, so the daemon held the lock forever
+    # and every later call silently timed out on it (found via /proc/locks:
+    # the holder was `adb ... fork-server server`).
     adb shell '
         awake() { dumpsys power | grep "mWakefulness=Awake" >/dev/null; }
         locked() { dumpsys window | grep "isKeyguardShowing=true" >/dev/null; }
@@ -98,7 +103,7 @@ if [ "$1" = wake ]; then
                 sleep 0.25
             fi
             i=$((i + 1))
-        done' | while read -r st; do echo "$st" > "$PIN_STATE"; done
+        done' 8>&- | while read -r st; do echo "$st" > "$PIN_STATE"; done
     echo 0 > "$PIN_STATE"
     rm -f "$WAKE_PID"
     exit 0
@@ -173,7 +178,10 @@ open)
     monitor="$2" bar="${3:-24}" controls="${4:-60}" side="${5:-right}"
     [ -n "$(window)" ] && exit 0
     # scrcpy just exits (stderr lost under exec_cmd) with no device, so say why.
-    if ! adb get-state >/dev/null 2>&1; then
+    # wait-for-device, not get-state: right after the adb server starts, a
+    # wireless-debugging phone takes a few seconds to be rediscovered over
+    # mDNS, and get-state failed in that window even with the phone ready.
+    if ! timeout 6 adb wait-for-device >/dev/null 2>&1 9>&-; then
         notify-send -a "Phone" -i phone "Phone mirror" "No device connected over adb (USB or wireless debugging)."
         exit 1  # tells PhoneMirrorState.qml to drop its loading placeholder
     fi
