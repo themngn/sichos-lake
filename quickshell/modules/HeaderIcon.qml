@@ -44,6 +44,24 @@ Item {
         0xf06b0: [0, -66, 61, 60],  // update (SystemUpdate)
         0xf0e17: [-1, -70, 62, 68], // calendar
         0xf0e51: [-1, -64, 62, 56], // monitor (DisplaySettings)
+        0xf1542: [-1, -63, 61, 54], // tune-variant (QuickSettings)
+        0xf0d7d: [-1, -47, 61, 22], // hdr (QuickSettings)
+        0xf011c: [0, -83, 60, 94],  // cellphone (QuickSettings)
+        // Control Center tiles
+        0xf001d: [0, -66, 60, 60],  // airplane
+        0xf1e6: [0, -76, 60, 80],   // plug (power profile: performance)
+        0xf032a: [0, -64, 60, 57],  // leaf (power profile: saver)
+        0xf24e: [0, -60, 60, 49],   // balance scale (power profile: balanced)
+        0xf075f: [-1, -61, 61, 51], // volume mute
+        0xf027: [8, -57, 43, 42],   // volume low
+        0xefcf: [5, -57, 49, 42],   // volume medium
+        0xf028: [-1, -58, 61, 44],  // volume high
+        0xf05a9: [0, -61, 60, 50],  // wifi
+        0xf05aa: [0, -61, 60, 50],  // wifi off
+        0xf0200: [-1, -65, 61, 58], // ethernet
+        0xf00af: [1, -83, 59, 94],  // bluetooth (md)
+        0xf00b2: [0, -74, 60, 76],  // bluetooth off
+        0xf035b: [-1, -67, 62, 62], // memory (system stats)
         0xf042: [0, -66, 60, 60],   // adjust (Transparency)
         0xf009a: [0, -71, 61, 70],  // bell (NotificationMute)
         0xf009b: [0, -66, 60, 61],  // bell-off (NotificationMute)

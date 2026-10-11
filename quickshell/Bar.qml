@@ -23,6 +23,19 @@ PanelWindow {
     implicitHeight: Theme.barHeight
     exclusiveZone: Theme.barHeight
 
+    // Keyboard only while a popup field wants text (ShellState.keySink);
+    // otherwise the bar never takes focus from windows.
+    readonly property bool takesKeys: ShellState.keySink !== null && ShellState.keySinkScreen === bar.screen.name
+    WlrLayershell.keyboardFocus: bar.takesKeys ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+    Item {
+        focus: true
+        Keys.onPressed: (event) => {
+            if (!bar.takesKeys) return
+            ShellState.keySink.handleKey(event)
+            event.accepted = true
+        }
+    }
+
     // "Bar on this screen only" (ShellState.barSoloScreen). Hiding unmaps
     // the layer surface, so the exclusive zone goes with it and windows
     // reclaim the space. Falls back to showing everywhere if the pinned
@@ -128,6 +141,7 @@ PanelWindow {
     Component { id: displayComp; DisplaySettings { screenName: bar.screen.name; popupHost: barMorph.slot; horizontalPadding: 4 * Theme.barIconSpacingScale } }
     Component { id: powerProfileComp; PowerProfile { horizontalPadding: 4 * Theme.barIconSpacingScale } }
     Component { id: batteryComp; Battery { horizontalPadding: 4 * Theme.barIconSpacingScale } }
+    Component { id: quickSettingsComp; QuickSettings { screenName: bar.screen.name; popupHost: barMorph.slot; horizontalPadding: 4 * Theme.barIconSpacingScale } }
     Component { id: phoneMirrorComp; PhoneMirror { screenName: bar.screen.name; horizontalPadding: 4 * Theme.barIconSpacingScale } }
 
     function componentFor(id) {
@@ -146,6 +160,7 @@ PanelWindow {
         case "powerprofile": return powerProfileComp
         case "battery": return batteryComp
         case "phone": return phoneMirrorComp
+        case "quicksettings": return quickSettingsComp
         }
         return null
     }

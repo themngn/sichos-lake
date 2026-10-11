@@ -68,6 +68,8 @@ PanelWindow {
     }
 
     function pop() {
+        // The Control Center's own slider already shows the level while it's open.
+        if (ShellState.activePopup === "quicksettings" || ShellState.activePopup === "qs-audio") return
         osd.visible = true
         hideTimer.restart()
         ShellState.activeOsd = "backlight"

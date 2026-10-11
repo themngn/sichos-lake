@@ -42,7 +42,15 @@ Pill {
 
     // --- Hover Management with Trigger Delay, Immediate Switch & Stay on Hover ---
     // (identical pattern to BluetoothIndicator.qml/AiModelUsage.qml)
-    readonly property string popupId: "system-update"
+    // QuickSettings.qml embeds a hidden instance as its "qs-update" page
+    // (same idea as BluetoothIndicator's popupId/popupAnchor/backPopupId).
+    property string popupId: "system-update"
+    property Item popupAnchor: root
+    property string backPopupId: ""
+    // false inside the Control Center, which closes only on a click outside.
+    property bool closeOnLeave: true
+    // Wider when embedded, to match the Control Center card.
+    property real popupWidth: 260
     readonly property bool popupOpen: ShellState.activePopup === root.popupId && ShellState.activePopupScreen === root.screenName
     readonly property bool popupHovered: popupMouseArea.containsMouse
 
@@ -84,7 +92,7 @@ Pill {
             openDelayTimer.stop()
         } else {
             openDelayTimer.stop()
-            if (root.popupOpen && !closeDelayTimer.running) {
+            if (root.popupOpen && root.closeOnLeave && !closeDelayTimer.running) {
                 closeDelayTimer.start()
             }
         }
@@ -92,6 +100,16 @@ Pill {
 
     onHoveredChanged: _updateHoverState()
     onPopupHoveredChanged: _updateHoverState()
+
+    function runUpdate() {
+        if (root.updating) return
+        root.updating = true
+        updateProc.running = true
+    }
+    function checkNow() {
+        if (!checkProc.running) checkProc.running = true
+    }
+    readonly property bool checking: checkProc.running
 
     function _dateText(epoch) {
         if (!epoch) return "unknown"
@@ -129,10 +147,10 @@ Pill {
     readonly property Item _popupContent: MorphContent {
         id: panel
         parent: root.popupHost
-        anchorItem: root
+        anchorItem: root.popupAnchor
         shown: root.popupOpen
 
-        readonly property int popupWidth: 260
+        readonly property real popupWidth: root.popupWidth
 
         implicitWidth: popupWidth
         implicitHeight: bg.implicitHeight
@@ -161,11 +179,16 @@ Pill {
 
                 Row {
                     spacing: 6
+                    BackButton {
+                        visible: root.backPopupId !== ""
+                        onClicked: ShellState.activePopup = root.backPopupId
+                    }
                     HeaderIcon {
                         glyph: "󰚰"
                         color: Theme.accent
                     }
                     Text {
+                        anchors.verticalCenter: parent.verticalCenter
                         text: "System Update"
                         font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize
@@ -247,11 +270,7 @@ Pill {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: root.updating ? Qt.ArrowCursor : Qt.PointingHandCursor
-                        onClicked: {
-                            if (root.updating) return
-                            root.updating = true
-                            updateProc.running = true
-                        }
+                        onClicked: root.runUpdate()
                     }
                 }
             }

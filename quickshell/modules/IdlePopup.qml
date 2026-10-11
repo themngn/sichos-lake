@@ -7,6 +7,11 @@ import Quickshell.Io
 // timers and Never toggles smoothly without focus grabs.
 MorphContent {
     id: popup
+    // Set when the Control Center embeds this as one of its pages: the
+    // header's back button returns there.
+    property string backPopupId: ""
+    // Wider when embedded, to match the Control Center card.
+    property real contentWidth: Theme.togglePopupWidth
 
     property bool active: false
 
@@ -112,7 +117,7 @@ MorphContent {
 
             // Menu Title Header
             Item {
-                width: Theme.togglePopupWidth
+                width: popup.contentWidth
                 height: 20
 
                 PinButton {
@@ -125,11 +130,16 @@ MorphContent {
                     spacing: 6
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
+                    BackButton {
+                        visible: popup.backPopupId !== ""
+                        onClicked: ShellState.activePopup = popup.backPopupId
+                    }
                     HeaderIcon {
                         glyph: "\udb80\udd76"
                         color: popup.active ? Theme.accent : Theme.textDim
                     }
                     Text {
+                        anchors.verticalCenter: parent.verticalCenter
                         text: "Stay Awake"
                         font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize
@@ -141,11 +151,11 @@ MorphContent {
 
             // Lock
             Column {
-                width: Theme.togglePopupWidth
+                width: popup.contentWidth
                 spacing: 4
 
                 Row {
-                    width: Theme.togglePopupWidth
+                    width: popup.contentWidth
                     height: 22
                     spacing: 6
                     opacity: popup.lockNever ? 0.4 : 1
@@ -195,12 +205,12 @@ MorphContent {
 
             // Dim before lock
             Column {
-                width: Theme.togglePopupWidth
+                width: popup.contentWidth
                 spacing: 4
                 opacity: popup.lockNever ? 0.4 : 1
 
                 Row {
-                    width: Theme.togglePopupWidth
+                    width: popup.contentWidth
                     height: 22
                     spacing: 6
                     opacity: popup.dimNever ? 0.4 : 1
@@ -238,11 +248,11 @@ MorphContent {
 
             // Screen off
             Column {
-                width: Theme.togglePopupWidth
+                width: popup.contentWidth
                 spacing: 4
 
                 Row {
-                    width: Theme.togglePopupWidth
+                    width: popup.contentWidth
                     height: 22
                     spacing: 6
                     opacity: popup.offNever ? 0.4 : 1
@@ -292,7 +302,7 @@ MorphContent {
 
             Item {
                 id: saveEntry
-                width: Theme.togglePopupWidth
+                width: popup.contentWidth
                 height: Theme.controlHeight
 
                 Rectangle {

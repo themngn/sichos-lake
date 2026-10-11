@@ -17,6 +17,11 @@ Item {
     // label (e.g. Language's layout list) — build your own PopupWindow and
     // bind its visibility to this instead of adding another tooltip mode here.
     readonly property alias hovered: mouseArea.containsMouse
+    // false when nested inside another pill (QuickSettings): `enabled: false`
+    // is not enough, Qt 6 still delivers hover to disabled items, so this
+    // pill's MouseArea kept the hover (and showed its tooltip) instead of the
+    // outer pill underneath it.
+    property bool interactive: true
 
     signal clicked(var mouse)
     signal wheel(var event)
@@ -33,6 +38,7 @@ Item {
     MouseArea {
         id: mouseArea
         z: -1
+        visible: root.interactive
         anchors.fill: parent
         hoverEnabled: true
         acceptedButtons: Qt.AllButtons

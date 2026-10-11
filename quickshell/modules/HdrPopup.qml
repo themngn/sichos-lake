@@ -10,6 +10,11 @@ import Quickshell.Hyprland
 // SunsetPopup/IdlePopup.
 MorphContent {
     id: popup
+    // Set when the Control Center embeds this as one of its pages: the
+    // header's back button returns there.
+    property string backPopupId: ""
+    // Wider when embedded, to match the Control Center card.
+    property real contentWidth: Theme.togglePopupWidth
 
 
     readonly property bool popupHovered: popupHoverHandler.hovered
@@ -58,7 +63,7 @@ MorphContent {
 
             // Menu Title Header
             Item {
-                width: Theme.togglePopupWidth
+                width: popup.contentWidth
                 height: 20
 
                 PinButton {
@@ -71,11 +76,16 @@ MorphContent {
                     spacing: 6
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
+                    BackButton {
+                        visible: popup.backPopupId !== ""
+                        onClicked: ShellState.activePopup = popup.backPopupId
+                    }
                     HeaderIcon {
                         glyph: "󰍹"
                         color: HdrSettings.active ? Theme.accent : Theme.textDim
                     }
                     Text {
+                        anchors.verticalCenter: parent.verticalCenter
                         text: "HDR"
                         font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize
@@ -87,7 +97,7 @@ MorphContent {
 
             // Mode switch
             Row {
-                width: Theme.togglePopupWidth
+                width: popup.contentWidth
                 spacing: 6
 
                 Repeater {
@@ -99,7 +109,7 @@ MorphContent {
                         id: modeButton
                         required property var modelData
                         readonly property bool isActive: HdrSettings.active === modeButton.modelData.on
-                        width: (Theme.togglePopupWidth - 6) / 2
+                        width: (popup.contentWidth - 6) / 2
                         height: Theme.controlHeight
                         radius: Theme.controlRadius
                         color: modeButton.isActive ? Theme.selectedFill : modeArea.containsMouse ? Theme.hoverFill : Theme.controlFill
@@ -125,7 +135,7 @@ MorphContent {
             }
 
             Rectangle {
-                width: Theme.togglePopupWidth
+                width: popup.contentWidth
                 height: 1
                 color: Theme.separator
             }
@@ -138,13 +148,14 @@ MorphContent {
             }
 
             Column {
-                width: Theme.togglePopupWidth
+                width: popup.contentWidth
                 spacing: 6
                 opacity: HdrSettings.active ? 1 : 0.5
 
                 Repeater {
                     model: Hyprland.monitors.values
                     delegate: MonitorCheckbox {
+                        width: popup.contentWidth
                         required property var modelData
                         label: modelData.name + (modelData.description ? " — " + modelData.description : "")
                         // Only a confirmed `false` greys it out -- `undefined`

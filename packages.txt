@@ -101,6 +101,8 @@ btop                      # resource monitor, SUPER+B opens it in a floating kit
 gvfs-smb                  # SMB backend for Nautilus's "Connect to Server" — without it that dialog
                           # silently fails on any smb:// address
 gvfs-mtp                  # lets Nautilus mount Android phones over USB
+python3-dbus              # quickshell/scripts/bt-agent.py: BlueZ pairing agent for the
+python3-gobject           # bar's Bluetooth menu (nothing else registers one here)
 scrcpy                    # phone mirror (quickshell/scripts/phone-mirror.sh, SUPER+X);
                           # pulls in android-tools (adb)
 gvfs-gphoto2              # lets Nautilus mount PTP digital cameras over USB

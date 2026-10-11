@@ -8,6 +8,11 @@ import Quickshell
 // thread through signals the way SunsetPopup's props mirror ShellState.
 MorphContent {
     id: popup
+    // Set when the Control Center embeds this as one of its pages: the
+    // header's back button returns there.
+    property string backPopupId: ""
+    // Wider when embedded, to match the Control Center card.
+    property real contentWidth: Theme.togglePopupWidth
 
 
 
@@ -30,7 +35,7 @@ MorphContent {
             spacing: Theme.sectionSpacing
 
             Item {
-                width: Theme.togglePopupWidth
+                width: popup.contentWidth
                 height: 20
 
                 PinButton {
@@ -43,11 +48,16 @@ MorphContent {
                     spacing: 6
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
+                    BackButton {
+                        visible: popup.backPopupId !== ""
+                        onClicked: ShellState.activePopup = popup.backPopupId
+                    }
                     HeaderIcon {
                         glyph: "󰊴"
                         color: Theme.accent
                     }
                     Text {
+                        anchors.verticalCenter: parent.verticalCenter
                         text: "Gaming Focus"
                         font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize
@@ -58,7 +68,7 @@ MorphContent {
             }
 
             Row {
-                width: Theme.togglePopupWidth
+                width: popup.contentWidth
                 spacing: 6
 
                 Repeater {
@@ -70,7 +80,7 @@ MorphContent {
                         id: modeButton
                         required property var modelData
                         readonly property bool active: GameFocus.enabled === modelData.on
-                        width: (Theme.togglePopupWidth - 6) / 2
+                        width: (popup.contentWidth - 6) / 2
                         height: Theme.controlHeight
                         radius: Theme.controlRadius
                         color: modeButton.active ? Theme.selectedFill : modeArea.containsMouse ? Theme.hoverFill : Theme.controlFill
@@ -98,7 +108,7 @@ MorphContent {
             // Dim amount, 5% steps. Takes effect live on any currently
             // dimmed screen (the overlay binds straight to dimAmount).
             Column {
-                width: Theme.togglePopupWidth
+                width: popup.contentWidth
                 spacing: 4
 
                 Item {
@@ -149,7 +159,7 @@ MorphContent {
             }
 
             Text {
-                width: Theme.togglePopupWidth
+                width: popup.contentWidth
                 wrapMode: Text.WordWrap
                 text: !GameFocus.enabled ? "Off"
                     : GameFocus.dimming ? "Game focused on " + GameFocus.gameMonitor

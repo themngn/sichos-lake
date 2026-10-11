@@ -469,6 +469,7 @@ hl.bind("CTRL + " .. mainMod .. " + I", hl.dsp.exec_cmd("hyprctl dispatch idlein
 hl.bind(mainMod .. " + C", hl.dsp.exec_cmd("hyprpicker -a")) -- color picker, autocopies hex to clipboard
 hl.bind(mainMod .. " + B", hl.dsp.exec_cmd("kitty --class btop -e btop")) -- resource monitor, floated/centered by window_rules.lua
 hl.bind(mainMod .. " + SHIFT + B", hl.dsp.exec_cmd("quickshell ipc call bar toggleSolo")) -- show the bar only on the focused monitor / back to all (see ShellState.barSoloScreen)
+hl.bind(mainMod .. " + N", hl.dsp.exec_cmd("quickshell ipc call controlcenter toggle")) -- Control Center on the focused monitor (QuickSettings.qml)
 hl.bind(mainMod .. " + SHIFT + V", hl.dsp.exec_cmd("quickshell ipc call clipboard toggle")) -- clipboard history picker (quickshell ClipboardPicker.qml)
 hl.bind(mainMod .. " + PERIOD", hl.dsp.exec_cmd("quickshell ipc call emoji toggle")) -- emoji picker (EmojiPicker.qml; types + copies the pick), same key as Windows
 

@@ -51,7 +51,16 @@ Pill {
     }
 
     // --- Hover Management with Trigger Delay, Immediate Switch & Stay on Hover ---
-    readonly property string popupId: "display"
+    // QuickSettings.qml embeds a hidden instance of this as a submenu of its
+    // own card: it sets a distinct popupId (so it never opens together with
+    // a standalone instance on the same screen), anchors the popup to its
+    // own pill, and names the popup the header's back arrow returns to.
+    property string popupId: "display"
+    property Item popupAnchor: root
+    property string backPopupId: ""
+    // false inside the Control Center, which closes only on a click outside.
+    property bool closeOnLeave: true
+    property real popupContentWidth: 300
     readonly property bool popupOpen: ShellState.activePopup === root.popupId && ShellState.activePopupScreen === root.screenName
     readonly property bool popupHovered: popup.popupHovered
 
@@ -93,13 +102,16 @@ Pill {
             openDelayTimer.stop()
         } else {
             openDelayTimer.stop()
-            if (root.popupOpen && !closeDelayTimer.running) {
+            if (root.popupOpen && root.closeOnLeave && !closeDelayTimer.running) {
                 closeDelayTimer.start()
             }
         }
     }
 
     onHoveredChanged: _updateHoverState()
+    // An embedded (QuickSettings) instance opens by a click inside the card
+    // with no pill of its own to hover, so arm the close check on open too.
+    onPopupOpenChanged: _updateHoverState()
     onPopupHoveredChanged: _updateHoverState()
 
     // Set by Bar.qml: the bar's MorphPopup card (see MorphContent.qml).
@@ -107,7 +119,7 @@ Pill {
     readonly property Item _popupContent: MorphContent {
         id: popup
         parent: root.popupHost
-        anchorItem: root
+        anchorItem: root.popupAnchor
         shown: root.popupOpen
 
         implicitWidth: bg.implicitWidth
@@ -129,7 +141,7 @@ Pill {
         // Popup content width -- every fixed-width row below shares this
         // rather than its own literal 240/300 so resizing the popup is a
         // one-line change.
-        readonly property real contentWidth: 300
+        readonly property real contentWidth: root.popupContentWidth
 
         property var ddcMonitors: []
         property var vrrEnabled: ({}) // monitor name -> bool, from monitors.lua (see file header)
@@ -385,11 +397,16 @@ Pill {
                         spacing: 6
                         anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
+                        BackButton {
+                            visible: root.backPopupId !== ""
+                            onClicked: ShellState.activePopup = root.backPopupId
+                        }
                         HeaderIcon {
                             glyph: "󰹑"
                             color: Theme.accent
                         }
                         Text {
+                            anchors.verticalCenter: parent.verticalCenter
                             text: "Display"
                             font.family: Theme.uiFontFamily
                             font.pixelSize: Theme.fontSize
@@ -848,21 +865,21 @@ Pill {
                                 }
 
                                 // Side by side, 3:2 -- "2560x1440" needs more
-                                // room than "165Hz" does. (300 - 6 spacing) / 5
-                                // parts = ~59px/part.
+                                // room than "165Hz" does. Split from contentWidth
+                                // (wider when embedded in QuickSettings).
                                 Row {
                                     width: parent.width
                                     spacing: 6
 
                                     ModePicker {
-                                        boxWidth: 175
+                                        boxWidth: Math.floor((popup.contentWidth - 6) * 3 / 5)
                                         current: row.selectedRes
                                         options: row.resolutions
                                         onPicked: (value) => row.pickResolution(value)
                                     }
 
                                     ModePicker {
-                                        boxWidth: 118
+                                        boxWidth: Math.floor((popup.contentWidth - 6) * 2 / 5)
                                         current: Math.round(parseFloat(row.selectedRate)) + "Hz"
                                         options: row.ratesFor(row.selectedRes)
                                             .map(r => Math.round(parseFloat(r)) + "Hz")

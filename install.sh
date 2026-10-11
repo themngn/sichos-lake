@@ -910,8 +910,14 @@ else
         cat > "$BAR_SETTINGS" <<'EOF'
 {
     "disabled": [
-        "battery",
+        "network",
+        "bluetooth",
+        "volume",
         "backlight",
+        "display",
+        "powerprofile",
+        "battery",
+        "phone",
         "ai-model-usage"
     ],
     "order": [
@@ -926,6 +932,7 @@ else
         "display",
         "powerprofile",
         "battery",
+        "quicksettings",
         "notifications"
     ]
 }

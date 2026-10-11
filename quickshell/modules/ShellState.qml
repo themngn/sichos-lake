@@ -24,6 +24,61 @@ QtObject {
     // widget's card open on every other monitor too.
     property string activePopupScreen: ""
 
+    // While a popup that closes only on a click outside is open (the
+    // Control Center: QuickSettings.qml sets its page ids here), other bar
+    // popups mustn't take over on hover. Every widget's hover logic -- and
+    // user-local custom widgets' -- assigns activePopup/activePopupScreen
+    // directly, so rather than teaching each one, a switch to anything
+    // outside the group is reverted here. Widgets set the screen right after
+    // the popup id in the same tick, so that follow-up is reverted too.
+    // Text entry inside a bar popup (Wi-Fi password, Bluetooth PIN). A
+    // popup surface never gets keyboard focus of its own, so while a field
+    // wants input, the bar on keySinkScreen takes exclusive keyboard focus
+    // and passes every key to keySink.handleKey(event) (Bar.qml).
+    property var keySink: null
+    property string keySinkScreen: ""
+
+    property var popupLockGroup: []
+    property string _lockedPopup: ""
+    property string _lockedScreen: ""
+    property bool _revertScreen: false
+    onActivePopupChanged: {
+        if (root.popupLockGroup.length === 0 || root.activePopup === "") return
+        if (root.popupLockGroup.includes(root.activePopup)) {
+            root._lockedPopup = root.activePopup
+            return
+        }
+        root._revertScreen = true
+        Qt.callLater(() => { root._revertScreen = false })
+        root.activePopup = root._lockedPopup
+    }
+    onActivePopupScreenChanged: {
+        if (root._revertScreen && root.activePopupScreen !== root._lockedScreen)
+            root.activePopupScreen = root._lockedScreen
+        else if (root.popupLockGroup.includes(root.activePopup))
+            root._lockedScreen = root.activePopupScreen
+    }
+    // `quickshell ipc call controlcenter toggle` (SUPER+N, keybindings.lua):
+    // opens the Control Center on the focused monitor, or closes it.
+    property IpcHandler _controlCenterIpc: IpcHandler {
+        target: "controlcenter"
+        function toggle(): void {
+            if (root.popupLockGroup.includes(root.activePopup)) {
+                root.activePopup = ""
+                return
+            }
+            const mon = Hyprland.focusedMonitor
+            if (!mon) return
+            root.activePopupScreen = mon.name
+            root.activePopup = "quicksettings"
+        }
+    }
+    function lockPopups(group, popup, screen) {
+        root._lockedPopup = popup
+        root._lockedScreen = screen
+        root.popupLockGroup = group
+    }
+
     property bool idleActive: false
 
     // Do-not-disturb: suppresses new toast popups (Notifications.qml) while

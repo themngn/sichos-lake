@@ -31,6 +31,7 @@ QtObject {
         { id: "volume", name: "Volume" },
         { id: "backlight", name: "Backlight" },
         { id: "display", name: "Display" },
+        { id: "quicksettings", name: "Quick Settings" },
         { id: "phone", name: "Phone Mirror" },
         { id: "powerprofile", name: "Power Profile" },
         { id: "battery", name: "Battery" }
@@ -125,14 +126,18 @@ QtObject {
 
         adapter: JsonAdapter {
             id: adapter
-            property var disabled: []
+            // Quick Settings covers these, so a fresh config starts with
+            // just it; each can still be turned back on as its own icon.
+            property var disabled: ["network", "bluetooth", "volume", "backlight", "display", "powerprofile", "battery",
+                                 "phone"]
             property var unpinnedToggles: []
             // Opacity in the transparency toggle's "semi" mode, shared by
             // kitty and the bar's backdrop over windows (Bar.qml's
             // opaqueBackground) -- see ShellState.setTerminalOpacity.
             property real terminalOpacity: 0.8
             property var order: ["claude-usage", "system-update", "tray", "language", "bluetooth", "network",
-                                  "volume", "backlight", "display", "phone", "powerprofile", "battery", "notifications"]
+                                  "volume", "backlight", "display", "phone", "powerprofile", "battery", "quicksettings",
+                                  "notifications"]
         }
     }
 }

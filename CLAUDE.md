@@ -90,7 +90,9 @@ it before "fixing" something that looks odd but is deliberately worked around.
   id; root.activePopupScreen = screen } }` to the *deployed* `ShellState.qml` only, then
   `quickshell ipc call dbgpopup open weather DP-2` + `grim -g "x,y wxh" out.png` (popup ids are the
   modules' `popupId` strings: calendar, hdr, ai-model-usage, idle, gamefocus, mic, bluetooth, display,
-  system-update, sunset, weather). Restore the deployed file from the repo afterwards and confirm with
+  system-update, sunset, weather, quicksettings and its pages qs-*). An IPC-opened hover popup with no
+  pointer over it closes after ~300ms (the hover close check), so grab within ~0.25s; the Control Center
+  doesn't (it closes only on a click outside). Restore the deployed file from the repo afterwards and confirm with
   `quickshell ipc show` that `dbgpopup` is gone.
 - `./install.sh` — copies every config in this repo to its target under `$HOME` (idempotent,
   backs up any differing existing file as `<name>.bak`). System-level steps (packages,
@@ -181,7 +183,32 @@ Everything else lives in `quickshell/modules/`:
   has a popup, or the row will collapse out from under it. The right section is data-driven —
   `BarSettings.orderedIds()` picks which widgets render and in what order via a `Loader`/`Component`
   switch (`componentFor(id)`), so reordering/hiding a widget is a settings change, not a `Bar.qml` edit.
-  The toggle row is fixed and outside that system. **Bar hover popups don't own windows**: the toggle
+  The toggle row is fixed and outside that system. `QuickSettings.qml` (the "Control Center") is one of those widgets
+  standing in for Network/Bluetooth/Volume/Backlight/PowerProfile/Battery/Display/Phone (disabled by
+  default, still available individually), and also repeats the toggle row's switches as tiles (same
+  state calls, the row itself stays). Its bar icons are those widgets instantiated with
+  `Pill.interactive: false` (`enabled: false` isn't enough: Qt 6 still delivers hover to disabled
+  items, so a nested pill swallows the outer one's hover). Its Bluetooth/Display submenus are hidden
+  BluetoothIndicator/DisplaySettings instances with their own `popupId` (`qs-bluetooth`/`qs-display`),
+  `popupAnchor` and `backPopupId`; its Sound page (`qs-audio`) is a second MorphContent in the same
+  file, its Wi-Fi page (`qs-wifi`) is `WifiMenu.qml`. All of them morph the same card. It opens on
+  click only and closes only on a click outside (HyprlandFocusGrab); while open,
+  `ShellState.popupLockGroup` reverts any other popup's attempt to take over on hover.
+  Text entry in a bar popup (Wi-Fi password, Bluetooth PIN) can't use a TextInput — a popup surface
+  never gets keyboard focus — so the field sets `ShellState.keySink`/`keySinkScreen` and that screen's
+  bar takes exclusive keyboard focus and forwards keys to `keySink.handleKey(event)`. Bluetooth pairing
+  goes through `scripts/bt-agent.py` (a BlueZ agent run by the `BluetoothAgent` singleton; nothing
+  else registers one here, so code-based pairing used to fail). Quickshell's `WifiNetwork.signalStrength`
+  is 0..1, not a percentage. Its tiles are Android-style editable (pencil in the header: drag to
+  reorder, drag the right/bottom edge or corner to resize up to 4x2, remove/add; tiles pack first-fit,
+  and a 2-row tile at least 2 wide gets extra controls from `extraFor()`). SUPER+N toggles it on the
+  focused monitor (`quickshell ipc call controlcenter toggle`). The toggle-row popups (HDR, Night Light,
+  Stay Awake, Game Focus) and System Update are also its pages (`qs-hdr` etc.) — its own instances with
+  `backPopupId` set. `SystemStats` (CPU/RAM/temp) and `VpnStatus` (Proton VPN, read from nmcli's
+  active connections since the Flatpak app has no CLI) only poll while its main page is open. The tile layout is the `ControlCenterTiles` singleton
+  (`~/.config/quickshell/control-center.json`), a ListModel rather than a JS array so a live
+  reorder moves delegates instead of rebuilding them mid-drag. A new tile = an id in its `allIds`
+  plus a case in QuickSettings' `tileInfo()`/`tileToggle()` (and its glyph measured into HeaderIcon). **Bar hover popups don't own windows**: the toggle
   row's, the clock's calendar, Weather, the right-side widgets with hover popups (AI usage, Bluetooth,
   System Update, Display) and custom widgets that opt in (alert-widget) all render a `MorphContent`
   into the bar's one `MorphPopup` card. Each widget assigns its content to a property (not a child —

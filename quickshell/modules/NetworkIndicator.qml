@@ -26,7 +26,10 @@ Pill {
     function icon() {
         if (wiredUp) return ""
         if (wifiUp) {
-            const s = wifiNetwork ? wifiNetwork.signalStrength : 0
+            // signalStrength is 0..1, not a percentage (logged live: 0.84
+            // on a full-bars network) -- these thresholds always fell
+            // through to the weakest glyph before.
+            const s = wifiNetwork ? wifiNetwork.signalStrength * 100 : 0
             if (s > 80) return ""
             if (s > 55) return ""
             if (s > 30) return ""
@@ -46,7 +49,7 @@ Pill {
 
     tooltipText: {
         if (wiredUp) return "Ethernet"
-        if (wifiUp && wifiNetwork) return wifiNetwork.name + " (" + Math.round(wifiNetwork.signalStrength) + "%)"
+        if (wifiUp && wifiNetwork) return wifiNetwork.name + " (" + Math.round(wifiNetwork.signalStrength * 100) + "%)"
         return "Disconnected"
     }
 

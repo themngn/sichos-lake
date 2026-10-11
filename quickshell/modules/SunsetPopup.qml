@@ -8,6 +8,11 @@ import Quickshell.Io
 // 100K warmth slider, and the schedule time editor without focus grabs.
 MorphContent {
     id: popup
+    // Set when the Control Center embeds this as one of its pages: the
+    // header's back button returns there.
+    property string backPopupId: ""
+    // Wider when embedded, to match the Control Center card.
+    property real contentWidth: Theme.togglePopupWidth
 
     property bool active: false // mirrors ShellState.sunsetWarm
     property bool scheduleFollow: true // mirrors ShellState.sunsetScheduleFollow, fully independent of active
@@ -85,7 +90,7 @@ MorphContent {
 
             // Menu Title Header
             Item {
-                width: Theme.togglePopupWidth
+                width: popup.contentWidth
                 height: 20
 
                 PinButton {
@@ -98,11 +103,16 @@ MorphContent {
                     spacing: 6
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
+                    BackButton {
+                        visible: popup.backPopupId !== ""
+                        onClicked: ShellState.activePopup = popup.backPopupId
+                    }
                     HeaderIcon {
                         glyph: "\udb81\udd94"
                         color: Theme.accent
                     }
                     Text {
+                        anchors.verticalCenter: parent.verticalCenter
                         text: "Warm Light"
                         font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize
@@ -116,7 +126,7 @@ MorphContent {
             // directly. Fully independent of the "Follow schedule" switch
             // below: clicking either of these never touches scheduleFollow.
             Row {
-                width: Theme.togglePopupWidth
+                width: popup.contentWidth
                 spacing: 6
 
                 Repeater {
@@ -128,7 +138,7 @@ MorphContent {
                         id: modeButton
                         required property var modelData
                         readonly property bool active: popup.active === modelData.on
-                        width: (Theme.togglePopupWidth - 6) / 2
+                        width: (popup.contentWidth - 6) / 2
                         height: Theme.controlHeight
                         radius: Theme.controlRadius
                         color: modeButton.active ? Theme.selectedFill : modeArea.containsMouse ? Theme.hoverFill : Theme.controlFill
@@ -161,7 +171,7 @@ MorphContent {
             // gets to decide going forward, so forcing on/off here never
             // knocks this switch off the way an earlier version did.
             Item {
-                width: Theme.togglePopupWidth
+                width: popup.contentWidth
                 height: scheduleText.implicitHeight
 
                 Text {
@@ -181,7 +191,7 @@ MorphContent {
 
             // Warmth slider in increments of 100K
             Column {
-                width: Theme.togglePopupWidth
+                width: popup.contentWidth
                 spacing: 4
 
                 Item {
@@ -236,7 +246,7 @@ MorphContent {
             }
 
             Rectangle {
-                width: Theme.togglePopupWidth
+                width: popup.contentWidth
                 height: 1
                 color: Theme.separator
             }
@@ -249,7 +259,7 @@ MorphContent {
             }
 
             Row {
-                width: Theme.togglePopupWidth
+                width: popup.contentWidth
                 height: 22
                 spacing: 6
 
@@ -283,7 +293,7 @@ MorphContent {
             }
 
             Row {
-                width: Theme.togglePopupWidth
+                width: popup.contentWidth
                 height: 22
                 spacing: 6
 
@@ -318,7 +328,7 @@ MorphContent {
 
             Item {
                 id: saveEntry
-                width: Theme.togglePopupWidth
+                width: popup.contentWidth
                 height: Theme.controlHeight
 
                 Rectangle {
@@ -345,7 +355,7 @@ MorphContent {
     }
 
     function _kelvinAt(x) {
-        const fraction = Math.max(0, Math.min(1, x / Theme.togglePopupWidth))
+        const fraction = Math.max(0, Math.min(1, x / popup.contentWidth))
         const raw = popup.minKelvin + fraction * (popup.maxKelvin - popup.minKelvin)
         return Math.round(raw / 100) * 100
     }

@@ -84,6 +84,10 @@ QtObject {
     readonly property color controlFill: Qt.rgba(1, 1, 1, 0.07)
     readonly property color hoverFill: Qt.rgba(accent.r, accent.g, accent.b, 0.22)
     readonly property color selectedFill: Qt.rgba(accent.r, accent.g, accent.b, 0.35)
+    // macOS-menu-bar-style hover highlight behind a clickable bar item: a
+    // soft neutral rounded fill, no border.
+    readonly property color barItemHover: Qt.rgba(1, 1, 1, 0.12)
+    readonly property int barItemRadius: 6
     readonly property color separator: Qt.rgba(1, 1, 1, 0.08)
     // Unfilled part of progress/level bars, and the bar's own corners.
     readonly property color track: Qt.rgba(1, 1, 1, 0.14)
