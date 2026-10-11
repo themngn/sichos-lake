@@ -63,7 +63,16 @@ Pill {
         }
         // Not a Nerd Font glyph (flag emoji / plain text), so no ink-height
         // correction -- fixed box width alone is enough for even spacing.
-        pixelSize: Theme.fontSize * Theme.barIconScale
+        // The flag comes from the system emoji font, Twemoji since
+        // fontconfig/conf.d/55-sichos-twemoji.conf, whose flags are drawn
+        // smaller than Noto's (ink 74px vs 86px tall at pixelSize 100,
+        // measured), so it's scaled back up to the size it always had here.
+        pixelSize: Theme.fontSize * Theme.barIconScale * (glyph.length > 2 ? 86 / 74 : 1)
+        // Twemoji centers a flag's ink in the line box, while the Nerd Font
+        // icons and labels beside it sit on the baseline, which puts their
+        // ink ~1px below the box center (measured in a bar screenshot: flag
+        // rows 4-16, its neighbours' 6-16, i.e. centers 10.5 vs 11.5).
+        anchors.verticalCenterOffset: glyph.length > 2 ? 1 : 0
         color: Theme.text
     }
 }

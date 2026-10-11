@@ -137,4 +137,13 @@ hl.on("hyprland.start", function ()
   -- alone only mounts when something asks it to (i.e. with Nautilus open);
   -- --no-tray pinned explicitly: the notifications are the whole UI.
   hl.exec_cmd("udiskie --automount --notify --no-tray &")
+  -- Take the power key away from logind (HandlePowerKey=poweroff by
+  -- default) so it opens the power menu instead (XF86PowerOff in
+  -- keybindings.lua, PowerMenu.qml) -- same mechanism GNOME uses for its
+  -- own dialog, and no root/logind.conf drop-in needed: an active session
+  -- may take a handle-power-key inhibitor without authentication
+  -- (confirmed via `systemd-inhibit --list`). Lives exactly as long as this
+  -- process, so it ends with the session. Holding the button still forces
+  -- a hardware power-off; that's firmware, not logind.
+  hl.exec_cmd("systemd-inhibit --what=handle-power-key --who=SichOS --why='Power key opens the power menu' --mode=block sleep infinity &")
 end)

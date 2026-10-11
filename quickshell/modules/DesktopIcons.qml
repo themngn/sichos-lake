@@ -13,6 +13,11 @@ QtObject {
 
     property var wmClassMap: ({})
     property var baseNameMap: ({})
+    // Same keys, the .desktop Name= instead of Icon= (PowerMenu's
+    // "waiting for apps to close" list shows "Telegram", not
+    // "org.telegram.desktop").
+    property var wmClassNames: ({})
+    property var baseNames: ({})
     property bool ready: false
 
     readonly property string _indexScript: `
@@ -24,7 +29,8 @@ for f in /usr/share/applications/*.desktop /usr/local/share/applications/*.deskt
   base="$(basename "$f" .desktop)"
   icon="$(awk -F= '/^Icon=/{print $2; exit}' "$f")"
   wmclass="$(awk -F= '/^StartupWMClass=/{print $2; exit}' "$f")"
-  printf '%s\x1f%s\x1f%s\n' "$base" "$wmclass" "$icon"
+  name="$(awk -F= '/^Name=/{print $2; exit}' "$f")"
+  printf '%s\x1f%s\x1f%s\x1f%s\n' "$base" "$wmclass" "$icon" "$name"
   # Steam generates a per-game .desktop file (Icon=steam_icon_<appid>) with
   # no StartupWMClass at all, but the game's actual runtime window class is
   # always steam_app_<appid> — derive that mapping directly from the icon
@@ -47,6 +53,8 @@ done
     function _parseIndex(text) {
         const wmMap = {}
         const baseMap = {}
+        const wmNames = {}
+        const baseNames = {}
         const lines = text.split("\n")
         for (const line of lines) {
             if (!line) continue
@@ -55,12 +63,19 @@ done
             const base = parts[0].toLowerCase()
             const wmclass = parts[1].toLowerCase()
             const icon = parts[2]
+            const name = parts[3] || ""
+            if (name) {
+                if (base && !baseNames[base]) baseNames[base] = name
+                if (wmclass && !wmNames[wmclass]) wmNames[wmclass] = name
+            }
             if (!icon) continue
             if (base) baseMap[base] = icon
             if (wmclass) wmMap[wmclass] = icon
         }
         root.wmClassMap = wmMap
         root.baseNameMap = baseMap
+        root.wmClassNames = wmNames
+        root.baseNames = baseNames
         root.ready = true
     }
 
@@ -81,6 +96,16 @@ done
         }
 
         return key
+    }
+
+    // Display name for a window class, same lookup order as
+    // iconNameForClass; the class itself when no .desktop file matches.
+    function nameForClass(cls) {
+        if (!cls) return ""
+        const key = cls.toLowerCase()
+        const tail = key.substring(key.lastIndexOf(".") + 1)
+        return root.wmClassNames[key] || root.baseNames[key]
+            || root.wmClassNames[tail] || root.baseNames[tail] || cls
     }
 
     function iconPathForClass(cls) {

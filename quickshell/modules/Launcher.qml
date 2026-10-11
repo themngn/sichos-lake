@@ -821,18 +821,11 @@ PanelWindow {
             return
         }
         if (item.type === "power") {
-            // hyprshutdown only closes apps and exits Hyprland — it does not
-            // touch the system — so reboot/shutdown chain the actual
-            // systemctl call via --post-cmd, run once apps are already
-            // closed and Hyprland has exited. Same binary as SUPER+M.
-            const commands = {
-                logout: ["hyprshutdown"],
-                suspend: ["systemctl", "suspend"],
-                reboot: ["hyprshutdown", "--post-cmd", "systemctl reboot"],
-                shutdown: ["hyprshutdown", "--post-cmd", "systemctl poweroff"]
-            }
+            // PowerMenu.qml owns logout/reboot/shutdown (closes every
+            // window gracefully, lists what's left, then runs the real
+            // command), so both menus behave the same; see its header.
             launcher.close()
-            Quickshell.execDetached(commands[item.id])
+            Quickshell.execDetached(["quickshell", "ipc", "call", "power", "run", item.id])
             return
         }
         if (item.type === "reload") {

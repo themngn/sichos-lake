@@ -22,6 +22,9 @@ ShellRoot {
     }
 
     Launcher {}
+    ClipboardPicker {}
+    EmojiPicker {}
+    PowerMenu {}
     VolumeOSD {}
     BacklightOSD {}
     KbdBacklightOSD {}

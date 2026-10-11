@@ -1155,6 +1155,11 @@ install_file "$HERE/fastfetch/config.jsonc" "$HOME/.config/fastfetch/config.json
 install_file "$HERE/fastfetch/logo.txt" "$HOME/.config/fastfetch/logo.txt"
 echo "    installed to ~/.config/fastfetch"
 
+echo "==> fontconfig (Twemoji as the preferred emoji font)"
+
+install_file "$HERE/fontconfig/conf.d/55-sichos-twemoji.conf" "$HOME/.config/fontconfig/conf.d/55-sichos-twemoji.conf"
+echo "    installed to ~/.config/fontconfig/conf.d (apps pick it up on restart)"
+
 echo "==> sichos-gamepad (native controller overlay daemon)"
 
 if ! rpm -q sichos-gamepad >/dev/null 2>&1; then

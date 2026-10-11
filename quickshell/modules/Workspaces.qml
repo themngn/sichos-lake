@@ -59,6 +59,10 @@ Pill {
                     const map = Object.assign({}, root.addressClassMap)
                     map[root.normalizedAddress(parts[0])] = parts[2]
                     root.addressClassMap = map
+                    // Poll a new kitty window now instead of on the next
+                    // 1s tick, so one launched straight into a CLI (e.g.
+                    // `kitty claude`) gets its real icon promptly.
+                    if (parts[2].toLowerCase() === "kitty" && !kittyCliProc.running) kittyCliProc.running = true
                 }
             }
             if (event.name === "openwindow" || event.name === "closewindow"
@@ -104,23 +108,25 @@ Pill {
         "shell": { glyph: "", size: 21, color: Theme.accent },
     })
 
-    // kitty pid (string) -> icon key, refreshed periodically by polling each
-    // open kitty window's own remote-control socket for its foreground
-    // process (see kitty-cli-icons.py's header comment for why the window
-    // title isn't used instead).
+    // kitty window address (normalizedAddress) -> icon key, refreshed
+    // periodically by polling each open kitty window's own remote-control
+    // socket for its foreground process (see kitty-cli-icons.py's header
+    // comment for why the window title isn't used instead).
     property var kittyCliMap: ({})
 
     function cliIconForToplevel(t) {
         const cls = root.classForToplevel(t)
         if (!cls || cls.toLowerCase() !== "kitty") return null
-        const pid = t.lastIpcObject ? t.lastIpcObject.pid : null
-        if (!pid) return null
-        const key = root.kittyCliMap[String(pid)]
-        // undefined means the pid hasn't been polled successfully yet
-        // (brand-new window, or the last query failed) -- fall through to
-        // the raster Image for that tick rather than guessing. "" means a
-        // confirmed-idle plain shell, which gets the "shell" glyph.
-        if (key === undefined) return null
+        // Keyed by address, not lastIpcObject.pid: that's empty for a window
+        // opened after quickshell started (see kitty-cli-icons.py).
+        const key = root.kittyCliMap[root.normalizedAddress(t.address)]
+        // undefined means the window hasn't been polled successfully yet
+        // (brand-new window, its socket not up yet). Shown as a shell too
+        // rather than the raster kitty icon: a new kitty window is a shell
+        // until something's launched in it, and falling back to the raster
+        // icon made every new terminal flash the kitty cat for up to a poll
+        // interval before turning into the terminal glyph. "" means a
+        // confirmed-idle plain shell.
         return root.cliIcons[key || "shell"] || null
     }
 
@@ -129,7 +135,7 @@ Pill {
         command: ["python3", Quickshell.env("HOME") + "/.config/quickshell/scripts/kitty-cli-icons.py"]
         stdout: StdioCollector {
             onStreamFinished: {
-                // Merge, don't replace: kitty-cli-icons.py omits a pid
+                // Merge, don't replace: kitty-cli-icons.py omits a window
                 // whose query failed this tick (socket briefly not ready,
                 // timeout) rather than reporting it idle, specifically so a
                 // transient failure doesn't flicker that window's icon back
@@ -138,7 +144,7 @@ Pill {
                 try {
                     const parsed = JSON.parse(text)
                     const merged = Object.assign({}, root.kittyCliMap)
-                    for (const pid in parsed) merged[pid] = parsed[pid]
+                    for (const addr in parsed) merged[addr] = parsed[addr]
                     root.kittyCliMap = merged
                 } catch (e) {
                     // Keep the previous map on a parse failure.

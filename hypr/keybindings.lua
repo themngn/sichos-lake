@@ -467,8 +467,8 @@ hl.bind("CTRL + " .. mainMod .. " + I", hl.dsp.exec_cmd("hyprctl dispatch idlein
 hl.bind(mainMod .. " + C", hl.dsp.exec_cmd("hyprpicker -a")) -- color picker, autocopies hex to clipboard
 hl.bind(mainMod .. " + B", hl.dsp.exec_cmd("kitty --class btop -e btop")) -- resource monitor, floated/centered by window_rules.lua
 hl.bind(mainMod .. " + SHIFT + B", hl.dsp.exec_cmd("quickshell ipc call bar toggleSolo")) -- show the bar only on the focused monitor / back to all (see ShellState.barSoloScreen)
-hl.bind(mainMod .. " + SHIFT + V", hl.dsp.exec_cmd("cliphist list | fuzzel --dmenu | cliphist decode | wl-copy")) -- clipboard history picker
-hl.bind(mainMod .. " + PERIOD", hl.dsp.exec_cmd("$HOME/.config/hypr/emoji-picker.sh")) -- emoji picker (types + copies the pick), same key as Windows
+hl.bind(mainMod .. " + SHIFT + V", hl.dsp.exec_cmd("quickshell ipc call clipboard toggle")) -- clipboard history picker (quickshell ClipboardPicker.qml)
+hl.bind(mainMod .. " + PERIOD", hl.dsp.exec_cmd("quickshell ipc call emoji toggle")) -- emoji picker (EmojiPicker.qml; types + copies the pick), same key as Windows
 
 -- Screenshots (HyprQuickFrame: https://github.com/Ronin-CK/HyprQuickFrame)
 -- -p (explicit path), not -c (named config): our own quickshell config
@@ -530,6 +530,13 @@ hl.bind(mainMod .. " + mouse:272", hl.dsp.window.drag(),   { mouse = true })
 hl.bind(mainMod .. " + mouse:273", hl.dsp.window.resize(), { mouse = true })
 
 -- Laptop multimedia keys for volume and LCD brightness
+-- Power key -> quickshell's power menu (PowerMenu.qml). Only reaches
+-- Hyprland because autostart.lua holds a logind handle-power-key inhibitor;
+-- without it logind powers off on its own (HandlePowerKey=poweroff
+-- default) and this never fires. If quickshell isn't running the ipc call
+-- fails, so the key still does something useful: hyprshutdown's own dialog.
+hl.bind("XF86PowerOff", hl.dsp.exec_cmd("quickshell ipc call power toggle || hyprshutdown"))
+
 hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ 0 && wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+"), { locked = true, repeating = true })
 hl.bind("XF86AudioLowerVolume", hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"),      { locked = true, repeating = true })
 hl.bind("XF86AudioMute",        hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"),     { locked = true, repeating = true })

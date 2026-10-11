@@ -52,7 +52,23 @@ Item {
         0xf0026: [0, -62, 60, 52],  // alert
         0xf0434: [0, -66, 60, 60],  // quadcopter
         0xf14de: [0, -66, 60, 60],  // rocket-launch
-        0xf0691: [0, -66, 60, 60]   // bomb
+        0xf0691: [0, -66, 60, 60],  // bomb
+        // EmojiPicker category tabs
+        0xf0150: [0, -66, 60, 60],  // clock-outline (Recent)
+        0xf01f5: [0, -66, 60, 60],  // emoticon-outline
+        0xf03e9: [0, -63, 60, 54],  // paw
+        0xf025a: [0, -66, 60, 60],  // food
+        0xf010b: [0, -63, 60, 54],  // car
+        0xf0806: [0, -66, 60, 60],  // basketball
+        0xf0336: [0, -79, 60, 86],  // lightbulb-outline
+        0xf02d5: [0, -64, 60, 55],  // heart-outline
+        0xf023b: [0, -70, 60, 68],  // flag
+        // PowerMenu (header + tiles)
+        0xf0425: [0, -68, 60, 64],  // power
+        0xf033e: [0, -75, 60, 79],  // lock
+        0xf04b2: [0, -58, 60, 44],  // sleep (zzz)
+        0xf0343: [0, -69, 59, 66],  // logout
+        0xf0709: [0, -71, 60, 72]   // restart
     })
     readonly property real _ref: 100
     readonly property var _ink: {

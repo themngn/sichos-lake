@@ -33,7 +33,7 @@ places — the repo file (what `install.sh` ships to every future machine) and t
 - Repo path → deployed path is a flat mapping unless noted otherwise: `hypr/` → `~/.config/hypr/`,
   `quickshell/` → `~/.config/quickshell/`, `kitty/kitty.conf` → `~/.config/kitty/kitty.conf`,
   `qt6ct/qt6ct.conf` → `~/.config/qt6ct/qt6ct.conf`, `hyprquickframe/theme.toml` →
-  `~/.config/hyprquickframe/theme.toml`, `fastfetch/` → `~/.config/fastfetch/`,
+  `~/.config/hyprquickframe/theme.toml`, `fastfetch/` → `~/.config/fastfetch/`, `fontconfig/` → `~/.config/fontconfig/`,
   `wallpaper/wallpaper.jpg` → `~/Pictures/wallpaper.jpg`, `nvim/init.lua` →
   `~/.config/nvim/init.lua`, `themes/pavucontrol-dark/gtk-4.0/gtk.css` →
   `~/.local/share/themes/pavucontrol-dark/gtk-4.0/gtk.css`, `desktop-overrides/*.desktop` →
@@ -194,6 +194,22 @@ Everything else lives in `quickshell/modules/`:
   also needs its popupId in `toggleRowPopupOpen`.
 - **`Launcher.qml`** (by far the largest file): the SUPER+SHIFT+Q app launcher/menu, including
   its Settings and Autostart folders.
+- **`ClipboardPicker.qml`** (SUPER+SHIFT+V, cliphist history with image thumbnails) and
+  **`EmojiPicker.qml`** (SUPER+PERIOD, Android-style grid with category tabs, Recent and per-emoji
+  remembered skin tones in `~/.config/quickshell/emoji-recent.json`) are separate windows on a shared
+  `PickerWindow.qml` (the launcher's card + search field), deliberately not launcher folders. IPC
+  targets `clipboard`/`emoji` (`toggle`, `close`). They replaced fuzzel pickers — fuzzel's fcft
+  can't render Fedora's COLRv1 Noto Color Emoji at all.
+- **`PowerMenu.qml`**: Lock/Suspend/Log Out/Reboot/Shut Down, opened by the laptop power key
+  (`XF86PowerOff` bind → `quickshell ipc call power toggle`, falling back to `hyprshutdown`). The key
+  only reaches Hyprland because `autostart.lua` holds a logind `handle-power-key` inhibitor
+  (`systemd-inhibit … sleep infinity`) — otherwise logind's default `HandlePowerKey=poweroff` shuts
+  the machine down by itself. No root/logind.conf drop-in involved.
+  Log Out/Reboot/Shut Down (also the launcher's Power folder, via `quickshell ipc call power run
+  <id>`) don't use hyprshutdown's UI: the card sends every window a close request, lists the ones
+  still open with app icons, and runs `systemctl reboot`/`poweroff` (or `hl.dsp.exit()`) once they're
+  gone or after a 3-second countdown, Esc cancelling. hyprshutdown (themed by `hypr/hyprtoolkit.conf`)
+  is only the keybinding's fallback and `system-update-run.sh`'s reboot.
 - Python helper scripts (`quickshell/scripts/*.py`) are invoked as subprocesses by QML for anything
   better done outside JS — `list-apps.py` (enumerates installed `.desktop` entries as JSON),
   `autostart-launch.py` (launches user-selected autostart apps with each app's real "start minimized"
@@ -202,7 +218,9 @@ Everything else lives in `quickshell/modules/`:
   night icons; caches to `~/.config/quickshell/weather-cache.json`, which `Weather.qml` reads on startup
   — `Weather.qml`'s "This week" range bars all share one week-wide min..max scale so days compare at a
   glance, iOS-style, with a dot for the current temperature on today's bar), `claude-usage.py`, `agy-usage.py`, `save-monitor-config.py` (writes the Display
-  widget's changes, including VRR, back into the deployed `~/.config/hypr/monitors.lua`).
+  widget's changes, including VRR, back into the deployed `~/.config/hypr/monitors.lua`),
+  `clipboard-list.py` (cliphist history as JSON, image entries decoded once into a thumbnail cache
+  under `$XDG_RUNTIME_DIR/sichos-clipboard/`).
 - **Custom widgets** (`CustomWidget { name: "..." }`, `modules/CustomWidget.qml`) load
   `~/.config/quickshell/custom/<name>/main.qml` — user-local, often a symlink to a dir outside this repo
   (e.g. `alert-widget` → `~/Work/alert-widget`). To use shared modules from such a file, `import

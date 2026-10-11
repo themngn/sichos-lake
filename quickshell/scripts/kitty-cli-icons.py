@@ -17,11 +17,19 @@ and running `kitty @ ls` serially across several windows can add up to
 longer than that, starving every other window's update whenever one socket
 is briefly slow).
 
-Emits JSON: { "<kitty pid>": "<icon key>", ... }. A pid maps to "" when its
-query succeeded but nothing recognized is running (plain shell etc.) --
-Workspaces.qml treats that as confirmed-idle and clears any icon. A pid is
+Results are keyed by window address, not pid: Workspaces.qml only has the
+pid via the toplevel's lastIpcObject, which (like its class -- see
+addressClassMap there) stays empty for a window opened after quickshell
+started, so new kitty windows kept the raster kitty icon until the next
+quickshell reload. `hyprctl clients -j` maps each kitty pid to its window
+address(es) here instead.
+
+Emits JSON: { "<window address>": "<icon key>", ... }, addresses lowercased
+without "0x". An address maps to "" when its query succeeded but nothing
+recognized is running (plain shell etc.) --
+Workspaces.qml treats that as confirmed-idle and clears any icon. It is
 omitted entirely only when the query itself failed (socket not ready yet,
-timeout) -- Workspaces.qml then keeps whatever it last knew for that pid
+timeout) -- Workspaces.qml then keeps whatever it last knew for that window
 instead of flickering the icon away for one bad tick.
 """
 import glob
@@ -67,16 +75,34 @@ def detect_command(sock_path):
     return ""
 
 
+def kitty_addresses():
+    """kitty pid (str) -> its windows' addresses, normalized like
+    Workspaces.qml's normalizedAddress()."""
+    try:
+        out = subprocess.run(["hyprctl", "clients", "-j"], capture_output=True, text=True, timeout=1).stdout
+        clients = json.loads(out)
+    except Exception:
+        return {}
+    by_pid = {}
+    for c in clients:
+        if (c.get("class") or "").lower() == "kitty":
+            addr = (c.get("address") or "").lower().removeprefix("0x")
+            by_pid.setdefault(str(c.get("pid")), []).append(addr)
+    return by_pid
+
+
 def main():
     sock_paths = glob.glob("/tmp/kitty-sichos-*")
     with ThreadPoolExecutor(max_workers=max(1, len(sock_paths))) as pool:
         icon_keys = pool.map(detect_command, sock_paths)
+    by_pid = kitty_addresses()
 
     result = {}
     for sock_path, icon_key in zip(sock_paths, icon_keys):
         if icon_key is not None:
             pid = sock_path.rsplit("-", 1)[-1]
-            result[pid] = icon_key
+            for addr in by_pid.get(pid, []):
+                result[addr] = icon_key
     json.dump(result, sys.stdout)
 
 

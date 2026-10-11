@@ -63,6 +63,16 @@ hl.layer_rule({
     ignore_alpha = 0.45,
 })
 
+-- hyprshutdown's whole-screen backdrop (hyprtoolkit.conf's translucent
+-- `background`): frosted like the cards above. Its app list draws straight
+-- on that backdrop with no fill of its own, so without blur the windows
+-- behind bleed through the text.
+hl.layer_rule({
+    name  = "hyprshutdown-blur",
+    match = { namespace = "^hyprshutdown$" },
+    blur  = true,
+})
+
 -- The bar itself is never blurred (it's either fully transparent or the
 -- 0.8/1.0 solid it's always been), but its popups -- every bar menu,
 -- the workspace menu, tooltips -- are, same frosted cards as above.

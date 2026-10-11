@@ -70,7 +70,11 @@ PopupWindow {
                         Text {
                             text: popup.flagFor(row.modelData)
                             font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSize
+                            // Twemoji's flags (the system emoji font) are drawn
+                            // smaller than Noto's were: ink 74px vs 86px at
+                            // pixelSize 100, measured. Scaled back to the size
+                            // they had next to the layout names.
+                            font.pixelSize: Theme.fontSize * 86 / 74
                         }
                         Text {
                             text: popup.nameFor(row.modelData)
