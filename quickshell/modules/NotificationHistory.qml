@@ -130,7 +130,9 @@ QtObject {
             .filter(c => c)
             .map(c => c.toLowerCase())
         const window = Hyprland.toplevels.values.find(t => {
-            const cls = t.lastIpcObject && t.lastIpcObject.class
+            // lastIpcObject is empty for windows opened after quickshell
+            // started (see Workspaces.qml's addressClassMap comment).
+            const cls = (t.lastIpcObject && t.lastIpcObject.class) || (t.wayland && t.wayland.appId)
             return cls && classes.includes(cls.toLowerCase())
         })
         if (window) {

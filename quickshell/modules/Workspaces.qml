@@ -44,7 +44,17 @@ Pill {
     // ("<address>,<workspace>,<class>,<title>"), so that's cached here and
     // used ahead of the (possibly-broken) lastIpcObject as the source of
     // truth for the icon.
+    //
+    // This cache alone isn't enough: it's plain QML state, so a quickshell
+    // hot-reload wipes it, while the Hyprland toplevel objects (a C++
+    // singleton) survive the reload with their lastIpcObject still empty --
+    // every window opened since quickshell started then resolved to class ""
+    // and its icon vanished until restart. Hence the refreshToplevels() on
+    // load (repopulates lastIpcObject for everything already open, XWayland
+    // included) and the wayland.appId fallback in classForToplevel().
     property var addressClassMap: ({})
+
+    Component.onCompleted: Hyprland.refreshToplevels()
 
     function normalizedAddress(addr) {
         return addr ? addr.toLowerCase().replace(/^0x/, "") : ""
@@ -75,7 +85,10 @@ Pill {
     function classForToplevel(t) {
         const cached = root.addressClassMap[root.normalizedAddress(t.address)]
         if (cached) return cached
-        return t.lastIpcObject ? t.lastIpcObject.class : ""
+        // wayland.appId is the same string Hyprland reports as the class
+        // for native Wayland clients, and is live (no IPC refresh needed);
+        // it's null for XWayland windows.
+        return (t.lastIpcObject && t.lastIpcObject.class) || (t.wayland && t.wayland.appId) || ""
     }
 
     // Nerd Font glyphs for kitty windows whose foreground process is a known
