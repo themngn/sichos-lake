@@ -20,7 +20,12 @@ QtObject {
     // closing the window any other way (SUPER+W, the phone disconnecting)
     // still resets everything. Stays true while collapsed (the window is
     // just parked off-screen).
-    readonly property bool open: Hyprland.toplevels.values.some(t => t.title === root.title)
+    // (Guarded: during a reload the toplevel list is briefly unavailable,
+    // which made the plain `.some(...)` evaluate to undefined.)
+    readonly property bool open: {
+        const list = Hyprland.toplevels ? Hyprland.toplevels.values : null
+        return !!list && list.some(t => t.title === root.title)
+    }
     property bool loading: false
 
     // Collapsed/screen live in a runtime-dir file rather than plain
@@ -155,6 +160,11 @@ QtObject {
 
     onOpenChanged: {
         if (root.open) {
+            // Only for a mirror this session just started (not the window
+            // reappearing to a reloaded quickshell): phone-mirror.sh opens
+            // it off-screen, and expanding now slides it in together with
+            // the controls card, which starts its slide on this same change.
+            if (root.loading) root.expand()
             root.loading = false
             root._aspectProbe.running = true
         } else {

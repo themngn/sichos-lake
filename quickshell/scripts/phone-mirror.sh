@@ -155,6 +155,19 @@ on_window() {
     end" >/dev/null
 }
 
+# The phone slides (collapse/expand) without the spring bounce the rest of
+# the desktop's window moves have. Hyprland has no per-window animation curve
+# (the window rule's `animation` is only the style), so window moves are
+# switched to a plain ease-out just for the slide and the spring is put back
+# once it's done -- another window moving in that half second would get the
+# ease-out too. 3.2ds = 320ms; easeOutQuint is look_and_feel.lua's curve,
+# and PhoneMirrorPanel's controls card uses the same bezier and duration.
+# The restore value mirrors look_and_feel.lua's `windows` leaf, which
+# windowsMove otherwise inherits.
+SMOOTH_MOVE="hl.animation({ leaf = 'windowsMove', enabled = true, speed = 3.2, bezier = 'easeOutQuint' })"
+SPRING_MOVE="hl.animation({ leaf = 'windowsMove', enabled = true, speed = 4.79, spring = 'easy' })"
+restore_spring() { hyprctl eval "$SPRING_MOVE" >/dev/null; }
+
 case "$1" in
 open)
     monitor="$2" bar="${3:-24}" controls="${4:-60}" side="${5:-right}"
@@ -175,7 +188,11 @@ open)
     # soft over wireless adb; both decode through VA-API here.
     mh=$(monitor_by name "$monitor" | jq -r .h)
     h=$(( ${mh:-1080} - bar - controls - GAP * 3 ))
-    if [ "$side" = left ]; then x="$GAP"; else x="monitor_w-$GAP-window_w"; fi
+    # Opens just past the monitor edge; PhoneMirrorState then runs `expand`
+    # as soon as the window exists, so it slides in exactly like expanding,
+    # in step with the controls card -- instead of Hyprland's pop-in, which
+    # never matched the card's slide.
+    if [ "$side" = left ]; then x="-window_w"; else x="monitor_w"; fi
     hyprctl eval "
     hl.exec_cmd('scrcpy --window-title=\"$TITLE\" --window-height=$h --no-audio --stay-awake --video-codec=h265 --video-bit-rate=16M', {
         float = true,
@@ -187,9 +204,6 @@ open)
         border_color = 'rgba(ffffff1a)',
         move = '$x $((bar + GAP))',
     })" >/dev/null
-    # Backgrounded with the lock fd closed, so it doesn't hold up the next
-    # command while adb runs.
-    "$0" wake 9>&- &
     ;;
 close)
     stop_wake
@@ -217,6 +231,7 @@ collapse)
     # regain, via focus cycling) the keyboard. Setting it also hands focus
     # to another window on its own -- confirmed live.
     on_window "hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = 'no_focus', value = '1' }))
+               $SMOOTH_MOVE
                hl.dispatch(hl.dsp.window.move({ window = w, x = $x, y = $y }))"
     # Then unpinned, once the slide is done: on a workspace switch Hyprland
     # carries pinned windows along and pulls an off-screen one back onto
@@ -225,6 +240,15 @@ collapse)
     # blinks the window for a frame; off-screen that's invisible.)
     sleep 0.45
     [ "$(window | jq -r .pinned)" = true ] && on_window 'hl.dispatch(hl.dsp.window.pin({ window = w }))'
+    # A workspace switch during that slide still carried the (then still
+    # pinned) window along and pulled it back on-screen (reproduced: switch
+    # 0.2s in -> stuck at x=2066 on the new workspace). Now unpinned, one
+    # more slide-off sticks.
+    if [ "$(window | jq -r '.at[0]')" != "$x" ]; then
+        on_window "hl.dispatch(hl.dsp.window.move({ window = w, x = $x, y = $y }))"
+        sleep 0.45
+    fi
+    restore_spring
     ;;
 expand)
     win=$(window); [ -z "$win" ] && exit 0
@@ -243,7 +267,11 @@ expand)
     # does, so it then slides in normally. pin is a toggle -- only when unset.
     [ "$(jq -r .pinned <<<"$win")" = true ] || on_window 'hl.dispatch(hl.dsp.window.pin({ window = w }))'
     on_window "hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = 'no_focus', value = '0' }))
+               $SMOOTH_MOVE
                hl.dispatch(hl.dsp.window.move({ window = w, x = $x, y = $wy }))"
+    ( sleep 0.45; restore_spring ) 9>&- &
+    # Backgrounded with the lock fd closed, so it doesn't hold up the next
+    # command while adb runs.
     "$0" wake 9>&- &
     ;;
 esac

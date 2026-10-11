@@ -24,8 +24,8 @@ Scope {
     readonly property int phoneHeight: root.screen.height - Theme.barHeight - root.controlsHeight - root.gap * 3
     readonly property int phoneWidth: Math.round(root.phoneHeight * PhoneMirrorState.aspect)
 
-    // Matched by eye to Hyprland's `windows` spring (look_and_feel.lua),
-    // which the window's own slide uses.
+    // The phone window's slide duration (phone-mirror.sh SMOOTH_MOVE, 3.2ds);
+    // the controls card matches it and the tab waits most of it out.
     readonly property int slideDuration: 320
 
     readonly property int tabWidth: 21
@@ -284,10 +284,16 @@ Scope {
         id: controls
         screen: root.screen
         readonly property bool shown: PhoneMirrorState.open && !PhoneMirrorState.collapsed && root.here
-        // 0 = docked, 1 = fully slid out past the screen edge.
+        // 0 = docked, 1 = fully slid out past the screen edge. Same curve
+        // and duration as the phone window's own slide (phone-mirror.sh's
+        // SMOOTH_MOVE: easeOutQuint over 320ms), so the two move together.
         property real slide: controls.shown ? 0 : 1
         Behavior on slide {
-            NumberAnimation { duration: root.slideDuration; easing.type: Easing.OutCubic }
+            NumberAnimation {
+                duration: root.slideDuration
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: [0.23, 1, 0.32, 1, 1, 1]
+            }
         }
         visible: controls.shown || controls.slide < 1
         color: "transparent"
