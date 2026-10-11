@@ -79,6 +79,8 @@ hl.bind(mainMod .. " + L", hl.dsp.exec_cmd("hyprlock"))
 hl.bind(mainMod .. " + Q", hl.dsp.exec_cmd("quickshell ipc call launcher toggleApps")) -- quickshell launcher: apps only
 hl.bind(mainMod .. " + SHIFT + Q", hl.dsp.exec_cmd("quickshell ipc call launcher toggleFull")) -- quickshell launcher: full root menu (Apps/Toggles/Power)
 hl.bind(mainMod .. " + SHIFT + H", hl.dsp.exec_cmd("quickshell ipc call hdr toggle")) -- toggle HDR (only on monitors picked in the bar's HDR popup, see HdrSettings.qml)
+hl.bind(mainMod .. " + X", hl.dsp.exec_cmd("quickshell ipc call phone toggle")) -- phone mirror: open, then hide/show (quickshell PhoneMirrorState.qml)
+hl.bind(mainMod .. " + SHIFT + X", hl.dsp.exec_cmd("quickshell ipc call phone close")) -- phone mirror: disconnect
 hl.bind(mainMod .. " + SHIFT + P", hl.dsp.window.pseudo()) -- moved off SUPER+P to free it for the mirror/extend toggle below
 hl.bind(mainMod .. " + J", hl.dsp.layout("togglesplit"))    -- dwindle only
 
@@ -525,9 +527,30 @@ hl.bind(mainMod .. " + SHIFT + D", hl.dsp.window.move({ workspace = "special:D" 
 hl.bind(mainMod .. " + mouse_down", hl.dsp.focus({ workspace = "e+1" }))
 hl.bind(mainMod .. " + mouse_up",   hl.dsp.focus({ workspace = "e-1" }))
 
--- Move/resize windows with mainMod + LMB/RMB and dragging
-hl.bind(mainMod .. " + mouse:272", hl.dsp.window.drag(),   { mouse = true })
-hl.bind(mainMod .. " + mouse:273", hl.dsp.window.resize(), { mouse = true })
+-- Move/resize windows with mainMod + LMB/RMB and dragging -- except the
+-- phone mirror (quickshell's PhoneMirror, a scrcpy window docked by
+-- quickshell/scripts/phone-mirror.sh): its controls card and collapse tab
+-- are quickshell surfaces lined up with the docked position, so dragging
+-- it off would leave them behind. Hyprland has no "no_move" window prop
+-- (checked its rule-field strings), hence the hit test here.
+local function phoneMirrorUnderCursor()
+    local p = hl.get_cursor_pos()
+    if not p then return false end
+    for _, w in ipairs(hl.get_windows({ class = "scrcpy" })) do
+        if w.title == "SichOS Phone"
+            and p.x >= w.at.x and p.x < w.at.x + w.size.x
+            and p.y >= w.at.y and p.y < w.at.y + w.size.y then
+            return true
+        end
+    end
+    return false
+end
+hl.bind(mainMod .. " + mouse:272", function()
+    if not phoneMirrorUnderCursor() then hl.dispatch(hl.dsp.window.drag()) end
+end, { mouse = true })
+hl.bind(mainMod .. " + mouse:273", function()
+    if not phoneMirrorUnderCursor() then hl.dispatch(hl.dsp.window.resize()) end
+end, { mouse = true })
 
 -- Laptop multimedia keys for volume and LCD brightness
 -- Power key -> quickshell's power menu (PowerMenu.qml). Only reaches

@@ -128,6 +128,7 @@ PanelWindow {
     Component { id: displayComp; DisplaySettings { screenName: bar.screen.name; popupHost: barMorph.slot; horizontalPadding: 4 * Theme.barIconSpacingScale } }
     Component { id: powerProfileComp; PowerProfile { horizontalPadding: 4 * Theme.barIconSpacingScale } }
     Component { id: batteryComp; Battery { horizontalPadding: 4 * Theme.barIconSpacingScale } }
+    Component { id: phoneMirrorComp; PhoneMirror { screenName: bar.screen.name; horizontalPadding: 4 * Theme.barIconSpacingScale } }
 
     function componentFor(id) {
         switch (id) {
@@ -144,6 +145,7 @@ PanelWindow {
         case "display": return displayComp
         case "powerprofile": return powerProfileComp
         case "battery": return batteryComp
+        case "phone": return phoneMirrorComp
         }
         return null
     }

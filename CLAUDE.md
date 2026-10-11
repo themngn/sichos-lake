@@ -210,6 +210,18 @@ Everything else lives in `quickshell/modules/`:
   still open with app icons, and runs `systemctl reboot`/`poweroff` (or `hl.dsp.exit()`) once they're
   gone or after a 3-second countdown, Esc cancelling. hyprshutdown (themed by `hypr/hyprtoolkit.conf`)
   is only the keybinding's fallback and `system-update-run.sh`'s reboot.
+- **Phone mirror** (bar widget `PhoneMirror.qml`, `PhoneMirrorState.qml`, per-screen
+  `PhoneMirrorPanel.qml`, `scripts/phone-mirror.sh`; SUPER+X show/hide, SUPER+SHIFT+X disconnect): a
+  real scrcpy Hyprland window (pinned, docked to the left or right monitor edge, styled by spawn rules)
+  plus quickshell surfaces lined up with it — loading card, controls card underneath, collapsed edge
+  tab, "type your PIN" and "screen off" cards. Collapse slides the window past every monitor's outer
+  edge, then unpins it: Hyprland pulls an off-screen window back on-screen whenever it moves it between
+  workspaces, and pinned windows get moved on every switch (a hidden special workspace fails the same
+  way). Expand re-pins it while still off-screen, then slides it in. Rendering the phone *inside*
+  quickshell was also evaluated (scrcpy `--v4l2-sink` → QtMultimedia `Camera`): the video works, but
+  input would need a custom scrcpy control client. A test viewer that falls back to the default camera
+  opens the real webcam — always select the loopback device explicitly. The script's header comments
+  record the Android-side findings (fingerprint "alternate bouncer", what keeps the PIN pad awake).
 - Python helper scripts (`quickshell/scripts/*.py`) are invoked as subprocesses by QML for anything
   better done outside JS — `list-apps.py` (enumerates installed `.desktop` entries as JSON),
   `autostart-launch.py` (launches user-selected autostart apps with each app's real "start minimized"

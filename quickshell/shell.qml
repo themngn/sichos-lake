@@ -21,6 +21,12 @@ ShellRoot {
         IdleDimOverlay {}
     }
 
+    Variants {
+        model: Quickshell.screens
+
+        PhoneMirrorPanel {}
+    }
+
     Launcher {}
     ClipboardPicker {}
     EmojiPicker {}
