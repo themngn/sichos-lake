@@ -46,7 +46,7 @@ Item {
         0xf0e51: [-1, -64, 62, 56], // monitor (DisplaySettings)
         0xf1542: [-1, -63, 61, 54], // tune-variant (QuickSettings)
         0xf0d7d: [-1, -47, 61, 22], // hdr (QuickSettings)
-        0xf011c: [0, -83, 60, 94],  // cellphone (QuickSettings)
+        0xf011c: [0, -83, 60, 94],  // cellphone (QuickSettings, PhonePage)
         // Control Center tiles
         0xf001d: [0, -66, 60, 60],  // airplane
         0xf1e6: [0, -76, 60, 80],   // plug (power profile: performance)
@@ -84,6 +84,9 @@ Item {
         // PowerMenu (header + tiles)
         0xf0425: [0, -68, 60, 64],  // power
         0xf033e: [0, -75, 60, 79],  // lock
+        // Phone mirror (connecting spinner, unlock cover)
+        0xf0453: [0, -62, 59, 52],  // refresh
+        0xf033f: [0, -75, 60, 79],  // lock-open
         0xf04b2: [0, -58, 60, 44],  // sleep (zzz)
         0xf0343: [0, -69, 59, 66],  // logout
         0xf0709: [0, -71, 60, 72]   // restart

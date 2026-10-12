@@ -249,6 +249,50 @@ Everything else lives in `quickshell/modules/`:
   input would need a custom scrcpy control client. A test viewer that falls back to the default camera
   opens the real webcam — always select the loopback device explicitly. The script's header comments
   record the Android-side findings (fingerprint "alternate bouncer", what keeps the PIN pad awake).
+  The script pins one adb serial (USB if plugged in, else `sichlink adb-serial`) since one phone shows up
+  as several adb entries; `phone-mirror.sh shell …` is how PhoneMirrorState's own long-lived `adb shell`s
+  (PIN relay, power watch) get that same serial. Locked phone: the wake loop types a saved PIN once
+  the PIN pad is up (login keyring, `secret-tool … sichos phone-pin`, handed over on stdin, never argv
+  on the PC; saved by the PIN card's "Remember on this PC" only after it really unlocks, forgotten
+  after one rejection to stay clear of Android's lockout, Forget on the Phone page), else the
+  card relays typed keys. If the mirror found the phone locked, closing it (not hiding) locks it again
+  (KEYCODE_SLEEP locks at once, unlike POWER). The wake loop starts with `open` (in parallel with
+  scrcpy starting) and reports state 2 while unlocking: PhoneMirrorPanel's opaque lock cover hides
+  the lock screen (put up early from sichlink's last lock state, so it doesn't flash by during the
+  slide-in), steps PIN dots, and on unlock pops the lock open and slides off; the loop already
+  counts the PIN pad closing as unlocked, ~1s before the keyguard finishes. The phone-side loop is
+  one single-quoted string — an apostrophe in its comments once broke it. `open` gets its serial
+  from `sichlink connect` (fresh, not the daemon's cached one). A fresh window on an awake, static
+  phone stayed grey (no frame after the first); the first `expand` sends the sichlink app's NUDGE
+  broadcast (invisible 1px overlay) a second in. The phone can ask for the mirror (app button / QS
+  tile → `{"event":"mirror"}` on `sichlink watch` → `Sichlink._event` opens or expands it). So the phone in hand stays behind its fingerprint;
+  only the mirror unlocks it — unlike Extend Unlock (below), which is the optional "always unlocked
+  near this PC" mode. Controls card, left to right: side swap/collapse, PC
+  audio | volume rocker | back, home, recents | power | close, collapse/swap, with dividers between the
+  groups. The card is only as wide as the phone (~494px on a 1200px screen), so `buttonWidth` narrows the
+  buttons to fit nine slots. Volume: one slot split up/down; click = one step, hold = repeat
+  (`PhoneMirrorState.startKeyRepeat`: one `adb shell` loop on the phone, killed on release — killing
+  the local adb client ends the remote loop, checked with `ps` on the phone), mouse wheel = one step per
+  notch. Power: click = KEYCODE_POWER (26), long press = `input keyevent --longpress 26` (power menu);
+  `PhoneMirrorState.key(code, longPress)` → `phone-mirror.sh key [--longpress] <code>`. Every key is an
+  `input keyevent` on the phone, ~0.3s each.
+- **Phone** (`Sichlink.qml` singleton, `PhonePage.qml` = Control Center page `qs-phone`, tile id `phone`):
+  front end for the sichlink daemon — a separate repo (`~/Work/sichlink`, see its README: Android app + Rust
+  `sichlink` daemon/CLI, `systemd --user` unit `sichlink`) that pairs phones over TLS, keeps wireless adb
+  connected on every paired PC, reports the phone's lock state, and can wake/unlock it (optional
+  Extend Unlock mode: the app holds an RFCOMM link so the PC counts as a connected trusted device). One
+  tile for everything phone: label = the phone's name, subtitle = mirror state or `Sichlink.stateText`,
+  click toggles the mirror, chevron opens the page; a 2-row tile adds the state line (lock · adb ·
+  Bluetooth), no buttons. The old separate "link" (Phone Link) tile id is gone —
+  `ControlCenterTiles._fill` maps a saved one onto "phone". The page: header switch = the daemon
+  (`systemctl --user enable/disable --now`), a card for the paired phone (chips; Mirror/Show/Hide or
+  Connect while adb is missing, Wake, Close; Unpair), Mirror settings (phone audio while open, saved
+  PIN with Forget, dock side), other phones to pair (shows the code) or unpair. Without the daemon the
+  page still offers the mirror (USB). State is streamed from `sichlink watch` (JSON lines, no polling;
+  retried every 3s while the Control Center is open, 30s otherwise, when the daemon is down); `{"event":
+  "mirror"}` lines (the phone asked) open/expand the mirror. Not deployed by `install.sh` yet; the
+  binary lives in `~/.local/bin`, which isn't on quickshell's PATH (inherited from Hyprland), so
+  `Sichlink.cmd()` and `phone-mirror.sh` look there explicitly.
 - Python helper scripts (`quickshell/scripts/*.py`) are invoked as subprocesses by QML for anything
   better done outside JS — `list-apps.py` (enumerates installed `.desktop` entries as JSON),
   `autostart-launch.py` (launches user-selected autostart apps with each app's real "start minimized"

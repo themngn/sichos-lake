@@ -40,3 +40,16 @@ empty workspace" look, but only on HDR-enabled monitors.
 **How to properly fix:** once the actual layer (Hyprland vs. Qt vs. driver) is identified,
 either report/patch it upstream, or find a real Hyprland-side setting instead of forcing bar
 opacity. Remove the `hdrActiveHere` workaround from `Bar.qml` once that's done.
+
+## sichlink isn't deployed by install.sh
+
+**Priority:** medium. **Complexity:** medium (packaging).
+
+**Where:** `install.sh`, `packages.txt`, `quickshell/modules/Sichlink.qml`, `quickshell/scripts/phone-mirror.sh`.
+
+The Phone tile/page's Phone Link parts (`Sichlink.qml`, `PhonePage.qml`) and `phone-mirror.sh`'s wireless fallback
+need the `sichlink` daemon from the separate `~/Work/sichlink` repo. Today it's built and installed by
+hand into `~/.local/bin` with a hand-installed `systemd --user` unit, and the phone app is sideloaded.
+Without it everything degrades cleanly (the tile reads "Phone Link not installed", the mirror falls
+back to plain adb), but a fresh install doesn't get it. Real fix: an RPM in the SichOS COPR (like `sichos-gamepad`),
+an `install.sh` step enabling the unit, then drop the `~/.local/bin` lookups.

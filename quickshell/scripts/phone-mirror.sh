@@ -1,7 +1,7 @@
 #!/bin/bash
 # Phone mirror window (scrcpy) management for quickshell's PhoneMirrorState.qml.
 #   open <monitor> <bar height> <controls height> <side>
-#   close | collapse <side> | expand <monitor> <side> <bar height> | key <android keycode>
+#   close | collapse <side> | expand <monitor> <side> <bar height> | key [--longpress] <android keycode>
 # <side> is "right" (default) or "left": which monitor edge it docks to.
 # expand also re-docks an expanded window to the other side (an animated
 # slide across, same move as expanding).
@@ -19,16 +19,53 @@
 TITLE="SichOS Phone"
 GAP=6
 
+# Which phone: USB if plugged in (no Wi-Fi in the video path), else the one
+# the sichlink daemon (~/Work/sichlink) keeps connected over wireless
+# debugging. It has to be pinned: one phone often shows up as several adb
+# entries -- USB plus wireless, and adb's own mDNS auto-connect adds another
+# "adb-<serial>-xxx (N)._adb-tls-connect._tcp" entry each time wireless
+# debugging is re-enabled -- and adb/scrcpy refuse to pick one by themselves.
+# Exported for every adb/scrcpy below, including the audio-only scrcpy; the
+# mirror window itself is launched by Hyprland, so it gets --serial instead.
+if [ -z "$ANDROID_SERIAL" ]; then
+    ANDROID_SERIAL=$(adb devices -l 2>/dev/null | awk '$2 == "device" && / usb:/ { print $1; exit }')
+    # quickshell runs this with Hyprland's PATH, which has no ~/.local/bin.
+    sichlink=$(command -v sichlink || echo "$HOME/.local/bin/sichlink")
+    # `open` asks the daemon to connect right away (`sichlink connect`: dials
+    # the phone, turns wireless debugging on, checks adb, tries every port it
+    # knows) instead of trusting its cached serial, which could be up to its
+    # 15s adb round stale -- the mirror used to fail right after wireless
+    # debugging restarted. Everything else (keys, PIN relay) takes the cached
+    # serial, ~5ms, and only falls back to connecting if there's none.
+    if [ -z "$ANDROID_SERIAL" ] && [ -x "$sichlink" ]; then
+        if [ "$1" = open ]; then
+            ANDROID_SERIAL=$("$sichlink" connect --timeout 8 2>/dev/null 9>&- 8>&-)
+        else
+            ANDROID_SERIAL=$("$sichlink" adb-serial 2>/dev/null) ||
+                ANDROID_SERIAL=$("$sichlink" connect --timeout 5 2>/dev/null 9>&- 8>&-)
+        fi
+    fi
+    [ -n "$ANDROID_SERIAL" ] && export ANDROID_SERIAL
+fi
+
 # Nav buttons skip the lock below: each keyevent is independent and takes
 # ~0.3s (adb + Android's `input` JVM startup), so locking would drop presses.
 if [ "$1" = key ]; then
-    exec adb shell input keyevent "$2"
+    shift  # [--longpress] <keycode>
+    exec adb shell input keyevent "$@"
+fi
+# PhoneMirrorState's long-lived adb shells (PIN relay, power watch) go through
+# here only to get the serial above.
+if [ "$1" = shell ]; then
+    shift
+    exec adb shell "$@"
 fi
 
-# Wakes the phone and, if it's locked, brings up the PIN pad ("bouncer") --
-# the PIN is then typed into the mirror window (scrcpy forwards the
-# keyboard). The PIN itself is deliberately never stored or typed by this
-# script. The pad may look black in the mirror: type blind, then Enter.
+# Wakes the phone and, if it's locked, brings up the PIN pad ("bouncer").
+# If a PIN is saved (see "Saved PIN" below) it's typed once, as soon as the
+# pad is up; otherwise -- or if it was rejected -- PhoneMirrorPanel's "type
+# your PIN" card relays the user's keys. The pad itself shows black in the
+# mirror.
 #
 # Runs as one adb shell loop on the phone, for up to ~4 min or until
 # unlocked: wake it if it fell asleep, re-open the pad if it isn't
@@ -52,11 +89,59 @@ fi
 #     overlapping loops from quick collapse/expand fought each other;
 #   - plain grep, not -q: -q exits at the first match and dumpsys then
 #     prints "Broken pipe" errors.
-#   - "is the pad up" (1/0) is reported each round into $PIN_STATE, which
-#     PhoneMirrorState polls to overlay a "type your PIN" hint on the
-#     otherwise-black mirror.
+#   - the state is reported each round into $PIN_STATE, which
+#     PhoneMirrorState polls: 0 unlocked (or gave up), 2 locked and being
+#     unlocked (the panel hides the lock screen behind an "Unlocking" cover),
+#     1 PIN pad up waiting for the user ("type your PIN" card over the
+#     otherwise-black pad), 3 the same after the saved PIN was rejected.
 WAKE_PID="${XDG_RUNTIME_DIR:-/tmp}/sichos-phone-wake.pid"
 PIN_STATE="${XDG_RUNTIME_DIR:-/tmp}/sichos-phone-pinpad"
+
+# Saved PIN: the phone stays locked by its own fingerprint/PIN for anyone
+# holding it; only the mirror unlocks it, by typing the PIN over adb. (Android's
+# Extend Unlock/trusted devices can't do this: they keep the phone unlocked
+# for anyone while the PC is near, and can't unlock an already-locked phone.)
+# Kept in the login keyring (gnome-keyring, unlocked at login -- see
+# autostart.lua), never in a file or on a command line: secret-tool reads it
+# from stdin and the wake loop gets it on adb's stdin. On the phone it does
+# end up in `input keyevent`'s argv for a moment, which only shell/root can
+# see there. Saved from the "type your PIN" card ("Remember on this PC").
+pin_lookup() { secret-tool lookup sichos phone-pin 2>/dev/null; }
+# Set by the wake loop when it found the phone locked and the phone then got
+# unlocked; close locks it again (only then -- a phone that was already
+# unlocked when the mirror opened is left alone). Collapse (hide) doesn't:
+# hiding it for a moment shouldn't mean unlocking it again on show.
+RELOCK="${XDG_RUNTIME_DIR:-/tmp}/sichos-phone-relock"
+relock() {
+    [ -e "$RELOCK" ] || return 0
+    rm -f "$RELOCK"
+    # SLEEP, not POWER (a toggle): counts as a power-button sleep, which
+    # locks at once rather than after the screen-off grace period.
+    adb shell input keyevent 223 9>&- 8>&-
+}
+case "$1" in
+pin-saved)
+    [ -n "$(pin_lookup)" ]; exit
+    ;;
+forget-pin)
+    secret-tool clear sichos phone-pin; exit 0
+    ;;
+save-pin)
+    # PIN on stdin, sent right after the user pressed Enter on the card. Only
+    # kept if the phone really unlocks within a few seconds -- a typo
+    # leaves the pad up and is never saved.
+    read -r pin
+    case "$pin" in ''|*[!0-9]*) exit 1 ;; esac
+    for _ in 1 2 3 4 5 6 7 8; do
+        sleep 0.5
+        if adb shell dumpsys window | grep -q "isKeyguardShowing=false"; then
+            printf '%s' "$pin" | secret-tool store --label="SichOS phone PIN" sichos phone-pin
+            exit
+        fi
+    done
+    exit 1
+    ;;
+esac
 # Collapse/close stop a still-running wake loop -- otherwise it keeps
 # re-opening the PIN pad behind the hidden/closed mirror. Killing the local
 # adb client ends the loop on the phone too (checked with `ps -A` there).
@@ -79,7 +164,11 @@ if [ "$1" = wake ]; then
     # open fd -- including the flock fd, so the daemon held the lock forever
     # and every later call silently timed out on it (found via /proc/locks:
     # the holder was `adb ... fork-server server`).
-    adb shell '
+    # The saved PIN (if any) goes in as the first line of stdin. The phone-side
+    # script is one single-quoted string: no apostrophes in its comments (one
+    # broke it, and the bogus "3" it printed made the reader forget the PIN).
+    pin_lookup | { cat; echo; } | adb shell '
+        read -r PIN
         awake() { dumpsys power | grep "mWakefulness=Awake" >/dev/null; }
         locked() { dumpsys window | grep "isKeyguardShowing=true" >/dev/null; }
         pinpad() { dumpsys activity service com.android.systemui/.SystemUIService | grep "isPrimaryBouncerShowingOrWillBeShowing=true" >/dev/null; }
@@ -89,21 +178,62 @@ if [ "$1" = wake ]; then
         # re-dismisses (the first dismiss often only reaches the
         # fingerprint screen); once it is, Shift every 6th round (~2.4s)
         # keeps the screen on.
-        i=0
+        # The saved PIN is typed once per run, all keys in one `input` call
+        # (one JVM start). A rejected one is reported as 3 and the PC side
+        # forgets it: retrying on every expand would run into the
+        # phone lockout after a few wrong PINs.
+        i=0 was_locked=0 typed=0 st=1
         while [ $i -lt 600 ]; do
             awake || { input keyevent 224; sleep 0.3; }
-            locked || { echo 0; exit 0; }
+            if ! locked; then
+                echo 0
+                [ $was_locked = 1 ] && echo unlocked
+                exit 0
+            fi
+            was_locked=1
             if pinpad; then
-                echo 1
+                if [ -n "$PIN" ] && [ $typed = 0 ]; then
+                    echo 2
+                    typed=1
+                    keys= s=$PIN
+                    while [ -n "$s" ]; do
+                        d=${s%"${s#?}"}; s=${s#?}
+                        keys="$keys $((d + 7))"  # KEYCODE_0..9 = 7..16
+                    done
+                    input keyevent $keys 66
+                    # Accepted shows first as the pad closing: the keyguard
+                    # itself takes another ~1.1s (the phone plays its unlock
+                    # animation) -- measured: typed at +0.08s, keyguard gone
+                    # at +1.1s. So the pad closing already counts as
+                    # unlocked, and the cover starts lifting while the phone
+                    # finishes underneath. A wrong PIN keeps the pad up.
+                    j=0
+                    while [ $j -lt 10 ] && locked && pinpad; do sleep 0.1; j=$((j + 1)); done
+                    if ! pinpad; then
+                        echo 0
+                        echo unlocked
+                        exit 0
+                    fi
+                    st=3
+                    i=$((i + 1))
+                    continue
+                fi
+                echo $st
                 [ $((i % 6)) -eq 0 ] && input keyevent 59
                 sleep 0.2
             else
-                echo 0
+                echo 2
                 wm dismiss-keyguard
                 sleep 0.25
             fi
             i=$((i + 1))
-        done' 8>&- | while read -r st; do echo "$st" > "$PIN_STATE"; done
+        done' 8>&- | while read -r st; do
+            case "$st" in
+            unlocked) touch "$RELOCK" ;;
+            3) secret-tool clear sichos phone-pin; echo 3 > "$PIN_STATE" ;;
+            *) echo "$st" > "$PIN_STATE" ;;
+            esac
+        done
     echo 0 > "$PIN_STATE"
     rm -f "$WAKE_PID"
     exit 0
@@ -172,6 +302,8 @@ on_window() {
 SMOOTH_MOVE="hl.animation({ leaf = 'windowsMove', enabled = true, speed = 3.2, bezier = 'easeOutQuint' })"
 SPRING_MOVE="hl.animation({ leaf = 'windowsMove', enabled = true, speed = 4.79, spring = 'easy' })"
 restore_spring() { hyprctl eval "$SPRING_MOVE" >/dev/null; }
+# Set by `open`, taken by the first `expand` (the scrcpy repaint nudge there).
+FRESH="${XDG_RUNTIME_DIR:-/tmp}/sichos-phone-fresh"
 
 case "$1" in
 open)
@@ -185,6 +317,11 @@ open)
         notify-send -a "Phone" -i phone "Phone mirror" "No device connected over adb (USB or wireless debugging)."
         exit 1  # tells PhoneMirrorState.qml to drop its loading placeholder
     fi
+    # Wake/unlock right away, in parallel with scrcpy starting up (~2-3s
+    # until its window slides in) -- started from `expand` only, the unlock
+    # began after all of that. The wake on expand still runs, and returns at
+    # once if this one is still going (flock) or already done.
+    "$0" wake 9>&- &
     # scrcpy is started at its final height (--window-height; it derives the
     # width from the phone's aspect ratio itself), so only `move` is a rule.
     # A Hyprland `size` rule used to resize it right after mapping, and
@@ -201,8 +338,10 @@ open)
     # in step with the controls card -- instead of Hyprland's pop-in, which
     # never matched the card's slide.
     if [ "$side" = left ]; then x="-window_w"; else x="monitor_w"; fi
+    touch "$FRESH"
+    serial=${ANDROID_SERIAL:+--serial=\"$ANDROID_SERIAL\"}
     hyprctl eval "
-    hl.exec_cmd('scrcpy --window-title=\"$TITLE\" --window-height=$h --no-audio --stay-awake --video-codec=h265 --video-bit-rate=16M', {
+    hl.exec_cmd('scrcpy $serial --window-title=\"$TITLE\" --window-height=$h --no-audio --stay-awake --video-codec=h265 --video-bit-rate=16M', {
         float = true,
         pin = true,
         monitor = '$monitor',
@@ -215,6 +354,7 @@ open)
     ;;
 close)
     stop_wake
+    relock
     on_window 'hl.dispatch(hl.dsp.window.close({ window = w }))'
     "$0" audio-off
     ;;
@@ -277,7 +417,25 @@ expand)
     on_window "hl.dispatch(hl.dsp.window.set_prop({ window = w, prop = 'no_focus', value = '0' }))
                $SMOOTH_MOVE
                hl.dispatch(hl.dsp.window.move({ window = w, x = $x, y = $wy }))"
-    ( sleep 0.45; restore_spring ) 9>&- &
+    # First slide-in of a new connection: with the phone already awake and
+    # its screen static, the window stayed plain grey (34,34,34) until
+    # something changed on the phone (2 of 4 opens). The encoder only emits
+    # frames on screen changes, and nothing after the first one came. A key
+    # press or 1px swipe changes no pixels and a 1px window resize on this
+    # side didn't help either; what works is the sichlink app's NUDGE
+    # broadcast -- an invisible 1x1 overlay at alpha 1/255 for a moment
+    # (~/Work/sichlink Nudge.kt; video every time in testing). It's sent
+    # once the window has been up a second, so scrcpy is streaming by then.
+    # Harmless without the app (the broadcast just finds no receiver).
+    fresh=; [ -e "$FRESH" ] && fresh=1 && rm -f "$FRESH"
+    (
+        sleep 0.45
+        restore_spring
+        if [ -n "$fresh" ]; then
+            sleep 0.6
+            adb shell am broadcast -a dev.sichos.sichlink.NUDGE -n dev.sichos.sichlink/.NudgeReceiver >/dev/null 2>&1
+        fi
+    ) 9>&- &
     # Backgrounded with the lock fd closed, so it doesn't hold up the next
     # command while adb runs.
     "$0" wake 9>&- &

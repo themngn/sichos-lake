@@ -92,12 +92,43 @@ QtObject {
     // shows black), so PhoneMirrorPanel overlays a "type your PIN" hint.
     // Polled with reload() rather than watchChanges: FileView doesn't pick
     // up writes from other processes (see BarSettings' IpcHandler comment).
+    // "3": the pad is up because the saved PIN was rejected (the script has
+    // forgotten it by then). "2": locked, being unlocked -- PhoneMirrorPanel
+    // covers the phone so the lock screen never shows in the mirror.
     property bool pinPad: false
+    property bool pinRejected: false
+    property bool unlocking: false
     property FileView _pinFile: FileView {
         path: Quickshell.env("XDG_RUNTIME_DIR") + "/sichos-phone-pinpad"
         printErrors: false
-        onLoaded: root.pinPad = text().trim() === "1"
+        onLoaded: {
+            const st = text().trim()
+            root.pinPad = st === "1" || st === "3"
+            root.pinRejected = st === "3"
+            if (root.pinRejected) root.pinSaved = false
+            // A "0" left over from the previous run doesn't lift the cover
+            // put up by _expectLock while the new loop is still starting.
+            if (st !== "0" || !root._lockGrace.running) root.unlocking = st === "2"
+            if (st !== "0") root._lockGrace.stop()
+        }
         onLoadFailed: root.pinPad = false
+    }
+    // The wake loop needs ~0.3-0.5s (adb) to report anything, while the
+    // window is already sliding in -- the lock screen flashed by before the
+    // cover went up. So on expand/wake the cover goes up straight away if the
+    // sichlink daemon last reported the phone locked (or its screen off,
+    // which on this phone means locked within seconds), until the loop's
+    // first report or this grace runs out.
+    property Timer _lockGrace: Timer {
+        interval: 2000
+        onTriggered: root._pinFile.reload()
+    }
+    function _expectLock() {
+        const p = Sichlink.phone
+        if (p && (p.locked === true || p.screen_on === false)) {
+            root.unlocking = true
+            root._lockGrace.restart()
+        }
     }
     property Timer _pinPoll: Timer {
         running: root.open && !root.collapsed
@@ -106,7 +137,7 @@ QtObject {
         // hint tracks the phone (~0.4s rounds) without adding much lag.
         interval: 100
         onTriggered: root._pinFile.reload()
-        onRunningChanged: if (!running) root.pinPad = false
+        onRunningChanged: if (!running) { root.pinPad = false; root.unlocking = false }
     }
 
     // PIN entry relay. Keys sent to the scrcpy window are invisible to
@@ -117,9 +148,13 @@ QtObject {
     // logged. Each key still costs ~0.3s on the phone (`input` starts a JVM
     // per line), but stdin keeps them in order.
     property int pinLength: 0
-    onPinPadChanged: if (!root.pinPad) root.pinLength = 0
+    // The digits typed so far, kept only so "Remember on this PC" can hand
+    // them to phone-mirror.sh save-pin on Enter; cleared with the pad.
+    property string _typed: ""
+    onPinPadChanged: if (!root.pinPad) { root.pinLength = 0; root._typed = "" }
     property Process _pinInput: Process {
-        command: ["adb", "shell"]
+        // Through the script only so it picks the same adb serial as the mirror.
+        command: ["bash", root._script, "shell"]
         stdinEnabled: true
         running: root.pinPad
     }
@@ -129,14 +164,46 @@ QtObject {
     function pinDigit(d) {  // Android KEYCODE_0..9 = 7..16
         root._pinKey(7 + d)
         root.pinLength++
+        root._typed += String(d)
     }
     function pinBackspace() {
         root._pinKey(67)  // KEYCODE_DEL
         root.pinLength = Math.max(0, root.pinLength - 1)
+        root._typed = root._typed.slice(0, -1)
     }
     function pinEnter() {
         root._pinKey(66)  // KEYCODE_ENTER; a wrong PIN leaves the pad up, empty
+        if (root.rememberPin && root._typed !== "") {
+            // save-pin keeps it only if the phone actually unlocks.
+            root._savePin.running = false
+            root._savePin.running = true
+            root._savePin.write(root._typed + "\n")
+        }
         root.pinLength = 0
+        root._typed = ""
+    }
+
+    // Saved PIN (phone-mirror.sh "Saved PIN"): typed by the wake loop itself,
+    // so the card only shows when there is none or it was rejected.
+    // rememberPin is the card's "Remember on this PC" checkbox.
+    property bool pinSaved: false
+    property bool rememberPin: false
+    property Process _pinSavedCheck: Process {
+        command: ["bash", root._script, "pin-saved"]
+        running: true
+        onExited: (code) => root.pinSaved = code === 0
+    }
+    property Process _savePin: Process {
+        command: ["bash", root._script, "save-pin"]
+        stdinEnabled: true
+        onExited: (code) => {
+            if (code === 0) root.rememberPin = false
+            root._pinSavedCheck.running = true
+        }
+    }
+    function forgetPin() {
+        root.pinSaved = false
+        Quickshell.execDetached(["bash", root._script, "forget-pin"])
     }
 
     // Phone screen off (asleep or dozing) while the mirror is shown --
@@ -146,7 +213,7 @@ QtObject {
     property bool screenOff: false
     property Process _powerWatch: Process {
         running: root.open && !root.collapsed
-        command: ["adb", "shell", "while true; do dumpsys power | grep -o 'mWakefulness=[A-Za-z]*'; sleep 1; done"]
+        command: ["bash", root._script, "shell", "while true; do dumpsys power | grep -o 'mWakefulness=[A-Za-z]*'; sleep 1; done"]
         stdout: SplitParser {
             onRead: (line) => root.screenOff = line.indexOf("mWakefulness=") === 0 && line !== "mWakefulness=Awake"
         }
@@ -155,6 +222,7 @@ QtObject {
     // Same wake as on expand: also brings up the PIN pad if it's locked.
     function wake() {
         root.screenOff = false  // hide the card right away; the next report confirms
+        root._expectLock()
         Quickshell.execDetached(["bash", root._script, "wake"])
     }
 
@@ -176,6 +244,10 @@ QtObject {
     }
 
     readonly property string _script: Quickshell.env("HOME") + "/.config/quickshell/scripts/phone-mirror.sh"
+
+    // What toggle() does next, for buttons (Control Center tile and page).
+    readonly property string toggleLabel: root.loading ? "Connecting…"
+        : !root.open ? "Mirror" : root.collapsed ? "Show" : "Hide"
 
     // Bar icon: open, or show/hide (collapse/expand) once open. Closing is
     // only ever the controls card's close button -- reconnecting scrcpy is
@@ -215,11 +287,28 @@ QtObject {
     }
     function expand() {
         root._persist.collapsed = false
+        root._expectLock()
         Quickshell.execDetached(["bash", root._script, "expand", root.screenName, root.side, String(Theme.barHeight)])
     }
-    // Android KeyEvent codes: 4 back, 3 home, 187 recents.
-    function key(code) {
-        Quickshell.execDetached(["bash", root._script, "key", String(code)])
+    // Android KeyEvent codes: 4 back, 3 home, 187 recents, 24/25 volume up/down, 26 power.
+    // Held volume buttons: one adb shell looping keyevents on the phone until
+    // released -- a process per step would add a full adb round trip each
+    // time. Stopping it kills the local adb client, which ends the loop on
+    // the phone too (same as the wake loop in phone-mirror.sh). Each
+    // `input keyevent` takes ~0.3s there, so this repeats ~3x a second.
+    property Process _keyRepeat: Process {}
+    function startKeyRepeat(code) {
+        root._keyRepeat.running = false
+        root._keyRepeat.command = ["bash", root._script, "shell", "while true; do input keyevent " + code + "; done"]
+        root._keyRepeat.running = true
+    }
+    function stopKeyRepeat() {
+        root._keyRepeat.running = false
+    }
+
+    // longPress: `input keyevent --longpress` (power: the phone's power menu).
+    function key(code, longPress) {
+        Quickshell.execDetached(["bash", root._script, "key"].concat(longPress ? ["--longpress"] : []).concat([String(code)]))
     }
 
     property Process _startProc: Process {

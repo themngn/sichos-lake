@@ -159,7 +159,7 @@ Pill {
     // (or the bar around it) doesn't count as outside.
     property bool grabbing: false
     readonly property var pageIds: ["quicksettings", "qs-audio", "qs-wifi", "qs-bluetooth", "qs-display",
-        "qs-update", "qs-hdr", "qs-sunset", "qs-idle", "qs-gamefocus"]
+        "qs-update", "qs-hdr", "qs-sunset", "qs-idle", "qs-gamefocus", "qs-phone"]
     onAnyOpenChanged: {
         root.grabbing = false
         if (root.anyOpen) grabTimer.restart()
@@ -297,11 +297,15 @@ Pill {
                 glyph: "", label: "Opaque",
                 sub: ShellState.transparencyOpaque ? "Solid" : Math.round(BarSettings.terminalOpacity * 100) + "%",
                 active: ShellState.transparencyOpaque, more: "" }
+            // The phone: mirror state while it's open, otherwise what the
+            // sichlink daemon knows (PhonePage.qml has the rest).
             case "phone": return {
-                glyph: "\u{f011c}", label: "Phone",
-                sub: PhoneMirrorState.loading ? "Connecting…" : PhoneMirrorState.collapsed ? "Hidden"
-                    : PhoneMirrorState.open ? "Shown" : "Off",
-                active: PhoneMirrorState.open && !PhoneMirrorState.collapsed, busy: PhoneMirrorState.loading, more: "" }
+                glyph: "\u{f011c}", label: Sichlink.phone ? Sichlink.phone.name : "Phone",
+                sub: PhoneMirrorState.loading ? "Connecting…"
+                    : PhoneMirrorState.open ? (PhoneMirrorState.collapsed ? "Mirror hidden" : "Mirroring")
+                    : Sichlink.stateText,
+                active: PhoneMirrorState.open && !PhoneMirrorState.collapsed,
+                busy: PhoneMirrorState.loading || Sichlink.busy, more: "qs-phone" }
             case "powerprofile": {
                 const p = UP.PowerProfiles.profile
                 return {
@@ -355,6 +359,7 @@ Pill {
             // Same as the old bar widget: opens the mirror, then shows/hides
             // it -- closing stays on the mirror's own controls card.
             case "phone": PhoneMirrorState.toggle(root.screenName); break
+                break
             case "powerprofile": {
                 const p = UP.PowerProfiles.profile
                 UP.PowerProfiles.profile = p === UP.PowerProfile.PowerSaver ? UP.PowerProfile.Balanced
@@ -390,7 +395,7 @@ Pill {
             case "powerprofile": return extraProfiles
             case "bluetooth": return extraBtDevices
             case "wifi": return extraWifi
-            case "phone": return extraPhone
+            case "phone": return tall ? extraPhone : null
             case "display": return panel.hasBacklight ? extraBrightness : null
             case "update": return extraUpdate
             case "vpn": return extraVpn
@@ -634,22 +639,21 @@ Pill {
                 }
             }
         }
+        // A 2-row phone tile: the page card's state line. No buttons -- the
+        // tile itself toggles the mirror, the page has the rest.
         Component {
             id: extraPhone
-            Row {
-                spacing: 4
-                TileButton {
-                    width: (parent.width - 4) / 2
-                    label: !PhoneMirrorState.open ? "Connect" : PhoneMirrorState.collapsed ? "Show" : "Hide"
-                    onClicked: PhoneMirrorState.toggle(root.screenName)
-                }
-                TileButton {
-                    width: (parent.width - 4) / 2
-                    enabled: PhoneMirrorState.open || PhoneMirrorState.loading
-                    opacity: enabled ? 1 : 0.4
-                    label: "Disconnect"
-                    onClicked: PhoneMirrorState.close()
-                }
+            Text {
+                readonly property var d: Sichlink.phone
+                verticalAlignment: Text.AlignTop
+                topPadding: 4
+                elide: Text.ElideRight
+                text: !d || !d.connected ? ""
+                    : [Sichlink.lockText(d), d.adb_serial ? "Wireless adb" : "",
+                       d.bt_link ? "Bluetooth" : ""].filter(t => t !== "").join("  ·  ")
+                color: Theme.text
+                font.family: Theme.uiFontFamily
+                font.pixelSize: Theme.fontSize - 2
             }
         }
 
@@ -1341,6 +1345,16 @@ Pill {
         parent: root.popupHost
         anchorItem: root
         shown: ShellState.activePopup === "qs-wifi" && ShellState.activePopupScreen === root.screenName
+        contentWidth: root.cardWidth
+        screenName: root.screenName
+        onBack: root.openPopup(root.popupId)
+    }
+
+    // --- Phone page ---
+    readonly property Item _phoneContent: PhonePage {
+        parent: root.popupHost
+        anchorItem: root
+        shown: ShellState.activePopup === "qs-phone" && ShellState.activePopupScreen === root.screenName
         contentWidth: root.cardWidth
         screenName: root.screenName
         onBack: root.openPopup(root.popupId)

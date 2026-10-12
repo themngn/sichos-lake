@@ -112,10 +112,14 @@ QtObject {
 
     function _fill(list) {
         root.model.clear()
-        // `wide` is the older 1x1/2x1-only format.
-        for (const t of list)
-            if (root.allIds.indexOf(t.id) !== -1)
-                root.model.append({ tileId: t.id, w: t.w || (t.wide ? 2 : 1), h: t.h || 1 })
+        // `wide` is the older 1x1/2x1-only format. "link" (Phone Link) was
+        // merged into "phone": it takes that place unless "phone" is there too.
+        const ids = list.map(t => t.id)
+        for (const t of list) {
+            const id = t.id === "link" && ids.indexOf("phone") === -1 ? "phone" : t.id
+            if (root.allIds.indexOf(id) !== -1 && root.indexOf(id) === -1)
+                root.model.append({ tileId: id, w: t.w || (t.wide ? 2 : 1), h: t.h || 1 })
+        }
         root._revision++
     }
     function _changed() {
