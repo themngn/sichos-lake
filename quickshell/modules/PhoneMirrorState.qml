@@ -53,7 +53,8 @@ QtObject {
         root._sideFile.setText(next)
         // An expanded window slides across to the new side right away.
         if (root.open && !root.collapsed)
-            Quickshell.execDetached(["bash", root._script, "expand", root.screenName, next, String(Theme.barHeight)])
+            Quickshell.execDetached(["bash", root._script, "expand", root.screenName, next, String(Theme.barHeight),
+                                     String(root.geom.w), String(root.geom.h)])
     }
     property FileView _persistFile: FileView {
         path: Quickshell.env("XDG_RUNTIME_DIR") + "/sichos-phone-mirror.json"
@@ -201,6 +202,18 @@ QtObject {
             root._pinSavedCheck.running = true
         }
     }
+    // Set from the Phone page (PhonePage.qml) without going through the
+    // mirror's PIN card; stdin, never argv.
+    property Process _storePin: Process {
+        command: ["bash", root._script, "store-pin"]
+        stdinEnabled: true
+        onExited: root._pinSavedCheck.running = true
+    }
+    function storePin(pin) {
+        root._storePin.running = false
+        root._storePin.running = true
+        root._storePin.write(pin + "\n")
+    }
     function forgetPin() {
         root.pinSaved = false
         Quickshell.execDetached(["bash", root._script, "forget-pin"])
@@ -211,13 +224,113 @@ QtObject {
     // long-lived adb shell reports the power state once a second, only
     // while expanded (dumpsys power is ~70ms on the phone).
     property bool screenOff: false
+    // Also the display's current size, for apps that turn the phone
+    // sideways (games, video): wider than tall = landscape, and the window
+    // is resized to that shape with its surfaces following (geom). From the
+    // display's own line in `dumpsys window displays` (`cur=2712x1220`, ~30ms).
+    // Not `mDisplayRotation`: its first match is a config override that
+    // stayed ROTATION_0 with a game in landscape (the live one,
+    // mCurrentRotation, is hundreds of lines further down).
+    property bool phoneWide: false
     property Process _powerWatch: Process {
         running: root.open && !root.collapsed
-        command: ["bash", root._script, "shell", "while true; do dumpsys power | grep -o 'mWakefulness=[A-Za-z]*'; sleep 1; done"]
+        command: ["bash", root._script, "shell", "while true; do dumpsys power | grep -o 'mWakefulness=[A-Za-z]*'; "
+            + "dumpsys window displays | grep -o -m1 ' cur=[0-9]*x[0-9]*'; sleep 1; done"]
         stdout: SplitParser {
-            onRead: (line) => root.screenOff = line.indexOf("mWakefulness=") === 0 && line !== "mWakefulness=Awake"
+            onRead: (line) => {
+                if (line.indexOf("mWakefulness=") === 0) root.screenOff = line !== "mWakefulness=Awake"
+                else {
+                    const m = /cur=(\d+)x(\d+)/.exec(line)
+                    if (m) root.phoneWide = parseInt(m[1]) > parseInt(m[2])
+                }
+            }
         }
         onRunningChanged: if (!running) root.screenOff = false
+    }
+    readonly property bool landscape: root.open && root.phoneWide
+
+    // The window's size on its screen, shared by phone-mirror.sh (passed to
+    // expand/layout) and PhoneMirrorPanel's surfaces. Portrait: always the
+    // full height between the bar and the controls card (what scrcpy's
+    // --window-height opens it at) -- not resizable. Landscape: a share of
+    // the screen's width (60% by default; the full height would make it over
+    // twice the screen wide), capped to that same height; the share is what
+    // the corner grip (PhoneMirrorPanel, landscape only) drags.
+    // `aspect` is always the portrait width/height.
+    readonly property var _screenInfo: {
+        const s = Quickshell.screens.find(x => x.name === root.screenName) || Quickshell.screens[0]
+        const sw = s ? s.width : 1920, sh = s ? s.height : 1080
+        return { sw: sw, fullH: sh - Theme.barHeight - root.controlsHeight - root.gap * 3 }
+    }
+    readonly property var geom: root.geomFor(root._size.landscape)
+    function geomFor(share) {
+        const sw = root._screenInfo.sw, fullH = root._screenInfo.fullH
+        if (!root.landscape) return { w: Math.round(fullH * root.aspect), h: fullH }
+        let w = Math.round(sw * Math.max(0.3, Math.min(root._maxWide, share)))
+        let h = Math.round(w * root.aspect)
+        if (h > fullH) { h = fullH; w = Math.round(h / root.aspect) }
+        return { w: w, h: h }
+    }
+    // The share for a given window width (the grip reports widths), clamped
+    // the way geomFor clamps it.
+    function shareForWidth(w) {
+        return Math.max(0.3, Math.min(root.maxShare(), w / root._screenInfo.sw))
+    }
+    // Landscape can go edge to edge: the screen's width minus a gap each side.
+    readonly property real _maxWide: (root._screenInfo.sw - 2 * root.gap) / root._screenInfo.sw
+    // Largest landscape share (also stops at the height under the bar).
+    function maxShare() {
+        return Math.min(root._maxWide, root._screenInfo.fullH / root.aspect / root._screenInfo.sw)
+    }
+    // Double-click on the grip: largest size, or back to the size before.
+    function toggleMax() {
+        if (!root.landscape) return
+        const cur = root._size.landscape
+        const max = root.maxShare()
+        if (cur >= max - 0.001) {
+            root.setShare(root._size.landscapeBefore)
+        } else {
+            root._size.landscapeBefore = cur
+            root.setShare(max)
+        }
+        root._sizeFile.writeAdapter()
+    }
+    function setShare(share) {
+        if (root.landscape) root._size.landscape = share
+    }
+    property JsonAdapter _size: JsonAdapter {
+        property real landscape: 0.6
+        // What toggleMax() returns to.
+        property real landscapeBefore: 0.6
+    }
+    property FileView _sizeFile: FileView {
+        path: Quickshell.env("HOME") + "/.local/state/sichos/phone-size.json"
+        printErrors: false
+        adapter: root._size
+    }
+    // True while the grip is held: the window follows at ~25fps without the
+    // slide animation, and the size is saved on release.
+    property bool resizing: false
+    onResizingChanged: {
+        if (root.resizing) return
+        root._layoutTick.stop()
+        root._sizeFile.writeAdapter()
+        root._layout()
+    }
+    property Timer _layoutTick: Timer {
+        interval: 40
+        onTriggered: root._layout(true)
+    }
+    // Re-docked at the new size as soon as the phone turns; a hidden mirror
+    // gets it on expand.
+    onGeomChanged: {
+        if (!root.open || root.collapsed || root.loading) return
+        if (root.resizing) { if (!root._layoutTick.running) root._layoutTick.start() }
+        else root._layout()
+    }
+    function _layout(fast) {
+        Quickshell.execDetached(["bash", root._script, "layout", root.screenName, root.side, String(Theme.barHeight),
+                                 String(root.geom.w), String(root.geom.h)].concat(fast ? ["fast"] : []))
     }
     // Same wake as on expand: also brings up the PIN pad if it's locked.
     function wake() {
@@ -240,6 +353,7 @@ QtObject {
             // rises then, so persisted state survives.
             root._persist.collapsed = false
             if (root.audio) root.setAudio(false)
+            root.phoneWide = false
         }
     }
 
@@ -269,6 +383,18 @@ QtObject {
         // SUPER+SHIFT+X: disconnect, same as the controls card's close.
         function close(): void { root.close() }
     }
+    // Explicit actions for the Phone page's buttons (toggle() is the
+    // bar/keybinding one-button version).
+    function start(screenName) { if (!root.open && !root.loading) root._start(screenName) }
+    // Launcher's phone folder: bring the mirror up (start it, or show it
+    // if hidden) and open that app on the phone. Started in parallel with
+    // the mirror -- on a locked phone the app waits behind the keyguard
+    // until the mirror's wake loop unlocks it.
+    function launchApp(pkg, screenName) {
+        if (!root.open) root.start(screenName)
+        else if (root.collapsed) root.expand()
+        Quickshell.execDetached(["bash", root._script, "launch", pkg])
+    }
     function _start(screenName) {
         root._persist.screenName = screenName
         root._persist.collapsed = false
@@ -288,7 +414,8 @@ QtObject {
     function expand() {
         root._persist.collapsed = false
         root._expectLock()
-        Quickshell.execDetached(["bash", root._script, "expand", root.screenName, root.side, String(Theme.barHeight)])
+        Quickshell.execDetached(["bash", root._script, "expand", root.screenName, root.side, String(Theme.barHeight),
+                                 String(root.geom.w), String(root.geom.h)])
     }
     // Android KeyEvent codes: 4 back, 3 home, 187 recents, 24/25 volume up/down, 26 power.
     // Held volume buttons: one adb shell looping keyevents on the phone until
@@ -339,8 +466,10 @@ QtObject {
         command: ["sh", "-c", "hyprctl clients -j | jq -r '[.[] | select(.title == \"SichOS Phone\")][0] | .size[0] / .size[1]'"]
         stdout: StdioCollector {
             onStreamFinished: {
-                const v = parseFloat(text)
-                if (v > 0.2 && v < 5) root._aspectFile.setText(String(v))
+                // Stored as the portrait ratio even if the phone is sideways now.
+                let v = parseFloat(text)
+                if (v > 1) v = 1 / v
+                if (v > 0.2 && v <= 1) root._aspectFile.setText(String(v))
             }
         }
     }

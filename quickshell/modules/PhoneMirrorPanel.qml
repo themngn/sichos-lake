@@ -21,14 +21,31 @@ Scope {
     readonly property bool left: PhoneMirrorState.side === "left"
     readonly property int gap: PhoneMirrorState.gap
     readonly property int controlsHeight: PhoneMirrorState.controlsHeight
-    readonly property int phoneHeight: root.screen.height - Theme.barHeight - root.controlsHeight - root.gap * 3
-    readonly property int phoneWidth: Math.round(root.phoneHeight * PhoneMirrorState.aspect)
+    // The window's size (PhoneMirrorState.geom: portrait full height, or a
+    // landscape shape while the phone is sideways).
+    readonly property int phoneHeight: PhoneMirrorState.geom.h
+    readonly property int phoneWidth: PhoneMirrorState.geom.w
+    // The controls card (and the collapsed tab) sit right under the window:
+    // at the screen's bottom in portrait, higher up in landscape.
+    readonly property int controlsTop: Theme.barHeight + root.gap + root.phoneHeight + root.gap
 
     // The phone window's slide duration (phone-mirror.sh SMOOTH_MOVE, 3.2ds);
     // the controls card matches it and the tab waits most of it out.
     readonly property int slideDuration: 320
 
     readonly property int tabWidth: 21
+
+    // Landscape: the card is ~2.3x wider, so the buttons spread out and the
+    // volume rocker becomes two buttons side by side.
+    readonly property bool wide: PhoneMirrorState.landscape
+    // Landscape: one even gap between every button across the card's width
+    // -- 10 buttons' worth of slots (the rocker counts twice) and 10 gaps (8
+    // inside the groups, 2 between them, where the dividers sit), the
+    // card's 8px edge margins -- capped so a very wide card doesn't scatter
+    // them; any extra goes between the groups.
+    readonly property real _slot: Math.min((root.controlsHeight - 16) * 1.3, root.buttonWidth)
+    readonly property int buttonSpacing: !root.wide ? 4
+        : Math.max(8, Math.min(48, Math.floor((root.phoneWidth - 16 - 10 * root._slot - 6) / 10)))
 
     // Nine button slots on the controls card (2 left, 5 centre, 2 right). The
     // card is only as wide as the phone -- ~494px on a 1200px-tall screen --
@@ -80,35 +97,45 @@ Scope {
         color: Theme.separator
     }
 
-    // The phone's volume rocker: one button slot, up on top, down below,
-    // holdable; the mouse wheel over it works too (one step per notch -- each keyevent is
-    // its own ~0.3s adb round trip, see phone-mirror.sh).
+    // The phone's volume rocker: one button slot, up on top, down below
+    // (portrait), or two full buttons side by side, down then up (landscape,
+    // where the card has the room); holdable; the mouse wheel over it works
+    // too (one step per notch -- each keyevent is its own ~0.3s adb round
+    // trip, see phone-mirror.sh).
     component VolumeRocker: Item {
         height: root.controlsHeight - 16
-        width: Math.min(height * 1.3, root.buttonWidth)
-        Column {
+        readonly property real slot: Math.min(height * 1.3, root.buttonWidth)
+        width: root.wide ? 2 * slot + 4 : slot
+        Grid {
             anchors.fill: parent
+            columns: root.wide ? 2 : 1
+            spacing: root.wide ? 4 : 0
             Repeater {
-                model: [{ glyph: "\u{f075d}", code: 24 }, { glyph: "\u{f075e}", code: 25 }] // nf-md-volume_plus / _minus
+                model: root.wide
+                    ? [{ glyph: "\u{f075e}", code: 25 }, { glyph: "\u{f075d}", code: 24 }]  // nf-md-volume_minus / _plus
+                    : [{ glyph: "\u{f075d}", code: 24 }, { glyph: "\u{f075e}", code: 25 }]
                 Rectangle {
                     id: half
                     required property var modelData
                     required property int index
-                    width: parent.width
-                    height: parent.height / 2
-                    // Rounded only on the outer corners: one button, split.
-                    topLeftRadius: half.index === 0 ? Theme.controlRadius : 0
-                    topRightRadius: half.index === 0 ? Theme.controlRadius : 0
-                    bottomLeftRadius: half.index === 1 ? Theme.controlRadius : 0
-                    bottomRightRadius: half.index === 1 ? Theme.controlRadius : 0
+                    width: root.wide ? (parent.width - 4) / 2 : parent.width
+                    height: root.wide ? parent.height : parent.height / 2
+                    // Stacked: rounded only on the outer corners, one button
+                    // split. Side by side: two whole buttons.
+                    radius: root.wide ? Theme.controlRadius : 0
+                    topLeftRadius: root.wide || half.index === 0 ? Theme.controlRadius : 0
+                    topRightRadius: root.wide || half.index === 0 ? Theme.controlRadius : 0
+                    bottomLeftRadius: root.wide || half.index === 1 ? Theme.controlRadius : 0
+                    bottomRightRadius: root.wide || half.index === 1 ? Theme.controlRadius : 0
                     color: halfMouse.pressed ? Theme.selectedFill : halfMouse.containsMouse ? Theme.hoverFill : "transparent"
                     Text {
                         anchors.centerIn: parent
                         text: half.modelData.glyph
                         font.family: Theme.fontFamily
-                        // Nudged toward the middle: the two halves read as one rocker.
-                        anchors.verticalCenterOffset: half.index === 0 ? 2 : -2
-                        font.pixelSize: Math.round(parent.height * 0.85)
+                        // Stacked: nudged toward the middle, so the two
+                        // halves read as one rocker.
+                        anchors.verticalCenterOffset: root.wide ? 0 : half.index === 0 ? 2 : -2
+                        font.pixelSize: Math.round(root.wide ? parent.height * 0.55 : parent.height * 0.85)
                         color: Theme.text
                     }
                     // Click = one step; hold = repeat until released.
@@ -550,8 +577,8 @@ Scope {
         color: "transparent"
         WlrLayershell.namespace: "sichos-glass"
         WlrLayershell.exclusionMode: ExclusionMode.Ignore
-        anchors { bottom: true; right: !root.left; left: root.left }
-        margins.bottom: root.gap
+        anchors { top: true; right: !root.left; left: root.left }
+        margins.top: root.controlsTop
         implicitWidth: root.phoneWidth + root.gap
         implicitHeight: root.controlsHeight
 
@@ -569,7 +596,7 @@ Scope {
             Row {
                 id: leftGroup
                 anchors { left: parent.left; leftMargin: (parent.height - height) / 2; verticalCenter: parent.verticalCenter }
-                spacing: 4
+                spacing: root.buttonSpacing
                 // The outermost buttons trade places with the side: collapse
                 // always sits at the screen edge it collapses into, the
                 // side swap (nf-md-swap_horizontal) at the opposite end.
@@ -587,7 +614,7 @@ Scope {
             Row {
                 id: centerGroup
                 anchors.centerIn: parent
-                spacing: 4
+                spacing: root.buttonSpacing
                 VolumeRocker {}
                 Divider {}
                 ControlButton { glyph: "\u{f004d}"; onActivated: PhoneMirrorState.key(4) }    // back
@@ -614,7 +641,7 @@ Scope {
             Row {
                 id: rightGroup
                 anchors { right: parent.right; rightMargin: (parent.height - height) / 2; verticalCenter: parent.verticalCenter }
-                spacing: 4
+                spacing: root.buttonSpacing
                 ControlButton {
                     glyph: "\u{f0156}"  // nf-md-close
                     onActivated: PhoneMirrorState.close()
@@ -624,6 +651,88 @@ Scope {
                     onActivated: root.left ? PhoneMirrorState.toggleSide() : PhoneMirrorState.collapse()
                 }
             }
+        }
+    }
+
+    // Resize grip on the window's inner bottom corner (the one away from the
+    // screen edge). Dragging it scales the mirror, keeping the phone's shape;
+    // Landscape only; the size is remembered (PhoneMirrorState.setShare).
+    // Double-click: largest size (landscape: the screen's full width) and
+    // back.
+    // The grip's own surface stays where the drag started -- a layer surface
+    // moving under the pointer would shift the very coordinates the drag is
+    // measured in (the press keeps the pointer even outside it) -- and is
+    // invisible until release, when it reappears at the new corner.
+    PanelWindow {
+        id: grip
+        screen: root.screen
+        // Landscape only: portrait always takes the full height.
+        visible: PhoneMirrorState.open && PhoneMirrorState.landscape && !PhoneMirrorState.collapsed
+            && !PhoneMirrorState.loading && root.here
+        color: "transparent"
+        WlrLayershell.layer: WlrLayer.Overlay
+        WlrLayershell.exclusionMode: ExclusionMode.Ignore
+        readonly property int size: 22
+        property bool dragging: false
+        property int startW: 0
+        property int startH: 0
+        property real pressX: 0
+        property real pressY: 0
+        readonly property int cornerW: grip.dragging ? grip.startW : root.phoneWidth
+        readonly property int cornerH: grip.dragging ? grip.startH : root.phoneHeight
+        anchors { top: true; right: !root.left; left: root.left }
+        margins.top: Theme.barHeight + root.gap + grip.cornerH - grip.size / 2
+        margins.right: root.gap + grip.cornerW - grip.size / 2
+        margins.left: root.gap + grip.cornerW - grip.size / 2
+        implicitWidth: grip.size
+        implicitHeight: grip.size
+
+        Rectangle {
+            anchors.centerIn: parent
+            readonly property bool hot: gripMouse.containsMouse
+            width: hot ? 18 : 14
+            height: width
+            radius: width / 2
+            opacity: grip.dragging ? 0 : 1
+            color: hot ? Theme.accent : Theme.surfaceRaised
+            border.width: 1.5
+            border.color: hot ? Theme.accentHover : Theme.surfaceBorder
+            Behavior on width { NumberAnimation { duration: 120 } }
+            Behavior on color { ColorAnimation { duration: 120 } }
+            Rectangle {
+                anchors.centerIn: parent
+                width: 4
+                height: 4
+                radius: 2
+                color: parent.hot ? Theme.textOnLight : Theme.textMuted
+            }
+        }
+        MouseArea {
+            id: gripMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            preventStealing: true
+            // Docked right, the grip is the bottom-left corner.
+            cursorShape: root.left ? Qt.SizeFDiagCursor : Qt.SizeBDiagCursor
+            onPressed: (mouse) => {
+                grip.startW = root.phoneWidth
+                grip.startH = root.phoneHeight
+                grip.pressX = mouse.x
+                grip.pressY = mouse.y
+                grip.dragging = true
+                PhoneMirrorState.resizing = true
+            }
+            // Growth = outward along the diagonal: away from the screen edge
+            // horizontally, down vertically (scaled to width), averaged.
+            onPositionChanged: (mouse) => {
+                if (!grip.dragging) return
+                const dx = (mouse.x - grip.pressX) * (root.left ? 1 : -1)
+                const dy = (mouse.y - grip.pressY) * grip.startW / grip.startH
+                PhoneMirrorState.setShare(PhoneMirrorState.shareForWidth(grip.startW + (dx + dy) / 2))
+            }
+            onReleased: { grip.dragging = false; PhoneMirrorState.resizing = false }
+            onDoubleClicked: PhoneMirrorState.toggleMax()
+            onCanceled: { grip.dragging = false; PhoneMirrorState.resizing = false }
         }
     }
 
@@ -654,8 +763,8 @@ Scope {
         color: "transparent"
         WlrLayershell.namespace: "sichos-glass"
         WlrLayershell.exclusionMode: ExclusionMode.Ignore
-        anchors { bottom: true; right: !root.left; left: root.left }
-        margins.bottom: root.gap
+        anchors { top: true; right: !root.left; left: root.left }
+        margins.top: root.controlsTop
         implicitWidth: root.tabWidth
         implicitHeight: root.controlsHeight
 

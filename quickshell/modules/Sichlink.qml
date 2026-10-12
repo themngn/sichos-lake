@@ -47,6 +47,26 @@ QtObject {
         if (!d.locked) return d.screen_on ? "Unlocked" : "Screen off"
         return d.needs_pin ? "Locked" : "Locked, no PIN needed"
     }
+    // Battery as "94%" / "94% · Charging" / "Full", "" until the phone has
+    // reported one (an app older than the battery message never does).
+    function batteryText(d) {
+        if (!d || d.battery === null || d.battery === undefined) return ""
+        if (d.battery_full && d.plugged) return "Full"
+        return d.battery + "%" + (d.charging ? " · Charging" : "")
+    }
+    // nf-md-battery(_10.._90) by level; charging gets the bolt variant.
+    function batteryGlyph(d) {
+        if (!d || d.battery === null || d.battery === undefined) return ""
+        if (d.charging || (d.battery_full && d.plugged)) return "\u{f0084}" // battery_charging
+        const steps = ["\u{f008e}", "\u{f007a}", "\u{f007b}", "\u{f007c}", "\u{f007d}", "\u{f007e}",
+            "\u{f007f}", "\u{f0080}", "\u{f0081}", "\u{f0082}", "\u{f0079}"]
+        return steps[Math.max(0, Math.min(10, Math.round(d.battery / 10)))]
+    }
+    // Wallpaper the phone sent, as a URL that changes with every new image
+    // (same file path each time), "" for none.
+    function wallpaperUrl(d) {
+        return d && d.wallpaper ? "file://" + d.wallpaper + "?" + d.wallpaper_rev : ""
+    }
     // The daemon's state as a short tile/status line (the phone's own state
     // when there is one).
     readonly property string stateText: !root.installed ? "Phone Link not installed"

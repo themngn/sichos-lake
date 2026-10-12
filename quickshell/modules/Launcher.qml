@@ -307,6 +307,16 @@ PanelWindow {
     // non-Steam machine doesn't get an empty folder for something it will
     // never use; Hidden always shows, matching its old always-present
     // root-level slot.
+    // The paired phone's apps (PhoneApps, from the sichlink app): a root
+    // folder named after the phone, right under Apps, while it's connected
+    // -- its own entry rather than inside Apps, since these aren't PC apps
+    // and SUPER+Q's flat Apps view stays PC-only. Picking one
+    // opens it in the phone mirror (PhoneMirrorState.launchApp).
+    readonly property bool phoneAppsAvailable: !!Sichlink.phone && !!Sichlink.phone.connected
+    readonly property string phoneName: Sichlink.phone ? Sichlink.phone.name : "Phone"
+    readonly property var phoneAppItems: !launcher.phoneAppsAvailable ? [] : PhoneApps.apps
+        .map(a => ({ type: "phone-app", name: a.label, package: a.package, iconFile: a.icon || "" }))
+
     readonly property var folderListItems: {
         const items = []
         if (launcher.steamAppItems.length > 0) items.push({ type: "folder", id: "folder:games", name: "Games", icon: "" })
@@ -321,12 +331,21 @@ PanelWindow {
     function folderName(id) {
         if (id === "games") return "Games"
         if (id === "hidden") return "Hidden"
+        if (id === "phone") return launcher.phoneName
         const f = AppFolders.folders.find(f => f.id === id)
         return f ? f.name : "Folder"
     }
     function folderApps(id) {
         if (id === "games") return launcher.steamAppItems
         if (id === "hidden") return launcher.hiddenItems
+        if (id === "phone") {
+            // Still loading, nothing cached yet: one info row instead of
+            // an empty folder.
+            if (launcher.phoneAppItems.length === 0)
+                // "notice": a row that does nothing ("info" is fastfetch).
+                return [{ type: "notice", name: PhoneApps.loading ? "Loading the phone's apps…" : "No apps from the phone (is the sichlink app up to date?)" }]
+            return launcher.phoneAppItems
+        }
         const f = AppFolders.folders.find(f => f.id === id)
         if (!f) return []
         return launcher.browsableApps.filter(a => f.apps.includes(a.name))
@@ -346,6 +365,7 @@ PanelWindow {
         if (item.type === "reload") return "Menu > Settings > Reload"
         if (item.type === "action") return "Menu > Settings > Time & Region"
         if (item.steam) return "Menu > Apps > Games"
+        if (item.type === "phone-app") return "Menu > " + launcher.phoneName
         const folderNames = AppFolders.folders.filter(f => f.apps.includes(item.name)).map(f => f.name)
         return "Menu > Apps" + (folderNames.length > 0 ? " > " + folderNames.join(", ") : "")
     }
@@ -460,12 +480,15 @@ PanelWindow {
     // these aren't real installed apps, so there's nothing for
     // Quickshell.iconPath to resolve.
     readonly property var rootItems: [
-        { type: "folder", id: "apps", name: "Apps", icon: "" },
+        { type: "folder", id: "apps", name: "Apps", icon: "" }
+    ].concat(launcher.phoneAppsAvailable
+        ? [{ type: "folder", id: "folder:phone", name: launcher.phoneName, icon: "\u{f011c}" }] // nf-md-cellphone
+        : []).concat([
         { type: "folder", id: "toggles", name: "Toggles", icon: "" },
         { type: "folder", id: "power", name: "Power", icon: "" },
         { type: "folder", id: "settings", name: "Settings", icon: "" },
         { type: "info", id: "info", name: "Info", icon: "" }
-    ]
+    ])
 
     // Everything selectable, flattened — search always looks through
     // apps + toggles + power actions + most Settings options at once,
@@ -483,7 +506,7 @@ PanelWindow {
     // same reason — so it's only reachable by browsing into Settings >
     // Bar Widgets). reloadItems and timeRegionItems have no such
     // drawback and are fully searchable.
-    readonly property var allItems: launcher.browsableApps.concat(launcher.steamAppItems).concat(launcher.toggleItems).concat(launcher.powerItems).concat(launcher.reloadItems).concat(launcher.timeRegionItems)
+    readonly property var allItems: launcher.browsableApps.concat(launcher.steamAppItems).concat(launcher.phoneAppItems).concat(launcher.toggleItems).concat(launcher.powerItems).concat(launcher.reloadItems).concat(launcher.timeRegionItems)
 
     readonly property var currentItems: {
         // Folders (Games/Hidden/custom) are mixed in with the regular apps
@@ -612,7 +635,7 @@ PanelWindow {
         // sub-search of just that list, not the global cross-category one
         // below (which would just find nothing, since none of these are
         // part of allItems).
-        if (launcher.mode.indexOf("picklist:") === 0)
+        if (launcher.mode.indexOf("picklist:") === 0 || launcher.mode === "folder:phone")
             return launcher.currentItems
                 .map((item, idx) => ({ item: item, idx: idx }))
                 .filter(e => e.item.name.toLowerCase().includes(q))
@@ -625,10 +648,14 @@ PanelWindow {
         if (launcher.mode === "pluginfolderpick")
             return launcher.currentItems.filter(item => item.id === "selectfolder" || item.id === ".." || item.name.toLowerCase().includes(q))
         if (launcher.mode === "appmenu" || launcher.mode === "pluginmenu" || launcher.mode === "pluginaddtype" || launcher.mode === "folderpick" || launcher.mode === "newfoldername" || launcher.mode === "pluginsource") return launcher.currentItems
+        // Phone apps always after every PC result, whatever their rank:
+        // searching "chrome" gives this PC's Chrome first, the phone's
+        // (badged, see the row delegate) further down.
         return launcher.allItems
-            .map((item, idx) => ({ item: item, idx: idx, rank: launcher.itemMatchRank(item, q) }))
+            .map((item, idx) => ({ item: item, idx: idx, rank: launcher.itemMatchRank(item, q),
+                                   phone: item.type === "phone-app" ? 1 : 0 }))
             .filter(e => e.rank !== Infinity)
-            .sort((a, b) => a.rank - b.rank || a.idx - b.idx)
+            .sort((a, b) => a.phone - b.phone || a.rank - b.rank || a.idx - b.idx)
             .map(e => e.item)
     }
 
@@ -646,6 +673,7 @@ PanelWindow {
         if (m === "settings-plugins") return "Menu > Settings > Custom Plugins"
         if (m === "settings-timeregion") return "Menu > Settings > Time & Region"
         if (m.indexOf("picklist:") === 0) return "Menu > Settings > Time & Region > " + launcher.pickListLabel(m.slice(9))
+        if (m === "folder:phone") return "Menu > " + launcher.phoneName
         if (m.indexOf("folder:") === 0) return "Menu > Apps > " + launcher.folderName(m.slice(7))
         return "Menu"
     }
@@ -741,7 +769,7 @@ PanelWindow {
             launcher.query = ""
             launcher.selectedIndex = 0
         } else if (launcher.mode.indexOf("folder:") === 0) {
-            launcher.mode = "apps"
+            launcher.mode = launcher.mode === "folder:phone" ? "root" : "apps"
             launcher.query = ""
             launcher.selectedIndex = 0
         } else if (launcher.mode !== "root") {
@@ -763,7 +791,13 @@ PanelWindow {
     // directly, same as before.
     function activate(item) {
         if (!item) return
+        if (item.type === "phone-app") {
+            PhoneMirrorState.launchApp(item.package, launcher.screen.name)
+            launcher.close()
+            return
+        }
         if (item.type === "folder") {
+            if (item.id === "folder:phone") PhoneApps.refresh()
             launcher.mode = item.id
             launcher.query = ""
             launcher.selectedIndex = 0
@@ -1205,22 +1239,49 @@ PanelWindow {
                         }
 
                         Image {
-                            readonly property bool hasRealIcon: row.modelData.type === "app" || row.modelData.type === "autostart-app"
+                            readonly property bool hasRealIcon: row.modelData.type === "app" || row.modelData.type === "autostart-app" || row.modelData.type === "phone-app"
                             visible: hasRealIcon
                             anchors.verticalCenter: parent.verticalCenter
                             // Steam games carry a raw cached file path (no
                             // icon-theme name to resolve — see
                             // list-apps.py) instead of the usual icon name.
+                            // Phone apps: PNGs the sichlink daemon wrote.
                             source: hasRealIcon && row.modelData.iconFile ? ("file://" + row.modelData.iconFile)
                                 : hasRealIcon && row.modelData.icon ? Quickshell.iconPath(row.modelData.icon, true) : ""
                             width: 32
                             height: 32
                             sourceSize: Qt.size(32, 32)
                             fillMode: Image.PreserveAspectFit
+
+                            // Search results: a phone app gets a small phone
+                            // badge on its icon's corner (like a shortcut's
+                            // arrow), so it isn't mistaken for this PC's
+                            // app of the same name.
+                            Rectangle {
+                                visible: row.modelData.type === "phone-app" && launcher.query.length > 0
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                anchors.rightMargin: -4
+                                anchors.bottomMargin: -4
+                                width: 20
+                                height: 20
+                                radius: 10
+                                color: Theme.surfaceRaised
+                                border.width: 2
+                                border.color: Theme.surface
+                                // HeaderIcon centers the glyph's measured ink;
+                                // a plain Text sat low and to the left.
+                                HeaderIcon {
+                                    anchors.centerIn: parent
+                                    glyph: "\u{f011c}" // nf-md-cellphone
+                                    inkHeight: 12
+                                    color: Theme.text
+                                }
+                            }
                         }
 
                         Text {
-                            visible: row.modelData.type !== "app" && row.modelData.type !== "autostart-app" && !!row.modelData.icon
+                            visible: row.modelData.type !== "app" && row.modelData.type !== "autostart-app" && row.modelData.type !== "phone-app" && !!row.modelData.icon
                             anchors.verticalCenter: parent.verticalCenter
                             width: 38
                             horizontalAlignment: Text.AlignHCenter
@@ -1257,7 +1318,10 @@ PanelWindow {
                         // toggle-like type — it's the only one with a
                         // further submenu (Enable/Disable + Remove) behind
                         // right-arrow/Enter-to-enter.
+                        // Phone apps have no submenu (Enter launches); a notice
+                        // row does nothing.
                         visible: (!row.isToggleLike || row.modelData.type === "plugin") && row.modelData.type !== "action"
+                            && row.modelData.type !== "phone-app" && row.modelData.type !== "notice"
                         anchors {
                             right: row.modelData.type === "plugin" ? onOffPill.left : parent.right
                             rightMargin: 8

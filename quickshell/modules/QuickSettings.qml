@@ -158,6 +158,7 @@ Pill {
     // can silently fail to take. The bar is whitelisted so clicking the pill
     // (or the bar around it) doesn't count as outside.
     property bool grabbing: false
+    readonly property bool typing: ShellState.keySink !== null && ShellState.keySinkScreen === root.screenName
     readonly property var pageIds: ["quicksettings", "qs-audio", "qs-wifi", "qs-bluetooth", "qs-display",
         "qs-update", "qs-hdr", "qs-sunset", "qs-idle", "qs-gamefocus", "qs-phone"]
     onAnyOpenChanged: {
@@ -177,8 +178,12 @@ Pill {
     }
     HyprlandFocusGrab {
         windows: [root.QsWindow.window, root.popupHost ? root.popupHost.QsWindow.window : null].filter(w => !!w)
-        active: root.grabbing
-        onCleared: if (root.anyOpen) ShellState.activePopup = ""
+        // Off while a field in one of its pages (PIN, Wi-Fi password) has the
+        // keyboard: the bar taking exclusive keyboard focus (ShellState.keySink)
+        // makes Hyprland clear the grab, and onCleared closed the whole card
+        // the moment the field opened. Re-armed when the field lets go.
+        active: root.grabbing && !root.typing
+        onCleared: if (root.anyOpen && !root.typing) ShellState.activePopup = ""
     }
 
     function nodeName(n) {
@@ -254,7 +259,7 @@ Pill {
         readonly property bool micMuted: !!(root.source && root.source.audio && root.source.audio.muted)
 
         // Android-style edit mode (pencil in the header): drag tiles to
-        // reorder, resize 1x1 <-> 2x1, remove, add from the spare ones.
+        // reorder, drag an edge/corner to resize, remove, add spare ones.
         // Layout lives in ControlCenterTiles.
         property bool editing: false
         onShownChanged: if (!panel.shown) panel.editing = false
@@ -298,12 +303,14 @@ Pill {
                 sub: ShellState.transparencyOpaque ? "Solid" : Math.round(BarSettings.terminalOpacity * 100) + "%",
                 active: ShellState.transparencyOpaque, more: "" }
             // The phone: mirror state while it's open, otherwise what the
-            // sichlink daemon knows (PhonePage.qml has the rest).
+            // sichlink daemon knows, plus the battery (PhonePage.qml has the rest).
             case "phone": return {
                 glyph: "\u{f011c}", label: Sichlink.phone ? Sichlink.phone.name : "Phone",
-                sub: PhoneMirrorState.loading ? "Connecting…"
+                sub: [PhoneMirrorState.loading ? "Connecting…"
                     : PhoneMirrorState.open ? (PhoneMirrorState.collapsed ? "Mirror hidden" : "Mirroring")
                     : Sichlink.stateText,
+                    Sichlink.phone && Sichlink.phone.connected ? Sichlink.batteryText(Sichlink.phone) : ""
+                    ].filter(t => t !== "").join(" · "),
                 active: PhoneMirrorState.open && !PhoneMirrorState.collapsed,
                 busy: PhoneMirrorState.loading || Sichlink.busy, more: "qs-phone" }
             case "powerprofile": {
@@ -356,10 +363,8 @@ Pill {
             case "gamefocus": GameFocus.enabled = !GameFocus.enabled; break
             case "hdr": HdrSettings.toggleActive(); break
             case "opaque": ShellState.setTransparencyOpaque(!ShellState.transparencyOpaque); break
-            // Same as the old bar widget: opens the mirror, then shows/hides
-            // it -- closing stays on the mirror's own controls card.
-            case "phone": PhoneMirrorState.toggle(root.screenName); break
-                break
+            // Opens the Phone page (connect, mirror and its settings, PIN).
+            case "phone": root.openPopup("qs-phone"); break
             case "powerprofile": {
                 const p = UP.PowerProfiles.profile
                 UP.PowerProfiles.profile = p === UP.PowerProfile.PowerSaver ? UP.PowerProfile.Balanced
@@ -640,7 +645,7 @@ Pill {
             }
         }
         // A 2-row phone tile: the page card's state line. No buttons -- the
-        // tile itself toggles the mirror, the page has the rest.
+        // tile opens the page, which has them.
         Component {
             id: extraPhone
             Text {
@@ -726,8 +731,44 @@ Pill {
                     width: parent.width
                     height: Math.max(0, ControlCenterTiles.layout.rows * (panel.tileHeight + panel.tileSpacing) - panel.tileSpacing)
                     Behavior on height { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                    // Over the "Add tiles" section, which a dragged tile
+                    // can be pulled across.
+                    z: 1
+                    readonly property real stepX: panel.tileUnit + panel.tileSpacing
+                    readonly property real stepY: panel.tileHeight + panel.tileSpacing
+                    // The tile being dragged, "" for none.
+                    property string dragId: ""
+                    // It's past the grid, over "Add tiles": dropping it
+                    // there removes it.
+                    property bool dragOut: false
+                    // Grid y below which the pointer counts as over "Add
+                    // tiles". Moves down when a tile dragged in from there
+                    // opens a new row, and back up when it leaves -- so
+                    // crossing it doesn't flip in and out.
+                    readonly property real dropLimit: spareSection.y - tileGrid.y
+
+                    // Where the dragged tile will land: the others already
+                    // make room for it there while it follows the pointer.
+                    Rectangle {
+                        readonly property var cell: tileGrid.dragId !== "" ? ControlCenterTiles.layout.pos[tileGrid.dragId] : undefined
+                        visible: !!cell
+                        x: cell ? cell.c * tileGrid.stepX : 0
+                        y: cell ? cell.r * tileGrid.stepY : 0
+                        width: cell ? cell.w * panel.tileUnit + (cell.w - 1) * panel.tileSpacing : 0
+                        height: cell ? cell.h * panel.tileHeight + (cell.h - 1) * panel.tileSpacing : 0
+                        radius: Theme.controlRadius
+                        color: "transparent"
+                        border.color: Theme.accent
+                        border.width: 1
+                        opacity: 0.6
+                        Behavior on x { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                        Behavior on y { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                        Behavior on width { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                        Behavior on height { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                    }
 
                     Repeater {
+                        id: tileRepeater
                         model: ControlCenterTiles.model
 
                         delegate: Item {
@@ -743,35 +784,113 @@ Pill {
                             // beside the label.
                             readonly property bool inlineNarrow: !tile.tall && !!tile.extra && tile.cell.w === 2
                             readonly property bool inlineWide: !tile.tall && !!tile.extra && tile.cell.w >= 3
-                            readonly property bool dragging: editArea.pressed || rightEdge.pressed || bottomEdge.pressed || corner.pressed
+                            readonly property bool resizing: rightEdge.pressed || bottomEdge.pressed || corner.pressed
+                            readonly property bool dragging: tile.held || tile.resizing
 
-                            x: tile.cell.c * (panel.tileUnit + panel.tileSpacing)
-                            y: tile.cell.r * (panel.tileHeight + panel.tileSpacing)
+                            // Dragged: the tile follows the pointer (dragX/Y)
+                            // instead of its cell, then glides into the cell
+                            // on release (settle). Not a Behavior toggled by
+                            // `held`: whether it is re-enabled before or after
+                            // x jumps back to the cell isn't defined.
+                            property bool held: false
+                            readonly property bool floating: tile.held || settle.running
+                            property real dragX: 0
+                            property real dragY: 0
+                            property real grabX: 0
+                            property real grabY: 0
+                            // Cell the tile had when a resize started; sizes
+                            // are measured from it, not from the tile's
+                            // current (possibly moving) position.
+                            property var resizeFrom: null
+
+                            readonly property real cellX: tile.cell.c * tileGrid.stepX
+                            readonly property real cellY: tile.cell.r * tileGrid.stepY
+                            x: tile.floating ? tile.dragX : tile.cellX
+                            y: tile.floating ? tile.dragY : tile.cellY
                             width: tile.cell.w * panel.tileUnit + (tile.cell.w - 1) * panel.tileSpacing
                             height: tile.cell.h * panel.tileHeight + (tile.cell.h - 1) * panel.tileSpacing
-                            z: tile.dragging ? 10 : 0
-                            Behavior on x { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-                            Behavior on y { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                            z: tile.floating ? 10 : tile.resizing ? 5 : 0
+                            Behavior on x { enabled: !tile.floating; NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                            Behavior on y { enabled: !tile.floating; NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
                             Behavior on width { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
                             Behavior on height { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
+                            property alias settle: settle
+                            ParallelAnimation {
+                                id: settle
+                                NumberAnimation { target: tile; property: "dragX"; to: tile.cellX; duration: 180; easing.type: Easing.OutCubic }
+                                NumberAnimation { target: tile; property: "dragY"; to: tile.cellY; duration: 180; easing.type: Easing.OutCubic }
+                            }
+
+                            function startDrag(mx, my) {
+                                settle.stop()
+                                tile.dragX = tile.x
+                                tile.dragY = tile.y
+                                tile.grabX = mx
+                                tile.grabY = my
+                                tile.held = true
+                                tileGrid.dragId = tile.tileId
+                            }
+                            // `item`/(mx, my): the pointer, in any item's
+                            // coordinates -- a tile dragged in from "Add
+                            // tiles" is driven by that spare's MouseArea.
+                            function dragTo(item, mx, my) {
+                                const p = item.mapToItem(tileGrid, mx, my)
+                                tileGrid.dragOut = p.y > tileGrid.dropLimit
+                                tile.dragX = Math.max(0, Math.min(tileGrid.width - tile.width, p.x - tile.grabX))
+                                tile.dragY = tileGrid.dragOut ? p.y - tile.grabY : Math.max(0, Math.min(tileGrid.height, p.y - tile.grabY))
+                                if (tileGrid.dragOut) return
+                                const to = ControlCenterTiles.nearestIndex(tile.tileId, tile.cell.w, tile.cell.h,
+                                    tile.dragY / tileGrid.stepY, tile.dragX / tileGrid.stepX,
+                                    tileGrid.stepY / tileGrid.stepX, 0.2)
+                                ControlCenterTiles.move(tile.tileId, to)
+                            }
+                            // Settle starts before `held` drops so `floating`
+                            // never goes false in between (that would start
+                            // the x/y Behavior towards the cell).
+                            function endDrag() {
+                                if (!tile.held) return
+                                const out = tileGrid.dragOut
+                                if (!out) settle.restart()
+                                tile.held = false
+                                tileGrid.dragOut = false
+                                if (tileGrid.dragId === tile.tileId) tileGrid.dragId = ""
+                                // Later: this destroys the delegate whose
+                                // MouseArea is still in its release handler.
+                                if (out) { const id = tile.tileId; Qt.callLater(() => ControlCenterTiles.remove(id)) }
+                            }
+                            Connections {
+                                target: panel
+                                function onEditingChanged() { if (!panel.editing) tile.endDrag() }
+                            }
+
                             // Resize from an edge: the size that puts the
                             // tile's edge nearest the pointer (snaps once the
-                            // pointer is past half a cell).
+                            // pointer is past half a cell), measured from the
+                            // cell the tile started in. Wider than the columns
+                            // right of that cell isn't offered -- drag the tile
+                            // further left first.
                             function resizeTo(item, mx, my, horizontal, vertical) {
-                                const p = item.mapToItem(tile, mx, my)
-                                const w = horizontal ? Math.round((p.x + panel.tileSpacing) / (panel.tileUnit + panel.tileSpacing)) : tile.cell.w
-                                const h = vertical ? Math.round((p.y + panel.tileSpacing) / (panel.tileHeight + panel.tileSpacing)) : tile.cell.h
-                                ControlCenterTiles.setSize(tile.tileId, w, h)
+                                const from = tile.resizeFrom || tile.cell
+                                const p = item.mapToItem(tileGrid, mx, my)
+                                const w = horizontal ? Math.round((p.x - from.c * tileGrid.stepX + panel.tileSpacing) / tileGrid.stepX) : tile.cell.w
+                                const h = vertical ? Math.round((p.y - from.r * tileGrid.stepY + panel.tileSpacing) / tileGrid.stepY) : tile.cell.h
+                                ControlCenterTiles.resizeAt(tile.tileId,
+                                    Math.max(1, Math.min(ControlCenterTiles.columns - from.c, w)),
+                                    Math.max(1, Math.min(ControlCenterTiles.maxRows, h)), from.r, from.c)
                             }
+                            function startResize() { tile.resizeFrom = { r: tile.cell.r, c: tile.cell.c } }
 
                             Rectangle {
                                 id: face
                                 anchors.fill: parent
                                 radius: Theme.controlRadius
                                 // Grows while dragged in edit mode, dips on
-                                // a press otherwise.
+                                // a press otherwise; faded while it's over
+                                // "Add tiles" (dropping removes it).
                                 scale: tile.dragging ? 1.03 : tapArea.pressed ? 0.96 : 1
+                                opacity: tile.held && tileGrid.dragOut ? 0.5 : 1
+                                Behavior on opacity { NumberAnimation { duration: 120 } }
                                 Behavior on scale { NumberAnimation { duration: 120 } }
                                 color: tile.info.active ? Theme.selectedFill
                                     : (tapArea.containsMouse && !panel.editing) || tile.dragging ? Theme.hoverFill : Theme.controlFill
@@ -961,13 +1080,13 @@ Pill {
                                     enabled: panel.editing
                                     preventStealing: true
                                     cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
-                                    onPositionChanged: (mouse) => {
-                                        if (!pressed) return
-                                        const p = editArea.mapToItem(tileGrid, mouse.x, mouse.y)
-                                        const over = tileGrid.childAt(p.x, p.y)
-                                        if (over && over.tileId !== undefined && over.tileId !== tile.tileId)
-                                            ControlCenterTiles.move(tile.tileId, ControlCenterTiles.indexOf(over.tileId))
+                                    onPressed: (mouse) => {
+                                        const p = editArea.mapToItem(tile, mouse.x, mouse.y)
+                                        tile.startDrag(p.x, p.y)
                                     }
+                                    onPositionChanged: (mouse) => { if (tile.held) tile.dragTo(editArea, mouse.x, mouse.y) }
+                                    onReleased: tile.endDrag()
+                                    onCanceled: tile.endDrag()
                                 }
                                 MouseArea {
                                     id: rightEdge
@@ -979,6 +1098,7 @@ Pill {
                                     width: 12
                                     preventStealing: true
                                     cursorShape: Qt.SizeHorCursor
+                                    onPressed: tile.startResize()
                                     onPositionChanged: (mouse) => { if (pressed) tile.resizeTo(rightEdge, mouse.x, mouse.y, true, false) }
                                 }
                                 MouseArea {
@@ -991,6 +1111,7 @@ Pill {
                                     height: 12
                                     preventStealing: true
                                     cursorShape: Qt.SizeVerCursor
+                                    onPressed: tile.startResize()
                                     onPositionChanged: (mouse) => { if (pressed) tile.resizeTo(bottomEdge, mouse.x, mouse.y, false, true) }
                                 }
                                 MouseArea {
@@ -1004,6 +1125,7 @@ Pill {
                                     height: 18
                                     preventStealing: true
                                     cursorShape: Qt.SizeFDiagCursor
+                                    onPressed: tile.startResize()
                                     onPositionChanged: (mouse) => { if (pressed) tile.resizeTo(corner, mouse.x, mouse.y, true, true) }
                                 }
                                 // Corner grip, so the resize handle is visible.
@@ -1032,14 +1154,22 @@ Pill {
                     }
                 }
 
-                // Edit mode: spare tiles to add.
+                // Edit mode: spare tiles to add -- click, or drag one into
+                // the grid. A grid tile dragged down here is removed.
                 Column {
+                    id: spareSection
                     visible: panel.editing
                     width: parent.width
                     spacing: 8
+                    // While a spare is dragged its list stays as it was:
+                    // adding the tile changes `unused`, and the Repeater
+                    // would rebuild the very delegate holding the drag.
+                    property bool frozen: false
+                    property var frozenIds: []
 
                     Text {
-                        text: ControlCenterTiles.unused.length > 0 ? "Add tiles" : "All tiles are in use"
+                        text: tileGrid.dragOut ? "Release to remove"
+                            : ControlCenterTiles.unused.length > 0 ? "Add tiles" : "All tiles are in use"
                         color: Theme.textMuted
                         font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize - 2
@@ -1048,15 +1178,78 @@ Pill {
                         width: parent.width
                         spacing: panel.tileSpacing
                         Repeater {
-                            model: ControlCenterTiles.unused
+                            model: spareSection.frozen ? spareSection.frozenIds : ControlCenterTiles.unused
                             delegate: Rectangle {
                                 id: spare
                                 required property string modelData
                                 readonly property var info: panel.tileInfo(spare.modelData)
+                                // Dragged past the threshold; inGrid: the
+                                // tile is in the grid (its own delegate
+                                // follows the pointer, this one hides).
+                                property bool dragging: false
+                                property bool inGrid: false
+                                // Press point: in the spare (= grab offset)
+                                // and in the Flow, which the Translate below
+                                // doesn't move -- local mouse coordinates do
+                                // move with it, so they can't measure the drag.
+                                property real pressX: 0
+                                property real pressY: 0
+                                property point pressAt: Qt.point(0, 0)
                                 width: panel.tileUnit
                                 height: panel.tileHeight
                                 radius: Theme.controlRadius
-                                color: spareArea.containsMouse ? Theme.hoverFill : "transparent"
+                                z: spare.dragging ? 10 : 0
+                                opacity: spare.inGrid ? 0 : 1
+                                color: spare.dragging ? Theme.controlFill : spareArea.containsMouse ? Theme.hoverFill : "transparent"
+                                transform: Translate { id: spareShift }
+
+                                function gridTile() {
+                                    const i = ControlCenterTiles.indexOf(spare.modelData)
+                                    return i === -1 ? null : tileRepeater.itemAt(i)
+                                }
+                                function dragTo(mx, my) {
+                                    const p = spareArea.mapToItem(tileGrid, mx, my)
+                                    const over = p.y <= tileGrid.dropLimit
+                                    if (over && !spare.inGrid) {
+                                        ControlCenterTiles.add(spare.modelData)
+                                        const t = spare.gridTile()
+                                        if (!t) return
+                                        spare.inGrid = true
+                                        t.settle.stop()
+                                        t.grabX = spare.pressX
+                                        t.grabY = spare.pressY
+                                        t.held = true
+                                        tileGrid.dragId = spare.modelData
+                                    } else if (!over && spare.inGrid) {
+                                        const t = spare.gridTile()
+                                        if (t) t.held = false
+                                        tileGrid.dragId = ""
+                                        tileGrid.dragOut = false
+                                        spare.inGrid = false
+                                        ControlCenterTiles.remove(spare.modelData)
+                                    }
+                                    if (spare.inGrid) {
+                                        const t = spare.gridTile()
+                                        if (t) t.dragTo(spareArea, mx, my)
+                                    }
+                                    const q = spareArea.mapToItem(spare.parent, mx, my)
+                                    spareShift.x = q.x - spare.pressAt.x
+                                    spareShift.y = q.y - spare.pressAt.y
+                                }
+                                function finish(drop) {
+                                    if (spare.inGrid) {
+                                        const t = spare.gridTile()
+                                        if (t) { if (drop) t.endDrag(); else t.held = false }
+                                        tileGrid.dragId = ""
+                                        if (!drop) ControlCenterTiles.remove(spare.modelData)
+                                    }
+                                    spare.dragging = false
+                                    spare.inGrid = false
+                                    spareShift.x = 0
+                                    spareShift.y = 0
+                                    // Later: unfreezing rebuilds this delegate.
+                                    Qt.callLater(() => { spareSection.frozen = false })
+                                }
                                 border.color: Theme.surfaceBorder
                                 border.width: 1
                                 HeaderIcon {
@@ -1093,8 +1286,28 @@ Pill {
                                     anchors.fill: parent
                                     z: -1
                                     hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: ControlCenterTiles.add(spare.modelData)
+                                    preventStealing: true
+                                    cursorShape: spare.dragging ? Qt.ClosedHandCursor : Qt.PointingHandCursor
+                                    onPressed: (mouse) => {
+                                        spare.pressX = mouse.x
+                                        spare.pressY = mouse.y
+                                        spare.pressAt = spareArea.mapToItem(spare.parent, mouse.x, mouse.y)
+                                        spareSection.frozenIds = ControlCenterTiles.unused.slice()
+                                        spareSection.frozen = true
+                                    }
+                                    onPositionChanged: (mouse) => {
+                                        if (!pressed) return
+                                        const q = spareArea.mapToItem(spare.parent, mouse.x, mouse.y)
+                                        if (!spare.dragging && Math.hypot(q.x - spare.pressAt.x, q.y - spare.pressAt.y) < 6) return
+                                        spare.dragging = true
+                                        spare.dragTo(mouse.x, mouse.y)
+                                    }
+                                    onReleased: {
+                                        const click = !spare.dragging
+                                        spare.finish(true)
+                                        if (click) ControlCenterTiles.add(spare.modelData)
+                                    }
+                                    onCanceled: spare.finish(false)
                                 }
                             }
                         }

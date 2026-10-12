@@ -196,11 +196,14 @@ Everything else lives in `quickshell/modules/`:
   `ShellState.popupLockGroup` reverts any other popup's attempt to take over on hover.
   Text entry in a bar popup (Wi-Fi password, Bluetooth PIN) can't use a TextInput — a popup surface
   never gets keyboard focus — so the field sets `ShellState.keySink`/`keySinkScreen` and that screen's
-  bar takes exclusive keyboard focus and forwards keys to `keySink.handleKey(event)`. Bluetooth pairing
+  bar takes exclusive keyboard focus and forwards keys to `keySink.handleKey(event)`. That focus change
+  makes Hyprland clear the Control Center's `HyprlandFocusGrab`, which used to close the card the moment
+  a field opened — so its grab is suspended (`typing`) while a keySink on its screen is set. Bluetooth pairing
   goes through `scripts/bt-agent.py` (a BlueZ agent run by the `BluetoothAgent` singleton; nothing
   else registers one here, so code-based pairing used to fail). Quickshell's `WifiNetwork.signalStrength`
   is 0..1, not a percentage. Its tiles are Android-style editable (pencil in the header: drag to
-  reorder, drag the right/bottom edge or corner to resize up to 4x2, remove/add; tiles pack first-fit,
+  reorder, drag the right/bottom edge or corner to resize up to 4x2, remove/add -- by badge, click,
+  or dragging a tile between the grid and the spare "Add tiles" list; tiles pack first-fit,
   and a 2-row tile at least 2 wide gets extra controls from `extraFor()`). SUPER+N toggles it on the
   focused monitor (`quickshell ipc call controlcenter toggle`). The toggle-row popups (HDR, Night Light,
   Stay Awake, Game Focus) and System Update are also its pages (`qs-hdr` etc.) — its own instances with
@@ -220,7 +223,14 @@ Everything else lives in `quickshell/modules/`:
   language, workspace) and the notification drawer still use their own windows. A new toggle-row popup
   also needs its popupId in `toggleRowPopupOpen`.
 - **`Launcher.qml`** (by far the largest file): the SUPER+SHIFT+Q app launcher/menu, including
-  its Settings and Autostart folders.
+  its Settings and Autostart folders. While the paired phone is connected, the root menu has a folder
+  named after it right under Apps (not inside it, so SUPER+Q's Apps view stays PC-only): the phone's launcher apps with their icons (`PhoneApps` singleton ← `sichlink apps`,
+  ~5s since the phone draws every icon, so the last list is cached in `$XDG_RUNTIME_DIR` and refreshed
+  on each open; searched locally inside the folder; in a global search always after every PC result, whatever
+  their rank, with a phone badge on the icon). Picking one
+  runs `PhoneMirrorState.launchApp`: starts or shows the mirror and `phone-mirror.sh launch <pkg>`
+  (resolves the launcher activity over adb; on a locked phone it waits behind the keyguard until the
+  mirror's wake loop unlocks it).
 - **`ClipboardPicker.qml`** (SUPER+SHIFT+V, cliphist history with image thumbnails) and
   **`EmojiPicker.qml`** (SUPER+PERIOD, Android-style grid with category tabs, Recent and per-emoji
   remembered skin tones in `~/.config/quickshell/emoji-recent.json`) are separate windows on a shared
@@ -270,24 +280,41 @@ Everything else lives in `quickshell/modules/`:
   near this PC" mode. Controls card, left to right: side swap/collapse, PC
   audio | volume rocker | back, home, recents | power | close, collapse/swap, with dividers between the
   groups. The card is only as wide as the phone (~494px on a 1200px screen), so `buttonWidth` narrows the
-  buttons to fit nine slots. Volume: one slot split up/down; click = one step, hold = repeat
+  buttons to fit nine slots. In landscape (`wide`) the card is as wide as the landscape window: the volume
+  rocker becomes two buttons side by side and `buttonSpacing` spreads the buttons evenly (max 48px). Volume: one slot split up/down; click = one step, hold = repeat
   (`PhoneMirrorState.startKeyRepeat`: one `adb shell` loop on the phone, killed on release — killing
   the local adb client ends the remote loop, checked with `ps` on the phone), mouse wheel = one step per
   notch. Power: click = KEYCODE_POWER (26), long press = `input keyevent --longpress 26` (power menu);
   `PhoneMirrorState.key(code, longPress)` → `phone-mirror.sh key [--longpress] <code>`. Every key is an
-  `input keyevent` on the phone, ~0.3s each.
+  `input keyevent` on the phone, ~0.3s each. Landscape apps: the power watch (one `adb shell` loop, 1s) also reads the
+  display's current size (` cur=WxH` in `dumpsys window displays`; wider than tall = landscape —
+  not the first `mDisplayRotation`, a config override that stayed ROTATION_0 with a game sideways); `PhoneMirrorState.geom` is the
+  window size for the current orientation (portrait = full height; landscape = 60% of the screen's
+  width), applied by `phone-mirror.sh layout` (resize + re-dock) or on `expand` if it turned while
+  hidden, and every PhoneMirrorPanel surface sizes from it — the controls card and tab sit at
+  `controlsTop`, right under the window, not anchored to the screen bottom. In landscape only (portrait always
+  takes the full height), a grip on the window's inner bottom corner (its own overlay layer surface,
+  frozen in place while dragged so the drag's coordinates don't move under it) scales the mirror:
+  `PhoneMirrorState.setShare` stores its share of the screen width (0.3 up to edge to edge;
+  double-click = `toggleMax`, largest size and back) in
+  `~/.local/state/sichos/phone-size.json`; while held, `layout … fast` resizes at ~25fps with window
+  animations off, and the release's normal `layout` puts the spring back.
 - **Phone** (`Sichlink.qml` singleton, `PhonePage.qml` = Control Center page `qs-phone`, tile id `phone`):
   front end for the sichlink daemon — a separate repo (`~/Work/sichlink`, see its README: Android app + Rust
   `sichlink` daemon/CLI, `systemd --user` unit `sichlink`) that pairs phones over TLS, keeps wireless adb
   connected on every paired PC, reports the phone's lock state, and can wake/unlock it (optional
   Extend Unlock mode: the app holds an RFCOMM link so the PC counts as a connected trusted device). One
-  tile for everything phone: label = the phone's name, subtitle = mirror state or `Sichlink.stateText`,
-  click toggles the mirror, chevron opens the page; a 2-row tile adds the state line (lock · adb ·
+  tile for everything phone: label = the phone's name, subtitle = mirror state or `Sichlink.stateText` plus battery,
+  click (or chevron) opens the page; a 2-row tile adds the state line (lock · adb ·
   Bluetooth), no buttons. The old separate "link" (Phone Link) tile id is gone —
   `ControlCenterTiles._fill` maps a saved one onto "phone". The page: header switch = the daemon
-  (`systemctl --user enable/disable --now`), a card for the paired phone (chips; Mirror/Show/Hide or
-  Connect while adb is missing, Wake, Close; Unpair), Mirror settings (phone audio while open, saved
-  PIN with Forget, dock side), other phones to pair (shows the code) or unpair. Without the daemon the
+  (`systemctl --user enable/disable --now`), a card for the paired phone (a phone-shaped preview of its
+  wallpaper at its real screen ratio, battery, chips; "Connect over Wi-Fi" while adb is missing;
+  Unpair -- battery/wallpaper/screen size come from sichlink's `battery`/`wallpaper` messages, the
+  wallpaper as a JPEG under `$XDG_RUNTIME_DIR` reloaded on `wallpaper_rev`), a Mirror section (explicit
+  actions, no toggle: Start mirror, then Show/Hide + Stop; phone audio while open, saved PIN --
+  Set/Change typed on the page via `ShellState.keySink`, stored by `phone-mirror.sh store-pin` without
+  verification -- and Forget, dock side), other phones to pair (shows the code) or unpair. Without the daemon the
   page still offers the mirror (USB). State is streamed from `sichlink watch` (JSON lines, no polling;
   retried every 3s while the Control Center is open, 30s otherwise, when the daemon is down); `{"event":
   "mirror"}` lines (the phone asked) open/expand the mirror. Not deployed by `install.sh` yet; the

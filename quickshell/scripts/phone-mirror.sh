@@ -1,11 +1,14 @@
 #!/bin/bash
 # Phone mirror window (scrcpy) management for quickshell's PhoneMirrorState.qml.
 #   open <monitor> <bar height> <controls height> <side>
-#   close | collapse <side> | expand <monitor> <side> <bar height> | key [--longpress] <android keycode>
+#   close | collapse <side> | expand <monitor> <side> <bar height> [<w> <h>] | key [--longpress] <android keycode>
+#   layout <monitor> <side> <bar height> <w> <h> [fast]
+# <w> <h>: the window size PhoneMirrorState.geom wants (landscape when the
+# phone is turned sideways); expand applies it off-screen before sliding in.
 # <side> is "right" (default) or "left": which monitor edge it docks to.
 # expand also re-docks an expanded window to the other side (an animated
 # slide across, same move as expanding).
-#   audio-on | audio-off | audio-status | wake
+#   audio-on | audio-off | audio-status | wake | launch <package>
 #
 # The window is docked to the right edge of <monitor>, full height between
 # the bar and quickshell's controls card (PhoneMirrorPanel.qml) under it.
@@ -59,6 +62,15 @@ fi
 if [ "$1" = shell ]; then
     shift
     exec adb shell "$@"
+fi
+# Starts an app on the phone (the launcher's phone folder) by package: its
+# launcher activity, resolved on the phone. Started while the phone is still
+# locked it sits behind the keyguard and is what shows once the mirror's
+# wake loop unlocks it. No lock either: it doesn't touch the window.
+if [ "$1" = launch ]; then
+    case "$2" in ''|*[!A-Za-z0-9._]*) exit 1 ;; esac
+    exec adb shell "c=\$(cmd package resolve-activity --brief -c android.intent.category.LAUNCHER '$2' | tail -n 1)
+        case \$c in */*) am start -n \"\$c\" >/dev/null ;; *) monkey -p '$2' -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 ;; esac"
 fi
 
 # Wakes the phone and, if it's locked, brings up the PIN pad ("bouncer").
@@ -125,6 +137,17 @@ pin-saved)
     ;;
 forget-pin)
     secret-tool clear sichos phone-pin; exit 0
+    ;;
+store-pin)
+    # PIN on stdin, typed on the Control Center's Phone page. Stored as is:
+    # the phone may not even be connected, so there's nothing to check it
+    # against -- a wrong one is forgotten after its first rejection by the
+    # wake loop, same as a remembered one.
+    read -r pin
+    case "$pin" in ''|*[!0-9]*) exit 1 ;; esac
+    [ "${#pin}" -ge 4 ] || exit 1
+    printf '%s' "$pin" | secret-tool store --label="SichOS phone PIN" sichos phone-pin
+    exit
     ;;
 save-pin)
     # PIN on stdin, sent right after the user pressed Enter on the card. Only
@@ -358,6 +381,34 @@ close)
     on_window 'hl.dispatch(hl.dsp.window.close({ window = w }))'
     "$0" audio-off
     ;;
+layout)
+    # The phone rotated (PhoneMirrorState.geom): resize the shown window and
+    # re-dock it at its edge, under the bar. scrcpy letterboxes the video
+    # into whatever size the window has, so this is all it takes; it may
+    # also resize its window by itself on rotation, which this overrides.
+    win=$(window); [ -z "$win" ] && exit 0
+    [ "$(jq -r .pinned <<<"$win")" = true ] || exit 0  # collapsed: expand does it
+    mon=$(monitor_by name "$2"); [ -z "$mon" ] && exit 0
+    read -r mx my mw < <(jq -r '"\(.x) \(.y) \(.w)"' <<<"$mon")
+    w=$5 h=$6
+    if [ "$3" = left ]; then x=$((mx + GAP)); else x=$((mx + mw - GAP - w)); fi
+    y=$((my + ${4:-24} + GAP))
+    # fast: the corner grip being dragged (PhoneMirrorPanel), ~25 calls a
+    # second -- no animation at all, so the window keeps up with the
+    # pointer instead of springing after it. The release sends a normal
+    # layout, which puts the spring back.
+    if [ "$7" = fast ]; then
+        on_window "hl.animation({ leaf = 'windowsMove', enabled = false })
+                   hl.dispatch(hl.dsp.window.resize({ window = w, x = $w, y = $h }))
+                   hl.dispatch(hl.dsp.window.move({ window = w, x = $x, y = $y }))"
+        exit 0
+    fi
+    on_window "$SMOOTH_MOVE
+               hl.dispatch(hl.dsp.window.resize({ window = w, x = $w, y = $h }))
+               hl.dispatch(hl.dsp.window.move({ window = w, x = $x, y = $y }))"
+    sleep 0.45
+    restore_spring
+    ;;
 collapse)
     stop_wake
     win=$(window); [ -z "$win" ] && exit 0
@@ -403,6 +454,11 @@ expand)
     mon=$(monitor_by name "$2"); [ -z "$mon" ] && exit 0
     read -r mx my mw < <(jq -r '"\(.x) \(.y) \(.w)"' <<<"$mon")
     ww=$(jq -r '.size[0]' <<<"$win")
+    # The phone turned while it was hidden: resize while still off-screen.
+    if [ -n "$5" ] && [ -n "$6" ] && [ "$(jq -r '"\(.size[0]) \(.size[1])"' <<<"$win")" != "$5 $6" ]; then
+        on_window "hl.dispatch(hl.dsp.window.resize({ window = w, x = $5, y = $6 }))"
+        ww=$5
+    fi
     if [ "$3" = left ]; then x=$((mx + GAP)); else x=$((mx + mw - GAP - ww)); fi
     # y from the monitor too, not the window's current y, so expanding also
     # re-docks a window that got nudged.
