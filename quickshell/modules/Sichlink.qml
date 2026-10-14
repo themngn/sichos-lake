@@ -31,11 +31,21 @@ QtObject {
     // Everything else the daemon sees: phones to pair, other paired ones.
     readonly property var others: root.devices.filter(d => d !== root.phone)
 
+    // Whether the mirror can reach the phone over Wi-Fi. The daemon only
+    // connects wireless adb on demand (the mirror's `sichlink connect`, and
+    // turns wireless debugging on for it if the app may), so "idle" -- paired,
+    // nothing connected -- counts.
+    function canMirror(d) {
+        if (!d || !d.connected || !d.trusted) return false
+        if (d.adb_serial) return true
+        return d.adb !== "unauthorized" && (d.adb_wifi === true || !!d.can_toggle)
+    }
     // One line on how far a phone is from being mirrorable.
     function adbText(d) {
         if (!d.connected) return "Offline"
         if (!d.trusted) return "Not paired"
         if (d.adb_serial) return "Ready to mirror"
+        if (d.adb === "idle") return root.canMirror(d) ? "Ready to mirror" : "Wireless debugging off"
         if (d.adb_wifi === false) return d.can_toggle ? "Turning on wireless debugging…" : "Wireless debugging off"
         if (d.adb === "unauthorized") return "Allow this PC's adb key on the phone"
         if (d.adb === "failed") return "adb couldn't connect"
@@ -74,7 +84,6 @@ QtObject {
         : !root.running ? "Phone Link off"
         : !root.phone ? (root.devices.length > 0 ? "Not paired" : "Searching…")
         : !root.phone.connected ? "Offline"
-        : root.phone.adb_serial ? "Ready to mirror"
         : root.adbText(root.phone)
 
     property bool _wantOn: false
@@ -90,18 +99,68 @@ QtObject {
     // Screen on + dismiss the lock screen: straight in while Extend Unlock
     // trusts this PC, otherwise the phone shows its PIN pad.
     function wake(id) { Quickshell.execDetached(root.cmd(["wake", id])) }
-    // `sichlink connect`: connect now (phone, wireless debugging, adb) rather
-    // than on the daemon's next 10-15s round. The result shows up through
-    // the watch stream; connectingId only drives the button's label.
-    property string connectingId: ""
-    property Process _connectProc: Process {
-        onExited: root.connectingId = ""
+    // --- Display mode: the phone as an extra monitor (`sichlink display`,
+    // a Hyprland headless output streamed to the app). `display on` only
+    // returns once the phone shows it -- up to a minute while the phone
+    // waits to be unlocked (it never opens over the lock screen) -- so
+    // displayStarting covers that wait; the on state itself comes from the
+    // watch stream, which also sees it end when the phone leaves it. ---
+    readonly property bool displayOn: !!root.phone && !!root.phone.display
+    property bool displayStarting: false
+    property string displayError: ""
+    property Process _displayProc: Process {
+        stderr: SplitParser {
+            onRead: (line) => root.displayError = line.replace(/^Error:\s*/, "")
+        }
+        onExited: (code) => {
+            root.displayStarting = false
+            if (code !== 0 && !root.displayError) root.displayError = "Display mode failed"
+        }
     }
-    function connect(id) {
-        if (root._connectProc.running) return
-        root.connectingId = id
-        root._connectProc.command = root.cmd(["connect", id])
-        root._connectProc.running = true
+    function setDisplay(on) {
+        root.displayError = ""
+        if (on) {
+            if (root._displayProc.running) return
+            root.displayStarting = true
+            root._displayProc.command = root.cmd(["display", "on", root.phone ? root.phone.id : ""])
+            root._displayProc.running = true
+        } else {
+            // Also ends a start still waiting for the phone: the daemon
+            // cancels it and the pending `display on` returns.
+            Quickshell.execDetached(root.cmd(["display", "off"]))
+        }
+    }
+
+    // --- Drive: the phone's storage as a folder (`sichlink mount`: sshfs over
+    // sichlink's own TLS connection -- no adb, works with the phone locked).
+    // `mount` returns once it's mounted (a few seconds), `unmount` once it's
+    // gone; the state itself comes from the watch stream: `mount` = the folder
+    // while one is set up (the daemon remounts it whenever the phone is back),
+    // `mounted` = there right now. ---
+    readonly property string drivePath: root.phone && root.phone.mount ? root.phone.mount : ""
+    readonly property bool driveMounted: !!root.phone && !!root.phone.mounted
+    property bool driveBusy: false
+    property string driveError: ""
+    property Process _driveProc: Process {
+        stderr: SplitParser {
+            onRead: (line) => root.driveError = line.replace(/^Error:\s*/, "")
+        }
+        onExited: (code) => {
+            root.driveBusy = false
+            if (code !== 0 && !root.driveError) root.driveError = "Mounting failed"
+        }
+    }
+    function setDrive(on) {
+        if (root._driveProc.running || !root.phone) return
+        root.driveError = ""
+        root.driveBusy = true
+        root._driveProc.command = root.cmd([on ? "mount" : "unmount", root.phone.id])
+        root._driveProc.running = true
+    }
+    // SichOS's file manager (hypr/programs.lua), not xdg-open: the
+    // inode/directory default can be anything -- here VS Code had claimed it.
+    function openDrive() {
+        if (root.driveMounted) Quickshell.execDetached(["nautilus", "--new-window", root.drivePath])
     }
 
     // --- Pairing: `sichlink pair` prints the code, then waits (up to 60s)

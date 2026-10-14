@@ -88,6 +88,15 @@ QtObject {
         onTriggered: root._audioStatus.running = true
     }
 
+    // The sichlink daemon only connects wireless adb on demand (open's
+    // `sichlink connect`) and drops it again ~30s after nothing holds it,
+    // turning wireless debugging back off -- so the mirror holds it for as
+    // long as it (or its audio) runs. Killing the holder is the release.
+    property Process _adbHold: Process {
+        command: Sichlink.cmd(["adb-hold"])
+        running: Sichlink.running && (root.open || root.loading || root.audio)
+    }
+
     // Whether the phone's PIN pad is up, reported by phone-mirror.sh's wake
     // loop into a runtime file. Android hides the pad from mirroring (it
     // shows black), so PhoneMirrorPanel overlays a "type your PIN" hint.

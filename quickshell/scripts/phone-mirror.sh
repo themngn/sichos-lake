@@ -23,14 +23,20 @@ TITLE="SichOS Phone"
 GAP=6
 
 # Which phone: USB if plugged in (no Wi-Fi in the video path), else the one
-# the sichlink daemon (~/Work/sichlink) keeps connected over wireless
-# debugging. It has to be pinned: one phone often shows up as several adb
+# the sichlink daemon (~/Work/sichlink) connects over wireless debugging --
+# on demand only: `open` asks for it, PhoneMirrorState holds it while the
+# mirror runs (`sichlink adb-hold`), and it's dropped after. It has to be
+# pinned: one phone often shows up as several adb
 # entries -- USB plus wireless, and adb's own mDNS auto-connect adds another
 # "adb-<serial>-xxx (N)._adb-tls-connect._tcp" entry each time wireless
 # debugging is re-enabled -- and adb/scrcpy refuse to pick one by themselves.
 # Exported for every adb/scrcpy below, including the audio-only scrcpy; the
 # mirror window itself is launched by Hyprland, so it gets --serial instead.
-if [ -z "$ANDROID_SERIAL" ]; then
+# Commands that never touch adb skip this: with the fallback `connect`
+# below, a status poll (audio-status, pin-saved) used to be enough to bring
+# wireless adb up.
+case "$1" in pin-saved|forget-pin|store-pin|audio-status|audio-off|layout|collapse) NO_ADB=1 ;; esac
+if [ -z "$ANDROID_SERIAL" ] && [ -z "$NO_ADB" ]; then
     ANDROID_SERIAL=$(adb devices -l 2>/dev/null | awk '$2 == "device" && / usb:/ { print $1; exit }')
     # quickshell runs this with Hyprland's PATH, which has no ~/.local/bin.
     sichlink=$(command -v sichlink || echo "$HOME/.local/bin/sichlink")

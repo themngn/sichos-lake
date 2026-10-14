@@ -301,20 +301,32 @@ Everything else lives in `quickshell/modules/`:
   animations off, and the release's normal `layout` puts the spring back.
 - **Phone** (`Sichlink.qml` singleton, `PhonePage.qml` = Control Center page `qs-phone`, tile id `phone`):
   front end for the sichlink daemon — a separate repo (`~/Work/sichlink`, see its README: Android app + Rust
-  `sichlink` daemon/CLI, `systemd --user` unit `sichlink`) that pairs phones over TLS, keeps wireless adb
-  connected on every paired PC, reports the phone's lock state, and can wake/unlock it (optional
+  `sichlink` daemon/CLI, `systemd --user` unit `sichlink`) that pairs phones over TLS, connects wireless adb
+  on demand only (the mirror's `sichlink connect` turns wireless debugging on; PhoneMirrorState keeps a
+  `sichlink adb-hold` running while the mirror or its audio is up; ~30s after the last hold the daemon
+  disconnects and turns wireless debugging off again, unless the app's "Keep on" is set; display mode
+  connects and holds it the same way — so `adb` reads `idle` most of the time, and phone-mirror.sh
+  commands that don't need adb skip the serial lookup, or a status poll would bring adb up), reports the phone's lock state, and can wake/unlock it (optional
   Extend Unlock mode: the app holds an RFCOMM link so the PC counts as a connected trusted device). One
   tile for everything phone: label = the phone's name, subtitle = mirror state or `Sichlink.stateText` plus battery,
   click (or chevron) opens the page; a 2-row tile adds the state line (lock · adb ·
   Bluetooth), no buttons. The old separate "link" (Phone Link) tile id is gone —
   `ControlCenterTiles._fill` maps a saved one onto "phone". The page: header switch = the daemon
   (`systemctl --user enable/disable --now`), a card for the paired phone (a phone-shaped preview of its
-  wallpaper at its real screen ratio, battery, chips; "Connect over Wi-Fi" while adb is missing;
+  wallpaper at its real screen ratio, battery, chips;
   Unpair -- battery/wallpaper/screen size come from sichlink's `battery`/`wallpaper` messages, the
   wallpaper as a JPEG under `$XDG_RUNTIME_DIR` reloaded on `wallpaper_rev`), a Mirror section (explicit
   actions, no toggle: Start mirror, then Show/Hide + Stop; phone audio while open, saved PIN --
   Set/Change typed on the page via `ShellState.keySink`, stored by `phone-mirror.sh store-pin` without
-  verification -- and Forget, dock side), other phones to pair (shows the code) or unpair. Without the daemon the
+  verification -- and Forget, dock side), a Display section (`Sichlink.setDisplay` → `sichlink
+  display on|off`: the phone as an extra monitor -- a Hyprland headless output `SICHLINK-1` streamed
+  to the app, touch = mouse; implemented in the sichlink repo, needs `wf-recorder`; `display on`
+  blocks until the phone shows it, up to a minute while it waits to be unlocked), a Drive section
+  (`Sichlink.setDrive` → `sichlink mount|unmount`: the phone's storage at `~/Phone` via sshfs over
+  sichlink's own TLS, no adb, works locked; the daemon remounts it whenever the phone is back, so
+  `mount`/`mounted` in the watch stream are "set up" vs. "there now"; Open runs nautilus directly,
+  since `inode/directory`'s default can be anything -- VS Code had it here; needs `fuse-sshfs`), other
+  phones to pair (shows the code) or unpair. Without the daemon the
   page still offers the mirror (USB). State is streamed from `sichlink watch` (JSON lines, no polling;
   retried every 3s while the Control Center is open, 30s otherwise, when the daemon is down); `{"event":
   "mirror"}` lines (the phone asked) open/expand the mirror. Not deployed by `install.sh` yet; the

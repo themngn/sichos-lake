@@ -4,11 +4,12 @@ import Quickshell.Widgets
 
 // Phone page of the Control Center (QuickSettings.qml, popupId "qs-phone"):
 // everything about the phone in one place -- the sichlink daemon's switch
-// (header), the paired phone as a card (its wallpaper, battery, state chips;
-// Connect while wireless adb is missing), the mirror as its own section
+// (header), the paired phone as a card (its wallpaper, battery, state chips),
+// the mirror as its own section
 // (start, show/hide, stop,
-// phone audio, saved PIN -- settable here --, dock side), and other phones
-// to pair or unpair. The Phone tile opens this page. State comes from the
+// phone audio, saved PIN -- settable here --, dock side), display mode (the
+// phone as an extra monitor, sichlink's `display`), and other phones to
+// pair or unpair. The Phone tile opens this page. State comes from the
 // Sichlink and PhoneMirrorState singletons; the PIN goes to the keyring.
 MorphContent {
     id: page
@@ -127,7 +128,7 @@ MorphContent {
 
             readonly property var d: page.phone || ({})
             readonly property bool online: !!card.d.connected
-            readonly property bool mirrorable: !!card.d.adb_serial
+            readonly property bool mirrorable: Sichlink.canMirror(card.d)
 
             Column {
                 id: cardCol
@@ -231,9 +232,11 @@ MorphContent {
                             width: parent.width
                             spacing: 6
                             topPadding: 4
+                            // adb only exists while the mirror/display uses it.
                             Chip {
-                                label: card.mirrorable ? "Wireless adb" : "No adb"
-                                good: card.mirrorable
+                                visible: !!card.d.adb_serial || !card.mirrorable
+                                label: card.d.adb_serial ? "Wireless adb" : "No adb"
+                                good: !!card.d.adb_serial
                             }
                             Chip {
                                 visible: label !== ""
@@ -264,17 +267,6 @@ MorphContent {
                             onClicked: Sichlink.unpair(card.d.id)
                         }
                     }
-                }
-
-                // Connecting is the phone's business, not the mirror's:
-                // wireless adb is what the mirror (and sichlink) need, so
-                // it's offered here while it's missing.
-                PageButton {
-                    visible: card.online && !card.mirrorable
-                    width: parent.width
-                    accent: true
-                    label: Sichlink.connectingId === card.d.id ? "Connecting…" : "Connect over Wi-Fi"
-                    onClicked: Sichlink.connect(card.d.id)
                 }
             }
         }
@@ -327,7 +319,7 @@ MorphContent {
             Text {
                 visible: !PhoneMirrorState.open && !!page.phone && !card.mirrorable
                 bottomPadding: 6
-                text: "Connect the phone first, or plug it in"
+                text: Sichlink.adbText(card.d) + " · or plug it in"
                 color: Theme.textMuted
                 font.family: Theme.uiFontFamily
                 font.pixelSize: Theme.fontSize - 3
@@ -432,6 +424,109 @@ MorphContent {
                     current: PhoneMirrorState.side
                     onPicked: (value) => { if (value !== PhoneMirrorState.side) PhoneMirrorState.toggleSide() }
                 }
+            }
+        }
+
+        // Display mode: the phone as an extra monitor (Sichlink.setDisplay).
+        // Needs the daemon and wireless adb (sichlink connects it for display
+        // mode and keeps it while that runs), unlike the mirror.
+        Column {
+            visible: !!page.phone && Sichlink.running
+            width: parent.width
+            spacing: 2
+
+            SectionLabel {
+                text: "Display" + (Sichlink.displayOn ? " · On"
+                    : Sichlink.displayStarting ? " · Starting…" : "")
+            }
+            BigButton {
+                width: parent.width
+                accent: !Sichlink.displayOn
+                busy: Sichlink.displayStarting && !Sichlink.displayOn
+                opacity: card.mirrorable || Sichlink.displayOn ? 1 : 0.5
+                glyph: Sichlink.displayOn || Sichlink.displayStarting ? "\u{f04db}" : "\u{f0379}" // nf-md-stop / monitor
+                label: Sichlink.displayOn ? "Stop display"
+                    : Sichlink.displayStarting ? "Cancel"
+                    : "Use as display"
+                onClicked: {
+                    if (Sichlink.displayOn || Sichlink.displayStarting) Sichlink.setDisplay(false)
+                    else if (card.mirrorable) Sichlink.setDisplay(true)
+                }
+            }
+            Text {
+                readonly property string hint: Sichlink.displayError ? Sichlink.displayError
+                    : !card.mirrorable && !Sichlink.displayOn ? Sichlink.adbText(card.d)
+                    : Sichlink.displayStarting && !Sichlink.displayOn && card.d.locked ? "Unlock the phone to show the display"
+                    : Sichlink.displayOn ? "Touch works as a mouse: tap, drag, long press = right click, two fingers = scroll. Back on the phone ends it."
+                    : ""
+                visible: hint !== ""
+                width: parent.width
+                topPadding: 4
+                wrapMode: Text.WordWrap
+                text: hint
+                color: Sichlink.displayError ? Theme.danger : Theme.textMuted
+                font.family: Theme.uiFontFamily
+                font.pixelSize: Theme.fontSize - 3
+            }
+        }
+
+        // Drive: the phone's storage as a folder (Sichlink.setDrive). Over
+        // sichlink's own connection, not adb -- so it only needs the phone
+        // connected, locked or not.
+        Column {
+            visible: !!page.phone && Sichlink.running
+            width: parent.width
+            spacing: 2
+
+            SectionLabel {
+                text: "Drive" + (Sichlink.driveBusy ? (Sichlink.drivePath ? " · Unmounting…" : " · Mounting…")
+                    : Sichlink.driveMounted ? " · Mounted"
+                    : Sichlink.drivePath ? " · Waiting for the phone" : "")
+            }
+            Row {
+                width: parent.width
+                spacing: 6
+
+                BigButton {
+                    visible: !Sichlink.drivePath
+                    width: parent.width
+                    accent: true
+                    busy: Sichlink.driveBusy
+                    opacity: card.online || Sichlink.driveBusy ? 1 : 0.5
+                    glyph: "\u{f02ca}" // nf-md-harddisk
+                    label: Sichlink.driveBusy ? "Mounting…" : "Mount as drive"
+                    onClicked: if (card.online) Sichlink.setDrive(true)
+                }
+                BigButton {
+                    visible: !!Sichlink.drivePath
+                    width: (parent.width - parent.spacing) / 2
+                    opacity: Sichlink.driveMounted ? 1 : 0.5
+                    glyph: "\u{f024b}" // nf-md-folder
+                    label: "Open"
+                    onClicked: Sichlink.openDrive()
+                }
+                BigButton {
+                    visible: !!Sichlink.drivePath
+                    width: (parent.width - parent.spacing) / 2
+                    busy: Sichlink.driveBusy
+                    glyph: "\u{f01ea}" // nf-md-eject
+                    label: "Unmount"
+                    onClicked: Sichlink.setDrive(false)
+                }
+            }
+            Text {
+                readonly property string hint: Sichlink.driveError ? Sichlink.driveError
+                    : Sichlink.driveMounted ? Sichlink.drivePath.replace(/^\/home\/[^\/]+/, "~")
+                    : Sichlink.drivePath ? (card.d.mount_error || "Mounts again when the phone is back")
+                    : !card.online ? "The phone is offline"
+                    : "The phone's storage as a folder (~/Phone), even with it locked"
+                width: parent.width
+                topPadding: 4
+                wrapMode: Text.WordWrap
+                text: hint
+                color: Sichlink.driveError ? Theme.danger : Theme.textMuted
+                font.family: Theme.uiFontFamily
+                font.pixelSize: Theme.fontSize - 3
             }
         }
 
