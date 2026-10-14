@@ -163,6 +163,41 @@ QtObject {
         if (root.driveMounted) Quickshell.execDetached(["nautilus", "--new-window", root.drivePath])
     }
 
+    // --- Notifications: the phone's notifications as this PC's own
+    // (`sichlink notifications`). The daemon keeps the settings per phone:
+    // on/off and muted apps; every app that ever sent one is listed.
+    // notifAccess is false when the app lacks notification access (null:
+    // unknown -- offline, or an app too old to say); allowNotifications()
+    // grants it over adb. ---
+    readonly property bool notifOn: !!root.phone && root.phone.notifications !== false
+    readonly property var notifAccess: root.phone ? root.phone.notification_access : null
+    readonly property var notifApps: root.phone && root.phone.notification_apps ? root.phone.notification_apps : []
+    readonly property int notifMutedCount: root.notifApps.filter(a => a.muted).length
+    function setNotifications(on) {
+        if (root.phone) Quickshell.execDetached(root.cmd(["notifications", on ? "on" : "off", root.phone.id]))
+    }
+    function muteApp(pkg, muted) {
+        if (root.phone) Quickshell.execDetached(root.cmd(["notifications", muted ? "mute" : "unmute", pkg, root.phone.id]))
+    }
+    property bool notifAllowBusy: false
+    property string notifAllowError: ""
+    property Process _notifAllowProc: Process {
+        stderr: SplitParser {
+            onRead: (line) => root.notifAllowError = line.replace(/^Error:\s*/, "")
+        }
+        onExited: (code) => {
+            root.notifAllowBusy = false
+            if (code !== 0 && !root.notifAllowError) root.notifAllowError = "Couldn't grant access"
+        }
+    }
+    function allowNotifications() {
+        if (root._notifAllowProc.running || !root.phone) return
+        root.notifAllowError = ""
+        root.notifAllowBusy = true
+        root._notifAllowProc.command = root.cmd(["notifications", "allow", root.phone.id])
+        root._notifAllowProc.running = true
+    }
+
     // --- Pairing: `sichlink pair` prints the code, then waits (up to 60s)
     // for the answer on the phone. ---
     property string pairingId: ""

@@ -325,7 +325,12 @@ Everything else lives in `quickshell/modules/`:
   (`Sichlink.setDrive` → `sichlink mount|unmount`: the phone's storage at `~/Phone` via sshfs over
   sichlink's own TLS, no adb, works locked; the daemon remounts it whenever the phone is back, so
   `mount`/`mounted` in the watch stream are "set up" vs. "there now"; Open runs nautilus directly,
-  since `inode/directory`'s default can be anything -- VS Code had it here; needs `fuse-sshfs`), other
+  since `inode/directory`'s default can be anything -- VS Code had it here; needs `fuse-sshfs`), a
+  Notifications section (the daemon shows the phone's notifications as ordinary ones through
+  Notifications.qml's server; `sichlink notifications on|off|mute|unmute <pkg>|allow`: the
+  on/off switch, an "Allow" row when the app lacks notification access -- granted over adb --, and a
+  "Choose" list of every app that has sent one with a switch each, settings kept per phone by the
+  daemon; a toast click invokes the "default" action = open it on the phone + the mirror), other
   phones to pair (shows the code) or unpair. Without the daemon the
   page still offers the mirror (USB). State is streamed from `sichlink watch` (JSON lines, no polling;
   retried every 3s while the Control Center is open, 30s otherwise, when the daemon is down); `{"event":

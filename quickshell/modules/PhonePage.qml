@@ -52,7 +52,10 @@ MorphContent {
             ShellState.keySink = null
         }
     }
-    onShownChanged: if (!page.shown) page.cancelPin()
+    onShownChanged: if (!page.shown) { page.cancelPin(); page.notifAppsOpen = false }
+
+    // The Notifications section's per-app list, open while choosing.
+    property bool notifAppsOpen: false
 
     Column {
         id: column
@@ -516,10 +519,11 @@ MorphContent {
             }
             Text {
                 readonly property string hint: Sichlink.driveError ? Sichlink.driveError
-                    : Sichlink.driveMounted ? Sichlink.drivePath.replace(/^\/home\/[^\/]+/, "~")
-                    : Sichlink.drivePath ? (card.d.mount_error || "Mounts again when the phone is back")
+                    : Sichlink.driveMounted ? ""
+                    : Sichlink.drivePath ? (card.d.mount_error || "")
                     : !card.online ? "The phone is offline"
-                    : "The phone's storage as a folder (~/Phone), even with it locked"
+                    : ""
+                visible: hint !== ""
                 width: parent.width
                 topPadding: 4
                 wrapMode: Text.WordWrap
@@ -527,6 +531,107 @@ MorphContent {
                 color: Sichlink.driveError ? Theme.danger : Theme.textMuted
                 font.family: Theme.uiFontFamily
                 font.pixelSize: Theme.fontSize - 3
+            }
+        }
+
+        // Notifications: the phone's as this PC's own (Sichlink.setNotifications),
+        // per-app mutes in a list that opens on demand -- it holds every app
+        // that has ever sent one.
+        Column {
+            visible: !!page.phone && Sichlink.running
+            width: parent.width
+            spacing: 2
+
+            SectionLabel {
+                text: "Notifications" + (!Sichlink.notifOn ? " · Off"
+                    : Sichlink.notifAccess === false ? " · No access" : "")
+            }
+            SettingRow {
+                label: "Show on this PC"
+                Switch {
+                    anchors.verticalCenter: parent.verticalCenter
+                    checked: Sichlink.notifOn
+                    onToggled: Sichlink.setNotifications(!checked)
+                }
+            }
+            // The app can't read notifications yet: grant it over adb
+            // (or on the phone, the app's "Notifications on PC" card).
+            SettingRow {
+                visible: Sichlink.notifOn && Sichlink.notifAccess === false
+                label: "The phone hasn't allowed access"
+                caption: Sichlink.notifAllowError
+                PageButton {
+                    anchors.verticalCenter: parent.verticalCenter
+                    accent: true
+                    opacity: Sichlink.notifAllowBusy ? 0.6 : 1
+                    label: Sichlink.notifAllowBusy ? "Allowing…" : "Allow"
+                    onClicked: if (!Sichlink.notifAllowBusy) Sichlink.allowNotifications()
+                }
+            }
+            SettingRow {
+                visible: Sichlink.notifOn && Sichlink.notifApps.length > 0
+                label: "Apps"
+                caption: Sichlink.notifMutedCount > 0 ? Sichlink.notifMutedCount + " muted" : ""
+                PageButton {
+                    anchors.verticalCenter: parent.verticalCenter
+                    label: page.notifAppsOpen ? "Done" : "Choose"
+                    onClicked: page.notifAppsOpen = !page.notifAppsOpen
+                }
+            }
+            // One row per app, its switch on = shown. Scrolls past ~6 apps.
+            Flickable {
+                visible: Sichlink.notifOn && page.notifAppsOpen && Sichlink.notifApps.length > 0
+                width: parent.width
+                height: Math.min(appsCol.implicitHeight, 6 * Theme.controlHeight)
+                contentHeight: appsCol.implicitHeight
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+
+                Column {
+                    id: appsCol
+                    width: parent.width
+                    Repeater {
+                        model: Sichlink.notifApps
+                        delegate: Item {
+                            id: appRow
+                            required property var modelData
+                            width: appsCol.width
+                            height: Theme.controlHeight
+                            Image {
+                                id: appIcon
+                                anchors.left: parent.left
+                                anchors.leftMargin: 4
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 18
+                                height: 18
+                                source: appRow.modelData.icon ? "file://" + appRow.modelData.icon : ""
+                                sourceSize.width: 36
+                                sourceSize.height: 36
+                                asynchronous: true
+                                opacity: appRow.modelData.muted ? 0.5 : 1
+                            }
+                            Text {
+                                anchors.left: appIcon.right
+                                anchors.leftMargin: 10
+                                anchors.right: appSwitch.left
+                                anchors.rightMargin: 10
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: appRow.modelData.label
+                                elide: Text.ElideRight
+                                color: appRow.modelData.muted ? Theme.textMuted : Theme.text
+                                font.family: Theme.uiFontFamily
+                                font.pixelSize: Theme.fontSize - 1
+                            }
+                            Switch {
+                                id: appSwitch
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                checked: !appRow.modelData.muted
+                                onToggled: Sichlink.muteApp(appRow.modelData.package, checked)
+                            }
+                        }
+                    }
+                }
             }
         }
 

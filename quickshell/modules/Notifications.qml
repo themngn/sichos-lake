@@ -425,9 +425,12 @@ Scope {
                             onClicked: {
                                 const n = toast.latest
                                 const defaultAction = n.actions.find(a => a.identifier === "default")
+                                // Hide first: invoking a non-resident notification's
+                                // action dismisses it, which destroys this delegate
+                                // ("root is not defined" for anything after it).
+                                root.hideToast(notification.id)
                                 if (defaultAction) defaultAction.invoke()
                                 else NotificationHistory.focusOrLaunchApp(n.desktopEntry, n.appName)
-                                root.hideToast(notification.id)
                             }
                         }
 
