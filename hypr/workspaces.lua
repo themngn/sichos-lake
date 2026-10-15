@@ -491,3 +491,48 @@ function SichosWorkspaces.swapWithMonitor(id, target)
     if ws.monitor.name == target then return end
     hl.dispatch(hl.dsp.workspace.swap_monitors({ monitor1 = ws.monitor.name, monitor2 = target }))
 end
+
+-- Previous/next workspace on one monitor only (dir = -1/+1): the ones it owns
+-- -- the one on screen plus hidden ones with windows that live there -- in id
+-- order, and past either end the lowest Available Pool workspace, summoned
+-- onto it (a fresh empty one). Already on an empty one, it wraps around
+-- instead, so repeated presses don't walk off into more and more empty
+-- workspaces. For sichlink's phone display buttons (`hyprctl eval
+-- 'SichosWorkspaces.cycleOnMonitor("SICHLINK-1", 1)'`), which act on that
+-- screen without it having focus.
+--
+-- The screen's own workspace comes from mon.active_workspace, not ws.visible:
+-- right after sichlink created its output, its workspace wasn't reported
+-- visible yet, nothing counted as "owned", and the summon path below ran
+-- against the *focused* monitor -- the laptop panel switched instead. So the
+-- monitor gets focus first (everything after acts on it), and without a
+-- known current workspace nothing happens at all.
+function SichosWorkspaces.cycleOnMonitor(name, dir)
+    local mon = hl.get_monitor(name)
+    local current = mon and mon.active_workspace
+    if not current then return end
+    local owned = { current.id }
+    for _, ws in ipairs(hl.get_workspaces()) do
+        if not ws.special and ws.id ~= current.id and ws.monitor and ws.monitor.name == name and (ws.windows or 0) > 0 then
+            table.insert(owned, ws.id)
+        end
+    end
+    table.sort(owned)
+    local at = 1
+    for i, id in ipairs(owned) do
+        if id == current.id then at = i end
+    end
+    local target = owned[at + dir]
+    local summon = false
+    if not target then
+        local pool = (current.windows or 0) > 0 and lowestPoolWorkspace() or nil
+        if pool then
+            target, summon = pool, true
+        else
+            target = dir > 0 and owned[1] or owned[#owned]
+        end
+    end
+    if target == current.id then return end
+    hl.dispatch(hl.dsp.focus({ monitor = name }))
+    hl.dispatch(hl.dsp.focus({ workspace = tostring(target), on_current_monitor = summon or nil }))
+end
