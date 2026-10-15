@@ -22,7 +22,9 @@ places — the repo file (what `install.sh` ships to every future machine) and t
   repo's copy is just a template, not something to reconcile. Before trusting any other file, diff it
   against the other copy rather than assuming they match.
 - **`install.sh` and `sichos-setup.sh` are for the first install of a machine only** (packages, COPRs,
-  sudo/system steps, interactive choices) — don't re-run them to pick up config changes. Updates go
+  sudo/system steps, interactive choices) — don't re-run them to pick up config changes. `UPDATING.md`
+  is the user-facing description of everything below (update flow, live testing, version switching,
+  system files, the Version tile) — keep it in step when `update.sh`'s behaviour changes. Updates go
   through `update.sh`, run automatically by the git hooks in `githooks/` (enabled by `git config
   core.hooksPath githooks`; `install.sh` sets it): after every commit, amend, pull/merge, rebase and
   branch switch in the main checkout it deploys whatever changed since the last deployed commit
