@@ -160,7 +160,7 @@ Pill {
     property bool grabbing: false
     readonly property bool typing: ShellState.keySink !== null && ShellState.keySinkScreen === root.screenName
     readonly property var pageIds: ["quicksettings", "qs-audio", "qs-wifi", "qs-bluetooth", "qs-display",
-        "qs-update", "qs-hdr", "qs-sunset", "qs-idle", "qs-gamefocus", "qs-phone"]
+        "qs-update", "qs-hdr", "qs-sunset", "qs-idle", "qs-gamefocus", "qs-phone", "qs-vpn"]
     onAnyOpenChanged: {
         root.grabbing = false
         if (root.anyOpen) grabTimer.restart()
@@ -200,6 +200,12 @@ Pill {
 
         implicitWidth: root.cardWidth + 2 * Theme.surfacePadding
         implicitHeight: column.implicitHeight + 2 * Theme.surfacePadding
+
+        // The tiles' data sources poll only while the card is open.
+        Binding { target: NetInfo; property: "active"; value: panel.shown }
+        Binding { target: PowerInfo; property: "active"; value: panel.shown }
+        Binding { target: Displays; property: "active"; value: panel.shown }
+        Binding { target: AudioInfo; property: "active"; value: panel.shown }
 
         // Same sysfs node Backlight.qml/BacklightOSD.qml read.
         readonly property bool hasBacklight: blMax.text().length > 0
@@ -269,38 +275,61 @@ Pill {
         function onOff(b) { return b ? "On" : "Off" }
 
         // Everything a tile shows, by id. `more` is the page its chevron
-        // (wide) or long-press/right-click (small) opens, "" for none.
+        // (wide) or long-press/right-click (small) opens, "" for none;
+        // `opens`: a tap opens that page too, so no chevron. `short`: the
+        // 1-column label, when `label` doesn't fit or say enough there.
+        // `extraSub`: the status line once its control/body shows (1 row:
+        // none, 2 rows: this), when those repeat `sub`. `detail`: a 2-row
+        // tile's line above its control.
         function tileInfo(id) {
             switch (id) {
             case "wifi": return {
                 glyph: Networking.wifiEnabled || !net.wifiDevice ? (net.wiredUp && !net.wifiUp ? "\u{f0200}" : "\u{f05a9}") : "\u{f05aa}",
                 label: net.wifiDevice ? "Wi-Fi" : "Network", sub: panel.wifiSubtitle,
+                extraSub: net.wifiUp && net.wifiNetwork ? "Signal " + Math.round(net.wifiNetwork.signalStrength * 100) + "%" : panel.wifiSubtitle,
                 active: net.wifiDevice ? Networking.wifiEnabled : net.wiredUp, more: net.wifiDevice ? "qs-wifi" : "" }
             case "bluetooth": return {
                 glyph: root.adapter && root.adapter.enabled ? "\u{f00af}" : "\u{f00b2}",
                 label: "Bluetooth", sub: panel.btSubtitle,
+                extraSub: bt.connectedDevices.length > 0 ? bt.connectedDevices.length + " connected" : panel.btSubtitle,
                 active: !!(root.adapter && root.adapter.enabled), more: root.adapter ? "qs-bluetooth" : "" }
             case "airplane": return {
-                glyph: "\u{f001d}", label: "Airplane", sub: panel.onOff(panel.airplane), active: panel.airplane, more: "" }
+                glyph: "\u{f001d}", label: "Airplane", sub: panel.onOff(panel.airplane),
+                detail: "Or one radio at a time", active: panel.airplane, more: "" }
             case "nightlight": return {
                 glyph: "\u{f0594}", label: "Night Light",
-                sub: ShellState.sunsetWarm ? ShellState.sunsetKelvin + "K" : "Off", active: ShellState.sunsetWarm, more: "qs-sunset" }
+                sub: ShellState.sunsetWarm ? ShellState.sunsetKelvin + "K" : "Off", extraSub: panel.onOff(ShellState.sunsetWarm),
+                detail: ShellState.sunsetScheduleFollow ? "Follows the sunset schedule" : "Manual, schedule off",
+                active: ShellState.sunsetWarm, more: "qs-sunset" }
             case "silence": return {
                 glyph: ShellState.notificationsMuted ? "\u{f009b}" : "\u{f009a}", label: "Silence",
-                sub: ShellState.notificationsMuted ? "Notifications muted" : "Off", active: ShellState.notificationsMuted, more: "" }
+                sub: !ShellState.notificationsMuted ? "Off"
+                    : ShellState.notificationsMutedUntil > 0 ? "Until " + Qt.formatTime(new Date(ShellState.notificationsMutedUntil), "HH:mm")
+                    : "Notifications muted",
+                detail: ShellState.notificationsMuted ? "" : "Mute notifications for",
+                active: ShellState.notificationsMuted, more: "" }
+            // The input device, like Sound is the output: lit while live,
+            // the tap mutes. (Id kept from "Mic Mute" so saved layouts hold.)
             case "micmute": return {
-                glyph: panel.micMuted ? "\u{f036d}" : "\u{f036c}", label: "Mic Mute",
-                sub: panel.micMuted ? "Muted" : "Live", active: panel.micMuted, more: "qs-audio" }
+                glyph: panel.micMuted ? "\u{f036d}" : "\u{f036c}", label: "Mic",
+                sub: panel.micMuted ? "Muted" : root.nodeName(root.source),
+                active: !!root.source && !panel.micMuted, more: "qs-audio" }
             case "awake": return {
-                glyph: "\u{f0176}", label: "Stay Awake", sub: panel.onOff(ShellState.idleActive), active: ShellState.idleActive, more: "qs-idle" }
+                glyph: "\u{f0176}", label: "Stay Awake", sub: ShellState.idleActive ? "Screen stays on" : "Off",
+                detail: ShellState.idleActive ? "No dimming, locking or sleep" : "Locks when idle",
+                active: ShellState.idleActive, more: "qs-idle" }
             case "gamefocus": return {
                 glyph: "\u{f02b4}", label: "Game Focus",
-                sub: GameFocus.enabled ? (GameFocus.dimming ? "Dimming" : "Armed") : "Off", active: GameFocus.enabled, more: "qs-gamefocus" }
+                sub: GameFocus.enabled ? (GameFocus.dimming ? "Dimming" : "Armed") : "Off",
+                detail: "Dims the other screens", active: GameFocus.enabled, more: "qs-gamefocus" }
             case "hdr": return {
-                glyph: "\u{f0d7d}", label: "HDR", sub: panel.onOff(HdrSettings.active), active: HdrSettings.active, more: "qs-hdr" }
+                glyph: "\u{f0d7d}", label: "HDR", sub: panel.onOff(HdrSettings.active),
+                detail: "On these monitors", active: HdrSettings.active, more: "qs-hdr" }
             case "opaque": return {
                 glyph: "", label: "Opaque",
                 sub: ShellState.transparencyOpaque ? "Solid" : Math.round(BarSettings.terminalOpacity * 100) + "%",
+                extraSub: ShellState.transparencyOpaque ? "Solid" : "Translucent",
+                detail: "Terminal background",
                 active: ShellState.transparencyOpaque, more: "" }
             // The phone: mirror state while it's open, otherwise what the
             // sichlink daemon knows, plus the battery (PhonePage.qml has the rest).
@@ -311,13 +340,18 @@ Pill {
                     : Sichlink.stateText,
                     Sichlink.phone && Sichlink.phone.connected ? Sichlink.batteryText(Sichlink.phone) : ""
                     ].filter(t => t !== "").join(" · "),
+                short: "Phone",
+                detail: !Sichlink.phone || !Sichlink.phone.connected ? ""
+                    : [Sichlink.lockText(Sichlink.phone), Sichlink.phone.adb_serial ? "Wireless adb" : "",
+                       Sichlink.phone.bt_link ? "Bluetooth" : ""].filter(t => t !== "").join(" · "),
                 active: PhoneMirrorState.open && !PhoneMirrorState.collapsed,
-                busy: PhoneMirrorState.loading || Sichlink.busy, more: "qs-phone" }
+                busy: PhoneMirrorState.loading || Sichlink.busy, more: "qs-phone", opens: true }
             case "powerprofile": {
                 const p = UP.PowerProfiles.profile
                 return {
                     glyph: p === UP.PowerProfile.Performance ? "" : p === UP.PowerProfile.PowerSaver ? "\u{f032a}" : "",
                     label: "Power", sub: p === UP.PowerProfile.Performance ? "Performance" : p === UP.PowerProfile.PowerSaver ? "Saver" : "Balanced",
+                    extraSub: "", detail: panel.batteryText() ? "Battery " + panel.batteryText() : "",
                     active: p !== UP.PowerProfile.Balanced, more: "" }
             }
             case "sound": return {
@@ -326,40 +360,62 @@ Pill {
             case "display": return {
                 glyph: "\u{f0e51}", label: "Display",
                 sub: Quickshell.screens.length + (Quickshell.screens.length === 1 ? " display" : " displays"),
-                active: false, more: "qs-display" }
+                detail: Quickshell.screens.map(s => s.name).join(" · "),
+                active: false, more: "qs-display", opens: true }
             case "update": return {
                 glyph: "\u{f06b0}", label: "Updates",
                 sub: upd.updating ? "Updating…" : upd.checking && upd.count === null ? "Checking…"
                     : upd.count === null ? "Unknown" : upd.count === 0 ? "Up to date"
                     : upd.count + (upd.count === 1 ? " update" : " updates"),
-                active: !!upd.count, busy: upd.updating || upd.checking, more: "qs-update" }
+                detail: [upd.dnfCount ? upd.dnfCount + " dnf" : "", upd.flatpakCount ? upd.flatpakCount + " flatpak" : ""]
+                    .filter(t => t !== "").join(" · "),
+                active: !!upd.count, busy: upd.updating || upd.checking, more: "qs-update", opens: true }
             case "vpn": return {
                 glyph: "\u{f0565}", label: "Proton VPN",
-                sub: VpnStatus.busy ? "Disconnecting…" : VpnStatus.connected ? VpnStatus.server : "Off",
-                active: VpnStatus.connected, busy: VpnStatus.busy, more: "" }
+                sub: VpnStatus.busy ? "Disconnecting…" : VpnStatus.connected ? VpnStatus.server : VpnStatus.connecting ? "Connecting…" : "Off",
+                active: VpnStatus.connected, busy: VpnStatus.busy || VpnStatus.connecting, more: "qs-vpn" }
+            // What closing the lid does with another monitor connected
+            // (LidSettings.qml, hypr/keybindings.lua). `short`: the 1x1
+            // tile's label, which has to carry the state on its own.
+            case "lid": return {
+                glyph: LidSettings.sleep ? "\u{f04b2}" : "\u{f0322}", label: "When lid closes",
+                short: LidSettings.sleep ? "Lid: Sleep" : "Lid: Keep on",
+                extraSub: "", detail: "With another monitor",
+                sub: LidSettings.sleep ? "Sleep" : "Screen off, keep working",
+                active: LidSettings.sleep, more: "" }
             case "stats": return {
                 glyph: "\u{f035b}", label: "System",
                 sub: "CPU " + Math.round(SystemStats.cpu * 100) + "% · RAM " + Math.round(SystemStats.ram * 100) + "%"
                     + (SystemStats.temp > 0 ? " · " + Math.round(SystemStats.temp) + "°C" : ""),
+                extraSub: SystemStats.temp > 0 ? Math.round(SystemStats.temp) + "°C" : "",
                 active: false, more: "" }
             }
             return { glyph: "", label: id, sub: "", active: false, more: "" }
         }
 
+        // Scrolling over a level tile changes its level, like the bar pill.
+        function tileWheel(id, wheel) {
+            const step = wheel.angleDelta.y > 0 ? 0.05 : wheel.angleDelta.y < 0 ? -0.05 : 0
+            switch (id) {
+            case "sound": vol.wheel(wheel); return
+            case "micmute":
+                if (root.source && root.source.audio) root.source.audio.volume = Math.max(0, Math.min(1, root.source.audio.volume + step))
+                return
+            case "display": if (panel.hasBacklight) panel.setBacklight((panel.pendingBacklight >= 0 ? panel.pendingBacklight / 100 : panel.backlight) + step); return
+            }
+            wheel.accepted = false
+        }
+
         function tileToggle(id) {
             switch (id) {
             case "wifi": if (net.wifiDevice) Networking.wifiEnabled = !Networking.wifiEnabled; break
-            case "bluetooth": if (root.adapter) root.adapter.enabled = !root.adapter.enabled; break
-            case "airplane": {
-                const on = !panel.airplane
-                Networking.wifiEnabled = !on
-                if (root.adapter) root.adapter.enabled = !on
-                break
-            }
+            case "bluetooth": if (root.adapter) ShellState.setBluetooth(!root.adapter.enabled); break
+            // Turning it off puts the radios back as they were.
+            case "airplane": ShellState.setAirplane(!panel.airplane); break
             case "nightlight": ShellState.forceSunsetWarm(!ShellState.sunsetWarm); break
             case "silence": ShellState.setNotificationsMuted(!ShellState.notificationsMuted, 0); break
             case "micmute": if (root.source && root.source.audio) root.source.audio.muted = !root.source.audio.muted; break
-            case "awake": ShellState.idleActive = !ShellState.idleActive; break
+            case "awake": ShellState.setIdleActive(!ShellState.idleActive, 0); break
             case "gamefocus": GameFocus.enabled = !GameFocus.enabled; break
             case "hdr": HdrSettings.toggleActive(); break
             case "opaque": ShellState.setTransparencyOpaque(!ShellState.transparencyOpaque); break
@@ -375,6 +431,7 @@ Pill {
             case "display": root.openPopup("qs-display"); break
             case "update": root.openPopup("qs-update"); break
             case "vpn": VpnStatus.toggle(); break
+            case "lid": LidSettings.setSleep(!LidSettings.sleep); break
             // btop, floated/centered like SUPER+B (window_rules.lua).
             case "stats": Quickshell.execDetached(["kitty", "--class", "btop", "-e", "btop"]); break
             }
@@ -385,148 +442,467 @@ Pill {
         readonly property real tileUnit: (root.cardWidth - 3 * panel.tileSpacing) / 4
         readonly property real tileHeight: 64
 
-        // Extra controls a tile at least 2 columns wide shows: under its top
-        // row when 2 rows tall, beside/under its label when 1 row (sliders
-        // and buttons only -- the text ones need the second row). null =
-        // none for that tile.
-        function extraFor(id, tall) {
-            if (!tall && ["bluetooth", "wifi"].includes(id)) return null
-            switch (id) {
-            case "sound": return extraVolume
-            case "micmute": return extraMic
-            case "nightlight": return extraWarmth
-            case "opaque": return extraOpacity
-            case "gamefocus": return extraDim
-            case "powerprofile": return extraProfiles
-            case "bluetooth": return extraBtDevices
-            case "wifi": return extraWifi
-            case "phone": return tall ? extraPhone : null
-            case "display": return panel.hasBacklight ? extraBrightness : null
-            case "update": return extraUpdate
-            case "vpn": return extraVpn
-            case "stats": return extraStats
-            }
-            return null
+        // --- Per-size content. tileView(id, w, h): tileInfo plus what the
+        // tile shows at that size:
+        //   title / sub -- the header lines (title defaults to the label);
+        //   short -- 1x1 label; lines -- 1x2 status lines (default: sub
+        //     split at " · ");
+        //   control -- a Component (slider/buttons/readout) shown at 1 row
+        //     under the title (`under`, with `tag` on the title line) or
+        //     beside the header, and at 2 rows under the `detail` line;
+        //   body -- a 2-row tile's whole lower half instead (lists, graphs).
+        // Components read `parent.cols`/`parent.tall` (their Loader's) to
+        // adapt -- three buttons at 3 wide, presets at 2 rows.
+        // 1-row controls that go under the title at 3 wide too: beside it
+        // they'd get ~110px (buttons elided, the stats ran out of the tile).
+        readonly property var underAt3: ["powerprofile", "update", "lid", "silence", "airplane", "hdr", "phone", "awake"]
+        // ...and at 4 wide: rows of four buttons.
+        readonly property var underAt4: ["phone", "silence"]
+        function clock(ms) {
+            return Qt.formatTime(new Date(ms), TimeRegion.use24Hour ? "HH:mm" : "h:mm AP")
         }
+        function pct(v) { return Math.round(v * 100) + "%" }
+        // Apps recording, one name each: OBS opens a stream per capture
+        // ("OBS", "OBS: Application Audio Capture (PipeWire)", ...).
+        function micUsers() {
+            const out = []
+            for (const st of AudioInfo.inputStreams) {
+                const name = st.name.split(":")[0].trim()
+                if (name && !out.includes(name)) out.push(name)
+            }
+            return out
+        }
+        function tileView(id, w, h) {
+            const v = Object.assign({ title: "", tag: "", titleTail: "", lines: null, control: null, body: null, detail: "", under: undefined, besideWidth: 0 },
+                panel.tileInfo(id))
+            v.title = v.label
+            const tall = h === 2
+            switch (id) {
+            case "wifi": {
+                const n = net.wifiUp ? net.wifiNetwork : null
+                const link = n ? panel.pct(n.signalStrength) + (NetInfo.wifiBand ? " · " + NetInfo.wifiBand : "") : ""
+                if (n) v.short = n.name
+                else if (net.wifiDevice && !Networking.wifiEnabled) v.short = "Wi-Fi off"
+                if (NetInfo.connectivity) v.sub = (n ? n.name + " · " : "") + NetInfo.connectivity
+                // 1-row tiles 2+ wide: the band beside the title, so the
+                // name keeps the whole status line (at 2 wide it fills it).
+                if (!tall && w >= 2 && n) v.titleTail = NetInfo.wifiBand
+                v.lines = n ? [n.name, link, NetInfo.connectivity].filter(t => t) : [v.sub]
+                if (w >= 3 && !tall && (n || net.wiredUp)) { v.control = meterNet; v.under = false }
+                if (tall) {
+                    v.body = bodyWifi
+                    if (n) v.sub = w >= 3 && NetInfo.ipv4 ? link + " · " + NetInfo.ipv4 : link
+                }
+                break
+            }
+            case "bluetooth": {
+                const devs = bt.connectedDevices
+                const batt = d => d.batteryAvailable && d.battery > 0 ? panel.pct(d.battery) : ""
+                if (devs.length === 1) v.short = devs[0].name || devs[0].deviceName
+                else if (devs.length > 1) v.short = devs.length + " devices"
+                v.lines = devs.length === 0 ? [v.sub]
+                    : [devs[0].name || devs[0].deviceName, batt(devs[0]), devs.length > 1 ? "+" + (devs.length - 1) + " more" : ""].filter(t => t)
+                if (w >= 3 && !tall && devs.some(d => batt(d))) {
+                    v.control = meterBt
+                    v.under = false
+                    if (w >= 4) v.sub = devs.length + " connected"
+                }
+                if (tall) {
+                    v.body = bodyBt
+                    v.sub = devs.length > 0 ? devs.length + " connected" : v.sub
+                }
+                break
+            }
+            case "airplane":
+                v.control = extraRadios
+                v.sub = panel.airplane ? "On" : [Networking.wifiEnabled ? "Wi-Fi on" : "Wi-Fi off",
+                    root.adapter && root.adapter.enabled ? "BT on" : "BT off"].join(" · ")
+                v.lines = panel.airplane ? ["On"] : [Networking.wifiEnabled ? "Wi-Fi on" : "Wi-Fi off",
+                    root.adapter && root.adapter.enabled ? "BT on" : "BT off"]
+                v.detail = "Or one radio at a time"
+                break
+            case "nightlight": {
+                v.control = tall ? bodyNight : extraWarmth
+                const next = ShellState.sunsetScheduleFollow && ShellState.sunsetNextChange() > 0
+                    ? (ShellState.sunsetWarm ? "Until " : "At ") + panel.clock(ShellState.sunsetNextChange()) : ""
+                v.tag = next || (ShellState.sunsetWarm ? ShellState.sunsetKelvin + "K" : "")
+                if (!tall && !v.under && w >= 4) v.sub = ShellState.sunsetScheduleFollow ? "Auto" : panel.onOff(ShellState.sunsetWarm)
+                if (tall) {
+                    v.body = bodyNight
+                    v.sub = (ShellState.sunsetWarm ? ShellState.sunsetKelvin + "K" : "Off")
+                        + (ShellState.sunsetScheduleFollow ? " · auto" : "")
+                }
+                v.lines = [ShellState.sunsetWarm ? ShellState.sunsetKelvin + "K" : "Off", ShellState.sunsetScheduleFollow ? "Auto" : ""].filter(t => t)
+                break
+            }
+            case "silence": {
+                const until = ShellState.notificationsMutedUntil
+                if (ShellState.notificationsMuted) v.short = until > 0 ? "Until " + panel.clock(until) : "Silenced"
+                v.control = extraSilence
+                const missed = NotificationHistory.missedCount > 0 ? NotificationHistory.missedCount + " missed" : ""
+                v.tag = [ShellState.notificationsMuted && until > 0 ? "Until " + panel.clock(until) : "", missed].filter(t => t).join(" · ")
+                if (ShellState.notificationsMuted) v.sub = [until > 0 ? "Until " + panel.clock(until) : "Until turned off", missed].filter(t => t).join(" · ")
+                if (tall && w >= 3) v.body = bodySilence
+                v.detail = ShellState.notificationsMuted ? "" : "Mute notifications for"
+                v.lines = !ShellState.notificationsMuted ? ["Off"]
+                    : (until > 0 ? ["Until", panel.clock(until)] : ["Until you", "turn it off"]).concat(missed ? [missed] : [])
+                break
+            }
+            case "micmute": {
+                const level = root.source && root.source.audio ? panel.pct(root.source.audio.volume) : ""
+                const users = panel.micUsers()
+                v.short = panel.micMuted ? "Muted" : "Mic " + level
+                v.control = extraMic
+                v.tag = panel.micMuted ? "Muted" : AudioInfo.shortName(root.source)
+                // 2 rows: the body says who's recording.
+                v.sub = (panel.micMuted ? "Muted" : AudioInfo.shortName(root.source)) + (users.length > 0 && !tall ? " · " + users[0] : "")
+                if (w === 3) v.under = true
+                if (tall) v.body = bodyMic
+                v.lines = [panel.micMuted ? "Muted" : level, AudioInfo.shortName(root.source), users[0] || ""].filter(t => t)
+                break
+            }
+            case "awake":
+                if (ShellState.idleActive && ShellState.idleActiveUntil > 0) {
+                    v.short = "Until " + panel.clock(ShellState.idleActiveUntil)
+                    v.sub = v.short
+                }
+                v.tag = ShellState.idleActive ? (ShellState.idleActiveUntil > 0 ? "Until " + panel.clock(ShellState.idleActiveUntil) : "On") : ""
+                v.control = extraAwake
+                v.detail = ShellState.idleActive ? "No dimming, locking or sleep" : "Locks when idle"
+                v.lines = !ShellState.idleActive ? ["Off"]
+                    : ShellState.idleActiveUntil > 0 ? ["Until", panel.clock(ShellState.idleActiveUntil)] : ["On"]
+                break
+            case "gamefocus":
+                v.control = extraDim
+                v.tag = GameFocus.enabled ? (GameFocus.dimming ? "Dimming" : "Armed") : ""
+                v.detail = GameFocus.dimming && Hyprland.activeToplevel ? Hyprland.activeToplevel.title : "Dims the screens without the game"
+                v.lines = [v.sub, GameFocus.enabled ? "Dim " + panel.pct(GameFocus.dimAmount) : ""].filter(t => t)
+                break
+            case "hdr": {
+                const on = Displays.monitors.filter(m => HdrSettings.isSelected(m.name))
+                v.control = extraHdrMonitors
+                v.tag = panel.onOff(HdrSettings.active)
+                v.sub = HdrSettings.active ? "On" + (on.length ? " · " + on.map(m => m.name).join(", ") : "") : "Off"
+                v.detail = on.length === 0 ? "Pick the monitors it applies to"
+                    : HdrSettings.active ? on.map(m => m.name + (m.hdrApplied ? " HDR" : " SDR")).join(" · ")
+                    : "Applies to " + on.map(m => m.name).join(", ")
+                if (tall && w >= 3) v.body = bodyHdr
+                v.lines = [panel.onOff(HdrSettings.active), on.map(m => m.name).join(", ")].filter(t => t)
+                break
+            }
+            case "opaque":
+                v.short = ShellState.transparencyOpaque ? "Solid" : "Glass " + Math.round(BarSettings.terminalOpacity * 100) + "%"
+                v.control = tall ? bodyOpaque : extraOpacity
+                v.tag = ShellState.transparencyOpaque ? "Solid" : "Glass"
+                v.sub = ShellState.transparencyOpaque ? "Solid" : "Bar + terminals"
+                if (tall) v.body = bodyOpaque
+                v.lines = [ShellState.transparencyOpaque ? "Solid" : "Glass " + Math.round(BarSettings.terminalOpacity * 100) + "%"]
+                break
+            case "phone": {
+                const d = Sichlink.phone
+                const batt = d && d.connected ? Sichlink.batteryText(d) : ""
+                const pctOnly = d && d.connected && d.battery !== null && d.battery !== undefined ? d.battery + "%" : ""
+                v.short = pctOnly || (PhoneMirrorState.open ? "Mirroring" : "Phone")
+                if (w === 1 && tall) v.label = "Phone"
+                v.control = extraPhoneButtons
+                v.tag = w >= 4 ? batt : pctOnly
+                v.detail = !d || !d.connected ? ""
+                    : [Sichlink.lockText(d), d.adb_serial ? "Wireless adb" : "", d.bt_link ? "Extend Unlock" : ""].filter(t => t !== "").join(" · ")
+                v.lines = [pctOnly, d && d.charging ? "Charging" : "",
+                    PhoneMirrorState.open ? "Mirroring" : d && d.connected ? Sichlink.lockText(d) : "Offline"].filter(t => t)
+                break
+            }
+            case "powerprofile": {
+                const bat = PowerInfo.present
+                const pctText = bat && root.battery ? panel.pct(root.battery.percentage) : ""
+                v.short = v.sub
+                v.control = extraProfiles
+                v.tag = pctText
+                const time = PowerInfo.timeText()
+                v.sub = [pctText, time].filter(t => t).join(" · ") || v.sub
+                const watts = PowerInfo.watts !== 0 ? (PowerInfo.watts > 0 ? "+" : "−") + Math.abs(PowerInfo.watts).toFixed(1) + " W"
+                    : SystemStats.apuWatts > 0 ? "On AC · APU " + Math.round(SystemStats.apuWatts) + " W" : ""
+                v.detail = [watts, w >= 3 && PowerInfo.healthPercent > 0 ? "health " + Math.round(PowerInfo.healthPercent) + "%" : "",
+                    w >= 3 && PowerInfo.cycles > 0 ? PowerInfo.cycles + " cycles" : ""].filter(t => t).join(" · ")
+                v.lines = [v.short, pctText, time].filter(t => t)
+                break
+            }
+            case "sound":
+                v.short = root.sink && root.sink.audio && root.sink.audio.muted ? "Muted" : "Sound " + (root.sink && root.sink.audio ? panel.pct(root.sink.audio.volume) : "")
+                v.control = tall ? bodySound : extraVolume
+                v.tag = AudioInfo.shortName(root.sink)
+                v.sub = AudioInfo.shortName(root.sink) + (AudioInfo.outputStreams.length > 0 ? " · " + AudioInfo.outputStreams[0].name : "")
+                if (w === 3) v.under = true
+                if (tall) v.body = bodySound
+                v.lines = [root.sink && root.sink.audio ? panel.pct(root.sink.audio.volume) : "", AudioInfo.shortName(root.sink),
+                    AudioInfo.outputStreams.length > 0 ? AudioInfo.outputStreams[0].name : ""].filter(t => t)
+                break
+            case "display": {
+                const n = Displays.monitors.filter(m => !m.disabled).length || Quickshell.screens.length
+                v.sub = n + (n === 1 ? " display" : " displays")
+                v.control = panel.hasBacklight ? extraBrightness : null
+                v.tag = v.sub
+                v.detail = Displays.monitors.filter(m => !m.disabled).map(m => m.friendly).join(" · ")
+                if (tall && w >= 3) v.body = bodyDisplays
+                v.lines = [v.sub, panel.hasBacklight ? "Panel " + panel.pct(panel.backlight) : ""].filter(t => t)
+                break
+            }
+            case "update":
+                v.short = upd.count ? upd.count + (upd.count === 1 ? " update" : " updates") : upd.count === 0 ? "Up to date" : "Updates"
+                v.control = extraUpdate
+                if (tall && w >= 4) v.body = bodyUpdates
+                if (upd.rebootNeeded) v.sub = "Restart to finish"
+                // 1 row: the count is the title (the control hides the status).
+                if (!tall && w <= 3) v.title = upd.rebootNeeded ? "Restart needed" : v.short
+                v.tag = w >= 3 ? [upd.dnfCount ? upd.dnfCount + " dnf" : "", upd.flatpakCount ? upd.flatpakCount + " flatpak" : ""].filter(t => t).join(" · ") : ""
+                v.detail = [upd.dnfCount ? upd.dnfCount + " dnf" : "", upd.flatpakCount ? upd.flatpakCount + " flatpak" : ""]
+                    .filter(t => t !== "").join(" · ")
+                v.lines = [v.sub, v.detail.split(" · ")[0] || "", v.detail.split(" · ")[1] || ""].filter(t => t)
+                break
+            case "vpn": {
+                const where = [VpnStatus.countryFlag, VpnStatus.city].filter(t => t).join(" ")
+                v.short = VpnStatus.connected ? (VpnStatus.countryFlag + " " + VpnStatus.server).trim() : VpnStatus.connecting ? "Connecting…" : "VPN off"
+                v.sub = VpnStatus.connecting && !VpnStatus.connected ? "Connecting…"
+                    : VpnStatus.connected ? [where, VpnStatus.server].filter(t => t).join(" · ") : "Off"
+                if (w >= 3 || tall) v.control = extraVpn
+                if (w >= 3 && !tall) v.under = false
+                v.detail = VpnStatus.connected ? [VpnStatus.protocol, VpnStatus.load >= 0 ? "load " + VpnStatus.load + "%" : "",
+                    VpnStatus.secureCore ? "Secure Core" : "", VpnStatus.killSwitch ? "kill switch on" : ""].filter(t => t).join(" · ")
+                    : VpnStatus.error || (VpnStatus.lastServer ? "Tap to reconnect to " + VpnStatus.lastServer : "Tap for the fastest server")
+                v.lines = VpnStatus.connected ? [VpnStatus.server, VpnStatus.city].filter(t => t) : ["Off"]
+                break
+            }
+            case "lid": {
+                if (w <= 2) { v.title = "Lid closes"; v.label = "Lid closes" }
+                v.control = extraLid
+                v.tag = Displays.docked ? Displays.externalCount + (Displays.externalCount === 1 ? " monitor" : " monitors") : "Undocked"
+                v.sub = LidSettings.sleep ? "Sleep" : "Keep working"
+                v.detail = !Displays.docked ? "Undocked it always sleeps"
+                    : LidSettings.sleep ? "Suspends the laptop" : "Panel off, others keep running"
+                v.lines = [LidSettings.sleep ? "Sleep" : "Keep on", v.tag]
+                break
+            }
+            case "stats": {
+                const cpu = "CPU " + panel.pct(SystemStats.cpu)
+                const temp = SystemStats.temp > 0 ? Math.round(SystemStats.temp) + "°C" : ""
+                const ram = "RAM " + SystemStats.ramUsedGb.toFixed(1) + " / " + Math.round(SystemStats.ramTotalGb) + " GB"
+                const gpu = SystemStats.gpu >= 0 ? "GPU " + panel.pct(SystemStats.gpu) : ""
+                v.short = panel.pct(SystemStats.cpu) + (temp ? " · " + temp : "")
+                v.lines = [cpu, "RAM " + panel.pct(SystemStats.ram), temp].filter(t => t)
+                if (!tall && w <= 3) {
+                    v.title = [cpu, temp].filter(t => t).join(" · ")
+                    v.sub = w === 2 ? ram : ["RAM " + panel.pct(SystemStats.ram), gpu].filter(t => t).join(" · ")
+                    if (w === 3) { v.control = extraSpark; v.under = false; v.besideWidth = 64 }
+                } else if (!tall) {
+                    v.sub = [temp, SystemStats.fanRpm > 0 ? SystemStats.fanRpm + " rpm" : ""].filter(t => t).join(" · ")
+                    v.control = extraMeters
+                    v.under = false
+                } else {
+                    v.body = extraStats
+                    v.sub = [temp ? "CPU " + temp : "", SystemStats.gpuTemp > 0 ? "GPU " + Math.round(SystemStats.gpuTemp) + "°" : "",
+                        w >= 3 && SystemStats.fanRpm > 0 ? SystemStats.fanRpm + " rpm" : "",
+                        w >= 4 ? "up " + SystemStats.durationText(SystemStats.uptimeSec) : ""].filter(t => t).join(" · ")
+                }
+                break
+            }
+            }
+            if (w === 1) { v.control = null; v.body = null }
+            if (!v.lines) v.lines = v.sub.split(" · ")
+            if (v.under === undefined)
+                v.under = w === 2 || (w === 3 && panel.underAt3.includes(id)) || (w >= 4 && panel.underAt4.includes(id))
+            // The detail line only says what the header doesn't.
+            if (v.detail === v.sub) v.detail = ""
+            return v
+        }
+        // --- Tile controls and bodies (see tileView). `parent` is the
+        // Loader: parent.cols = tile width in columns, parent.tall = 2 rows.
+
         Component {
             id: extraUpdate
-            Row {
-                spacing: 4
-                TileButton {
-                    width: (parent.width - 4) / 2
-                    label: upd.checking ? "Checking…" : "Check"
-                    onClicked: upd.checkNow()
-                }
-                TileButton {
-                    width: (parent.width - 4) / 2
-                    selected: !!upd.count && !upd.updating
-                    label: upd.updating ? "Updating…" : "Update all"
-                    onClicked: upd.runUpdate()
-                }
+            ButtonRow {
+                buttons: [
+                    upd.rebootNeeded
+                        ? { label: "Restart", selected: true, action: () => { ShellState.activePopup = ""; upd.reboot() } }
+                        : { label: upd.checking ? "Checking…" : "Check", action: () => upd.checkNow() },
+                    { label: upd.updating ? "Updating…" : "Update all", selected: !!upd.count && !upd.updating,
+                      available: !!upd.count || upd.updating, action: () => upd.runUpdate() }
+                ]
             }
         }
+        // 4x2 Updates: pending packages beside the buttons.
         Component {
-            id: extraVpn
+            id: bodyUpdates
             Row {
-                spacing: 4
-                TileButton {
-                    width: (parent.width - 4) / 2
-                    selected: VpnStatus.connected
-                    label: VpnStatus.connected ? "Disconnect" : "Connect"
-                    onClicked: VpnStatus.toggle()
+                spacing: 12
+                Column {
+                    width: parent.width - 100 - 12
+                    spacing: 2
+                    Repeater {
+                        model: upd.packages.slice(0, 2)
+                        delegate: TileListRow {
+                            required property var modelData
+                            name: modelData.name
+                            status: modelData.kind === "flatpak" ? "flatpak" : modelData.version
+                            onClicked: root.openPopup("qs-update")
+                        }
+                    }
+                    Text {
+                        visible: upd.packages.length > 2
+                        leftPadding: 4
+                        text: "+" + (upd.packages.length - 2) + " more"
+                        color: Theme.textDim
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 3
+                    }
+                    Text {
+                        visible: upd.packages.length === 0
+                        leftPadding: 4
+                        text: upd.count === 0 ? "Everything is up to date" : upd.checking ? "Checking…" : "No list yet"
+                        color: Theme.textDim
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 2
+                    }
                 }
-                TileButton {
-                    width: (parent.width - 4) / 2
-                    label: "Open app"
-                    onClicked: {
-                        ShellState.activePopup = ""
-                        VpnStatus.openApp()
+                Column {
+                    width: 100
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 6
+                    TileButton {
+                        width: parent.width
+                        anchors.bottom: undefined
+                        height: Theme.controlHeight
+                        label: upd.updating ? "Updating…" : "Update all"
+                        selected: !!upd.count && !upd.updating
+                        available: !!upd.count || upd.updating
+                        onClicked: upd.runUpdate()
+                    }
+                    TileButton {
+                        width: parent.width
+                        anchors.bottom: undefined
+                        height: Theme.controlHeight
+                        label: upd.rebootNeeded ? "Restart" : upd.checking ? "Checking…" : "Check"
+                        onClicked: upd.rebootNeeded ? (ShellState.activePopup = "", upd.reboot()) : upd.checkNow()
                     }
                 }
             }
         }
-        // 1 row: the three numbers. 2 rows: CPU and RAM graphs too.
+        // VPN: 1 row shows where it's connected (the tap already toggles);
+        // 2 rows get the buttons.
         Component {
-            id: extraStats
+            id: extraVpn
             Item {
-                id: statsBox
-                readonly property bool compact: statsBox.height < 34
-                Row {
-                    visible: statsBox.compact
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 14
-                    Repeater {
-                        model: [
-                            "CPU " + Math.round(SystemStats.cpu * 100) + "%",
-                            "RAM " + SystemStats.ramUsedGb.toFixed(1) + "G",
-                            SystemStats.temp > 0 ? Math.round(SystemStats.temp) + "°C" : ""
-                        ]
-                        delegate: Text {
-                            required property string modelData
-                            visible: modelData !== ""
-                            text: modelData
+                Readout2 {
+                    visible: !parent.parent.tall
+                    width: parent.width
+                    line1: VpnStatus.connected ? [VpnStatus.protocol, VpnStatus.connectedSince > 0
+                        ? SystemStats.durationText((Date.now() - VpnStatus.connectedSince) / 1000) : ""].filter(t => t).join(" · ")
+                        : VpnStatus.connecting ? "Connecting…" : ""
+                    line2: VpnStatus.connected ? [VpnStatus.load >= 0 ? "Load " + VpnStatus.load + "%" : "",
+                        VpnStatus.killSwitch ? "Kill switch" : ""].filter(t => t).join(" · ") : ""
+                }
+                ButtonRow {
+                    visible: !!parent.parent.tall
+                    width: parent.width
+                    height: parent.height
+                    buttons: [
+                        { label: VpnStatus.connected || VpnStatus.connecting ? "Disconnect" : "Connect", selected: VpnStatus.connected, action: () => VpnStatus.toggle() },
+                        { label: "Servers", action: () => root.openPopup("qs-vpn") }
+                    ]
+                }
+            }
+        }
+        // System. 1 row, 3 wide: a CPU sparkline; 4 wide: CPU/RAM/GPU bars;
+        // 2 rows: graphs (CPU, RAM, + GPU at 3+ wide), plus a summary line
+        // at 4 wide.
+        Component {
+            id: extraSpark
+            MiniGraph { height: 30; history: SystemStats.cpuHistory }
+        }
+        Component {
+            id: extraMeters
+            Row {
+                id: meters
+                spacing: 8
+                Repeater {
+                    model: [
+                        { label: "CPU", value: SystemStats.cpu },
+                        { label: "RAM", value: SystemStats.ram },
+                        { label: "GPU", value: SystemStats.gpu }
+                    ].filter(m => m.value >= 0)
+                    delegate: Column {
+                        required property var modelData
+                        width: (meters.width - 16) / 3
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 4
+                        Text {
+                            text: modelData.label + " " + panel.pct(modelData.value)
                             color: Theme.text
                             font.family: Theme.uiFontFamily
-                            font.pixelSize: Theme.fontSize - 2
+                            font.pixelSize: Theme.fontSize - 3
+                        }
+                        Rectangle {
+                            width: parent.width
+                            height: 4
+                            radius: 2
+                            color: Theme.track
+                            Rectangle { width: parent.width * Math.min(1, modelData.value); height: parent.height; radius: 2; color: Theme.accent }
                         }
                     }
                 }
+            }
+        }
+        Component {
+            id: extraStats
+            Column {
+                id: statsBox
+                readonly property bool wide: parent.cols >= 4
+                spacing: 4
                 Row {
-                    visible: !statsBox.compact
-                    anchors.fill: parent
+                    id: graphs
+                    width: parent.width
+                    height: statsBox.height - (statsBox.wide ? summary.height + 4 : 0)
                     spacing: 10
                     Repeater {
                         model: [
                             { label: "CPU", value: SystemStats.cpu, history: SystemStats.cpuHistory },
-                            { label: "RAM", value: SystemStats.ram, history: SystemStats.ramHistory }
-                        ]
+                            { label: "RAM", value: SystemStats.ram, history: SystemStats.ramHistory },
+                            { label: "GPU", value: SystemStats.gpu, history: SystemStats.gpuHistory }
+                        ].filter(g => g.value >= 0).slice(0, statsBox.parent.cols >= 3 ? 3 : 2)
                         delegate: Item {
                             required property var modelData
-                            width: (statsBox.width - 10) / 2
-                            height: statsBox.height
+                            required property int index
+                            width: (graphs.width - 10 * (statsBox.parent.cols >= 3 ? 2 : 1)) / (statsBox.parent.cols >= 3 ? 3 : 2)
+                            height: graphs.height
                             Text {
                                 id: graphLabel
-                                text: modelData.label + " " + Math.round(modelData.value * 100) + "%"
+                                text: modelData.label + " " + panel.pct(modelData.value)
                                 color: Theme.textMuted
                                 font.family: Theme.uiFontFamily
                                 font.pixelSize: Theme.fontSize - 3
                             }
-                            Canvas {
-                                id: graph
+                            MiniGraph {
                                 anchors.top: graphLabel.bottom
                                 anchors.topMargin: 4
                                 anchors.left: parent.left
                                 anchors.right: parent.right
                                 anchors.bottom: parent.bottom
-                                property var history: modelData.history
-                                onHistoryChanged: requestPaint()
-                                onPaint: {
-                                    const ctx = getContext("2d")
-                                    ctx.reset()
-                                    const h = graph.history
-                                    if (!h || h.length < 2) return
-                                    const step = width / (SystemStats.historyLength - 1)
-                                    const x0 = width - (h.length - 1) * step
-                                    ctx.beginPath()
-                                    ctx.moveTo(x0, height)
-                                    for (let i = 0; i < h.length; i++) ctx.lineTo(x0 + i * step, height - h[i] * height)
-                                    ctx.lineTo(x0 + (h.length - 1) * step, height)
-                                    ctx.closePath()
-                                    ctx.fillStyle = Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.3)
-                                    ctx.fill()
-                                    ctx.beginPath()
-                                    for (let i = 0; i < h.length; i++) {
-                                        const x = x0 + i * step, y = height - h[i] * height
-                                        if (i === 0) ctx.moveTo(x, y)
-                                        else ctx.lineTo(x, y)
-                                    }
-                                    ctx.strokeStyle = Theme.accent
-                                    ctx.lineWidth = 1.5
-                                    ctx.stroke()
-                                }
+                                history: modelData.history
                             }
                         }
                     }
+                }
+                Text {
+                    id: summary
+                    visible: statsBox.wide
+                    width: parent.width
+                    elide: Text.ElideRight
+                    text: ["RAM " + SystemStats.ramUsedGb.toFixed(1) + "/" + Math.round(SystemStats.ramTotalGb) + " GB",
+                        SystemStats.swapTotalGb > 0 ? "swap " + SystemStats.swapUsedGb.toFixed(1) + " GB" : "",
+                        SystemStats.diskTotalGb > 0 ? "disk " + Math.round(SystemStats.diskUsedGb / SystemStats.diskTotalGb * 100) + "%" : "",
+                        "↓" + SystemStats.rateText(SystemStats.netRx)].filter(t => t).join(" · ")
+                    color: Theme.textDim
+                    font.family: Theme.uiFontFamily
+                    font.pixelSize: Theme.fontSize - 3
                 }
             }
         }
@@ -544,11 +920,170 @@ Pill {
                 onMoved: (v) => { if (root.source && root.source.audio) root.source.audio.volume = v }
             }
         }
+        // 2-row Sound: volume, then the outputs to switch to (rows at 2
+        // wide, buttons wider); 4 wide adds what's playing.
+        Component {
+            id: bodySound
+            Row {
+                id: soundBody
+                spacing: 12
+                readonly property bool split: parent.cols >= 4 && AudioInfo.outputStreams.length > 0
+                Column {
+                    width: soundBody.split ? (soundBody.width - 12) / 2 : soundBody.width
+                    spacing: 6
+                    TileSlider {
+                        width: parent.width
+                        height: 24
+                        value: root.sink && root.sink.audio ? root.sink.audio.volume : 0
+                        onMoved: (v) => { if (root.sink && root.sink.audio) root.sink.audio.volume = v }
+                    }
+                    ButtonRow {
+                        visible: root.sinks.length > 1
+                        width: parent.width
+                        height: Theme.controlHeight
+                        buttons: root.sinks.slice(0, soundBody.parent.cols >= 3 ? 3 : 2).map(n => ({
+                            label: AudioInfo.shortName(n), selected: n === root.sink,
+                            action: () => AudioInfo.setDefaultSink(n) }))
+                    }
+                    Text {
+                        visible: root.sinks.length <= 1
+                        width: parent.width
+                        elide: Text.ElideRight
+                        text: AudioInfo.outputStreams.length > 0 ? "Playing: " + AudioInfo.outputStreams.map(s => s.name).join(", ") : root.nodeName(root.sink)
+                        color: Theme.textMuted
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 2
+                    }
+                }
+                Column {
+                    visible: soundBody.split
+                    width: (soundBody.width - 12) / 2
+                    spacing: 2
+                    Repeater {
+                        model: soundBody.split ? AudioInfo.outputStreams.slice(0, 3) : []
+                        delegate: Item {
+                            required property var modelData
+                            width: parent.width
+                            height: 20
+                            Text {
+                                id: appName
+                                width: 62
+                                anchors.verticalCenter: parent.verticalCenter
+                                elide: Text.ElideRight
+                                text: modelData.name
+                                color: Theme.textMuted
+                                font.family: Theme.uiFontFamily
+                                font.pixelSize: Theme.fontSize - 3
+                            }
+                            TileSlider {
+                                anchors.left: appName.right
+                                anchors.leftMargin: 6
+                                anchors.right: parent.right
+                                height: 20
+                                value: modelData.node && modelData.node.audio ? modelData.node.audio.volume : 0
+                                onMoved: (v) => { if (modelData.node && modelData.node.audio) modelData.node.audio.volume = v }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // 2-row Mic, like Sound's: level, then the inputs to switch to, or
+        // (one input) who's recording / the device's full name.
+        Component {
+            id: bodyMic
+            Column {
+                id: micBody
+                spacing: 6
+                TileSlider {
+                    width: parent.width
+                    height: 24
+                    value: root.source && root.source.audio ? root.source.audio.volume : 0
+                    onMoved: (v) => { if (root.source && root.source.audio) root.source.audio.volume = v }
+                }
+                ButtonRow {
+                    visible: root.sources.length > 1
+                    width: parent.width
+                    height: Theme.controlHeight
+                    buttons: root.sources.slice(0, micBody.parent.cols >= 3 ? 3 : 2).map(n => ({
+                        label: AudioInfo.shortName(n), selected: n === root.source,
+                        action: () => AudioInfo.setDefaultSource(n) }))
+                }
+                Text {
+                    visible: root.sources.length <= 1
+                    width: parent.width
+                    elide: Text.ElideRight
+                    text: panel.micUsers().length > 0 ? "Used by " + panel.micUsers().join(", ") : root.nodeName(root.source)
+                    color: Theme.textMuted
+                    font.family: Theme.uiFontFamily
+                    font.pixelSize: Theme.fontSize - 2
+                }
+            }
+        }
         Component {
             id: extraBrightness
             TileSlider {
                 value: panel.pendingBacklight >= 0 ? panel.pendingBacklight / 100 : panel.backlight
                 onMoved: (v) => panel.setBacklight(v)
+            }
+        }
+        // 2-row Display, 3+ wide: a row per monitor -- mode at 3 wide, its
+        // own brightness slider at 4 (laptop backlight or DDC).
+        Component {
+            id: bodyDisplays
+            Column {
+                id: dispList
+                spacing: 2
+                readonly property bool sliders: parent.cols >= 4
+                Repeater {
+                    model: Displays.monitors.slice(0, 3)
+                    delegate: Item {
+                        required property var modelData
+                        width: dispList.width
+                        height: 22
+                        Text {
+                            id: monName
+                            width: dispList.sliders ? 64 : dispList.width / 2
+                            anchors.verticalCenter: parent.verticalCenter
+                            elide: Text.ElideRight
+                            text: modelData.friendly || modelData.name
+                            color: modelData.disabled ? Theme.textDim : Theme.text
+                            font.family: Theme.uiFontFamily
+                            font.pixelSize: Theme.fontSize - 2
+                        }
+                        Text {
+                            id: monMode
+                            anchors.left: monName.right
+                            anchors.leftMargin: 6
+                            anchors.right: dispList.sliders ? undefined : parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            horizontalAlignment: dispList.sliders ? Text.AlignLeft : Text.AlignRight
+                            text: modelData.disabled ? "Off" : modelData.refreshRate + " Hz"
+                                + (dispList.sliders ? "" : " · " + modelData.width + "×" + modelData.height)
+                            color: Theme.textDim
+                            font.family: Theme.uiFontFamily
+                            font.pixelSize: Theme.fontSize - 3
+                        }
+                        TileSlider {
+                            visible: dispList.sliders && modelData.brightness >= 0
+                            anchors.left: monMode.right
+                            anchors.leftMargin: 8
+                            anchors.right: parent.right
+                            height: 22
+                            value: modelData.brightness
+                            onMoved: (v) => Displays.setBrightness(modelData.name, v)
+                        }
+                        Text {
+                            visible: dispList.sliders && modelData.brightness < 0
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: modelData.disabled ? "" : "No brightness control"
+                            color: Theme.textDim
+                            font.family: Theme.uiFontFamily
+                            font.pixelSize: Theme.fontSize - 3
+                        }
+                    }
+                }
             }
         }
         // SunsetPopup's range.
@@ -561,13 +1096,61 @@ Pill {
                 onMoved: (v) => ShellState.setSunsetKelvin(Math.round((2000 + v * 3000) / 100) * 100)
             }
         }
-        // TransparencyPopup's range.
+        // 2-row Night Light: warmth, then Auto (follow the schedule) and,
+        // 3+ wide, presets.
+        Component {
+            id: bodyNight
+            Column {
+                spacing: 8
+                anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+                TileSlider {
+                    width: parent.width
+                    height: 24
+                    value: (ShellState.sunsetKelvin - 2000) / 3000
+                    valueText: ShellState.sunsetKelvin + "K"
+                    onMoved: (v) => ShellState.setSunsetKelvin(Math.round((2000 + v * 3000) / 100) * 100)
+                }
+                ButtonRow {
+                    width: parent.width
+                    height: Theme.controlHeight
+                    buttons: [{ label: parent.parent.cols >= 4 ? "Auto " + ShellState.sunsetNightTime + "–" + ShellState.sunsetDayTime : "Auto",
+                                selected: ShellState.sunsetScheduleFollow,
+                                action: () => ShellState.setScheduleFollow(!ShellState.sunsetScheduleFollow) }]
+                        .concat(parent.parent.cols >= 3 ? [2700, 3400, 4500].map(k => ({
+                            label: k + "K", selected: ShellState.sunsetWarm && ShellState.sunsetKelvin === k,
+                            action: () => { ShellState.setSunsetKelvin(k); if (!ShellState.sunsetWarm) ShellState.forceSunsetWarm(true) } })) : [])
+                }
+            }
+        }
+        // TransparencyPopup's range. Moving it while Solid switches to glass
+        // -- otherwise the drag changes nothing visible.
         Component {
             id: extraOpacity
             TileSlider {
                 value: (BarSettings.terminalOpacity - 0.5) / 0.45
                 valueText: Math.round(BarSettings.terminalOpacity * 100) + "%"
-                onMoved: (v) => ShellState.setTerminalOpacity(0.5 + v * 0.45)
+                opacity: ShellState.transparencyOpaque ? 0.5 : 1
+                onMoved: (v) => {
+                    ShellState.setTerminalOpacity(0.5 + v * 0.45)
+                    if (ShellState.transparencyOpaque) ShellState.setTransparencyOpaque(false)
+                }
+            }
+        }
+        Component {
+            id: bodyOpaque
+            Column {
+                spacing: 8
+                anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+                Loader { width: parent.width; height: 24; sourceComponent: extraOpacity }
+                ButtonRow {
+                    width: parent.width
+                    height: Theme.controlHeight
+                    buttons: (parent.parent.cols >= 3 ? [60, 80, 90].map(p => ({
+                        label: p + "%", selected: !ShellState.transparencyOpaque && Math.round(BarSettings.terminalOpacity * 100) === p,
+                        action: () => { ShellState.setTerminalOpacity(p / 100); if (ShellState.transparencyOpaque) ShellState.setTransparencyOpaque(false) } }))
+                        : [{ label: "Glass", selected: !ShellState.transparencyOpaque, action: () => ShellState.setTransparencyOpaque(false) }])
+                        .concat([{ label: "Solid", selected: ShellState.transparencyOpaque, action: () => ShellState.setTransparencyOpaque(true) }])
+                }
             }
         }
         Component {
@@ -579,86 +1162,332 @@ Pill {
                 onMoved: (v) => GameFocus.setDimAmount(GameFocus.minDim + v * (GameFocus.maxDim - GameFocus.minDim))
             }
         }
+        // Power: profiles (full names at 3+ wide); a 4-wide 2-row tile adds
+        // the battery charge limit.
         Component {
             id: extraProfiles
-            Row {
-                spacing: 4
-                Repeater {
-                    model: [
-                        { profile: UP.PowerProfile.PowerSaver, label: "Saver" },
-                        { profile: UP.PowerProfile.Balanced, label: "Balanced" },
-                        { profile: UP.PowerProfile.Performance, label: "Perf" }
-                    ]
-                    delegate: TileButton {
-                        required property var modelData
-                        width: (parent.width - 8) / 3
-                        label: modelData.label
-                        selected: UP.PowerProfiles.profile === modelData.profile
-                        onClicked: UP.PowerProfiles.profile = modelData.profile
-                    }
-                }
+            ButtonRow {
+                readonly property bool long: parent.cols >= 3
+                buttons: [
+                    { profile: UP.PowerProfile.PowerSaver, label: "Saver" },
+                    { profile: UP.PowerProfile.Balanced, label: "Balanced" },
+                    { profile: UP.PowerProfile.Performance, label: long ? "Performance" : "Perf" }
+                ].map(p => ({ label: p.label, selected: UP.PowerProfiles.profile === p.profile,
+                              action: () => UP.PowerProfiles.profile = p.profile }))
+                    .concat(parent.tall && parent.cols >= 4 && PowerInfo.chargeLimitSupported ? [{
+                        label: "Limit " + PowerInfo.chargeLimitEnd + "%", selected: PowerInfo.chargeLimitEnabled,
+                        available: !PowerInfo.chargeLimitBusy, action: () => PowerInfo.setChargeLimit(!PowerInfo.chargeLimitEnabled) }] : [])
             }
         }
         Component {
-            id: extraBtDevices
-            Column {
-                spacing: 2
-                Repeater {
-                    model: bt.connectedDevices.slice(0, 3)
-                    delegate: Text {
-                        required property var modelData
-                        width: parent.width
-                        elide: Text.ElideRight
-                        text: (modelData.name || modelData.deviceName)
-                            + (modelData.batteryAvailable ? "  ·  " + Math.round(modelData.battery * 100) + "%" : "")
-                        color: Theme.text
+            id: extraLid
+            ButtonRow {
+                buttons: [
+                    { label: "Sleep", selected: LidSettings.sleep, action: () => LidSettings.setSleep(true) },
+                    { label: parent.cols >= 3 ? "Keep working" : "Keep on", selected: !LidSettings.sleep, action: () => LidSettings.setSleep(false) }
+                ]
+            }
+        }
+        // Wi-Fi body: the connected network, then saved, then the strongest
+        // (WifiMenu's order); a tap connects, or opens the Wi-Fi page for a
+        // password. Scans while the card is open. 4 wide: a traffic graph
+        // beside the list.
+        Component {
+            id: bodyWifi
+            Row {
+                id: wifiBody
+                spacing: 12
+                readonly property bool graph: parent.cols >= 4
+                Column {
+                    id: wifiList
+                    width: wifiBody.graph ? wifiBody.width * 0.6 : wifiBody.width
+                    spacing: 2
+                    readonly property var networks: {
+                        if (!net.wifiDevice || !Networking.wifiEnabled) return []
+                        const byName = {}
+                        for (const n of net.wifiDevice.networks.values) {
+                            if (!n.name) continue
+                            const cur = byName[n.name]
+                            if (!cur || n.connected || (!cur.connected && n.signalStrength > cur.signalStrength)) byName[n.name] = n
+                        }
+                        return Object.values(byName).sort((a, b) => {
+                            if (a.connected !== b.connected) return a.connected ? -1 : 1
+                            if (a.known !== b.known) return a.known ? -1 : 1
+                            return b.signalStrength - a.signalStrength
+                        }).slice(0, 3)
+                    }
+                    Binding {
+                        target: net.wifiDevice
+                        property: "scannerEnabled"
+                        value: true
+                        when: panel.shown && !!net.wifiDevice
+                    }
+                    Repeater {
+                        model: wifiList.networks
+                        delegate: TileListRow {
+                            required property var modelData
+                            name: modelData.name
+                            current: modelData.connected
+                            status: modelData.state === ConnectionState.Connecting ? "Connecting…"
+                                : modelData.connected && NetInfo.connectivity ? NetInfo.connectivity
+                                : (modelData.known && !modelData.connected && wifiBody.parent.cols >= 3 ? "Saved · " : "")
+                                  + panel.pct(modelData.signalStrength)
+                            onClicked: {
+                                const n = modelData
+                                if (n.connected) return
+                                if (n.known || n.security === WifiSecurityType.Open || n.security === WifiSecurityType.Owe) n.connect()
+                                else root.openPopup("qs-wifi")
+                            }
+                        }
+                    }
+                    Text {
+                        visible: wifiList.networks.length === 0
+                        text: !net.wifiDevice ? (net.wiredUp ? "Ethernet connected" : "No Wi-Fi adapter")
+                            : !Networking.wifiEnabled ? "Wi-Fi is off" : "Searching…"
+                        color: Theme.textDim
                         font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize - 2
                     }
                 }
-                Text {
-                    visible: bt.connectedDevices.length === 0
-                    text: root.adapter && root.adapter.enabled ? "No devices connected" : "Bluetooth is off"
-                    color: Theme.textDim
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 2
+                Item {
+                    visible: wifiBody.graph
+                    width: wifiBody.width - wifiList.width - 12
+                    height: wifiBody.height
+                    Text {
+                        id: trafficText
+                        width: parent.width
+                        elide: Text.ElideRight
+                        text: "↓" + NetInfo.rateText(NetInfo.rxRate) + "  ↑" + NetInfo.rateText(NetInfo.txRate)
+                        color: Theme.textMuted
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 3
+                    }
+                    MiniGraph {
+                        anchors.top: trafficText.bottom
+                        anchors.topMargin: 4
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        maxValue: 0
+                        history: NetInfo.rxHistory
+                    }
+                }
+            }
+        }
+        // Wide 1-row Wi-Fi: traffic (3 wide), address and traffic (4).
+        Component {
+            id: meterNet
+            Readout2 {
+                line1: parent.cols >= 4 ? (NetInfo.ipv4 || "") : "↓ " + NetInfo.rateText(NetInfo.rxRate)
+                line2: parent.cols >= 4 ? "↓" + NetInfo.rateText(NetInfo.rxRate) + "  ↑" + NetInfo.rateText(NetInfo.txRate)
+                    : "↑ " + NetInfo.rateText(NetInfo.txRate)
+            }
+        }
+        // Bluetooth body: paired devices, connected first; a tap connects or
+        // disconnects (BluetoothIndicator.activate). 3+ wide: Pair (opens the
+        // page and scans) and Visible beside the list.
+        Component {
+            id: bodyBt
+            Row {
+                id: btBody
+                spacing: 10
+                readonly property bool side: parent.cols >= 3
+                Column {
+                    id: btList
+                    width: btBody.side ? btBody.width - 90 - 10 : btBody.width
+                    spacing: 2
+                    readonly property var devices: root.adapter && root.adapter.enabled ? bt.pairedDevices.slice(0, 3) : []
+                    Repeater {
+                        model: btList.devices
+                        delegate: TileListRow {
+                            required property var modelData
+                            name: modelData.name || modelData.deviceName
+                            current: modelData.connected
+                            status: modelData.state === BluetoothDeviceState.Connecting ? "Connecting…"
+                                : modelData.state === BluetoothDeviceState.Disconnecting ? "Disconnecting…"
+                                : modelData.connected ? (modelData.batteryAvailable && modelData.battery > 0 ? panel.pct(modelData.battery) : "Connected")
+                                : "Connect"
+                            onClicked: bt.activate(modelData)
+                        }
+                    }
+                    Text {
+                        visible: btList.devices.length === 0
+                        text: !root.adapter ? "No adapter" : !root.adapter.enabled ? "Bluetooth is off" : "No paired devices"
+                        color: Theme.textDim
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 2
+                    }
+                }
+                Column {
+                    visible: btBody.side
+                    width: 90
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 6
+                    TileButton {
+                        width: parent.width
+                        anchors.bottom: undefined
+                        height: Theme.controlHeight
+                        label: "Pair…"
+                        available: !!(root.adapter && root.adapter.enabled)
+                        onClicked: { root.openPopup("qs-bluetooth"); if (!root.adapter.discovering) bt.toggleScan() }
+                    }
+                    TileButton {
+                        width: parent.width
+                        anchors.bottom: undefined
+                        height: Theme.controlHeight
+                        label: "Visible"
+                        available: !!(root.adapter && root.adapter.enabled)
+                        selected: !!(root.adapter && root.adapter.discoverable)
+                        onClicked: root.adapter.discoverable = !root.adapter.discoverable
+                    }
                 }
             }
         }
         Component {
-            id: extraWifi
+            id: meterBt
+            TileReadout {
+                text: bt.connectedDevices.filter(d => d.batteryAvailable && d.battery > 0)
+                    .map(d => (parent.cols >= 4 ? (d.name || d.deviceName) + " " : "") + panel.pct(d.battery)).join("  ·  ")
+            }
+        }
+        // Phone: mirror and files, then -- with room -- what fits the state:
+        // Unlock while locked, Audio while mirroring, else Display.
+        Component {
+            id: extraPhoneButtons
+            ButtonRow {
+                readonly property var d: Sichlink.phone
+                readonly property bool online: !!(d && d.connected)
+                readonly property var extras: [
+                    online && d.locked ? { label: "Unlock", action: () => Sichlink.wake(d.id) } : null,
+                    PhoneMirrorState.open ? { label: "Audio", selected: PhoneMirrorState.audio, action: () => PhoneMirrorState.setAudio(!PhoneMirrorState.audio) }
+                        : { label: Sichlink.displayStarting ? "Starting…" : "Display", selected: Sichlink.displayOn, available: online,
+                            action: () => Sichlink.setDisplay(!Sichlink.displayOn) },
+                    PhoneMirrorState.open ? { label: "Stop", action: () => PhoneMirrorState.close() } : null
+                ].filter(b => b)
+                buttons: [
+                    { label: PhoneMirrorState.toggleLabel, selected: PhoneMirrorState.open && !PhoneMirrorState.collapsed,
+                      available: PhoneMirrorState.open || online, action: () => PhoneMirrorState.toggle(root.screenName) },
+                    { label: Sichlink.driveBusy ? "Mounting…" : "Files", selected: Sichlink.driveMounted,
+                      available: !Sichlink.driveBusy && (Sichlink.driveMounted || online),
+                      action: () => { if (!Sichlink.driveMounted) { Sichlink.setDrive(true); return } ShellState.activePopup = ""; Sichlink.openDrive() } }
+                ].concat(extras.slice(0, Math.max(0, parent.cols - 2)))
+            }
+        }
+        // Silence for a while (NotificationMutePopup's choices); while on,
+        // extend it instead.
+        function nextMorning() {
+            const d = new Date()
+            if (d.getHours() >= 8) d.setDate(d.getDate() + 1)
+            d.setHours(8, 0, 0, 0)
+            return d.getTime()
+        }
+        function extendMute(minutes) {
+            const from = Math.max(Date.now(), ShellState.notificationsMutedUntil)
+            ShellState.muteNotificationsUntil(from + minutes * 60000)
+        }
+        Component {
+            id: extraSilence
+            ButtonRow {
+                readonly property bool on: ShellState.notificationsMuted
+                readonly property bool timed: on && ShellState.notificationsMutedUntil > 0
+                buttons: (parent.cols >= 4 ? [30, 60, 120] : parent.cols === 3 ? [60, 120] : [60]).map(m => ({
+                    label: (timed ? "+" : "") + (m < 60 ? m + " min" : m === 60 ? "1 hour" : m / 60 + " hours"),
+                    action: () => timed ? panel.extendMute(m) : ShellState.setNotificationsMuted(true, m) }))
+                    .concat([{ label: "Until 08:00", selected: timed && ShellState.notificationsMutedUntil === panel.nextMorning(),
+                               action: () => ShellState.muteNotificationsUntil(panel.nextMorning()) }])
+            }
+        }
+        // 2-row Silence, 3+ wide: what came in (missed while silenced,
+        // else the latest), then the presets.
+        Component {
+            id: bodySilence
+            Column {
+                spacing: 6
+                anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+                Column {
+                    width: parent.width
+                    spacing: 2
+                    Repeater {
+                        model: NotificationHistory.recent(2)
+                        delegate: TileListRow {
+                            required property var modelData
+                            name: modelData.appName + (modelData.summary ? ": " + modelData.summary : "")
+                            status: panel.clock(modelData.time)
+                            onClicked: ShellState.notificationCenterScreen = root.screenName
+                        }
+                    }
+                    Text {
+                        visible: NotificationHistory.recent(1).length === 0
+                        leftPadding: 4
+                        text: "No notifications"
+                        color: Theme.textDim
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 2
+                    }
+                }
+                Loader {
+                    width: parent.width
+                    height: Theme.controlHeight
+                    sourceComponent: extraSilence
+                    property int cols: parent.parent.cols
+                    property bool tall: true
+                }
+            }
+        }
+        // Airplane: the two radios it switches, one at a time.
+        Component {
+            id: extraRadios
+            ButtonRow {
+                buttons: [
+                    { label: "Wi-Fi", selected: Networking.wifiEnabled, available: !!net.wifiDevice,
+                      action: () => Networking.wifiEnabled = !Networking.wifiEnabled },
+                    { label: "Bluetooth", selected: !!(root.adapter && root.adapter.enabled), available: !!root.adapter,
+                      action: () => ShellState.setBluetooth(!root.adapter.enabled) }
+                ]
+            }
+        }
+        // HDR: which monitors it applies to (HdrSettings); ones that can't
+        // do HDR are dimmed but can still be unticked.
+        Component {
+            id: extraHdrMonitors
+            ButtonRow {
+                buttons: Displays.monitors.filter(m => !m.disabled).map(m => ({
+                    label: parent.cols >= 3 ? m.friendly : m.name, selected: HdrSettings.isSelected(m.name),
+                    available: m.hdrCapable !== false || HdrSettings.isSelected(m.name),
+                    action: () => HdrSettings.toggleMonitor(m.name) }))
+            }
+        }
+        Component {
+            id: bodyHdr
             Column {
                 spacing: 2
-                Text {
-                    text: net.wifiUp && net.wifiNetwork ? "Signal " + Math.round(net.wifiNetwork.signalStrength * 100) + "%" : "Not connected"
-                    color: Theme.text
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 2
-                }
-                Text {
-                    visible: net.wiredUp
-                    text: "Ethernet connected"
-                    color: Theme.textMuted
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 2
+                Repeater {
+                    model: Displays.monitors.filter(m => !m.disabled).slice(0, 3)
+                    delegate: TileListRow {
+                        required property var modelData
+                        name: modelData.friendly + "  " + modelData.name
+                        current: HdrSettings.isSelected(modelData.name)
+                        status: modelData.hdrCapable === false ? "No HDR"
+                            : modelData.hdrApplied ? "HDR · 10-bit"
+                            : HdrSettings.isSelected(modelData.name) ? (HdrSettings.active ? "SDR (didn't apply)" : "Selected") : "Tap to use"
+                        opacity: modelData.hdrCapable === false && !current ? 0.5 : 1
+                        onClicked: HdrSettings.toggleMonitor(modelData.name)
+                    }
                 }
             }
         }
-        // A 2-row phone tile: the page card's state line. No buttons -- the
-        // tile opens the page, which has them.
+        // Stay Awake: for a while, then lock/sleep now with room.
         Component {
-            id: extraPhone
-            Text {
-                readonly property var d: Sichlink.phone
-                verticalAlignment: Text.AlignTop
-                topPadding: 4
-                elide: Text.ElideRight
-                text: !d || !d.connected ? ""
-                    : [Sichlink.lockText(d), d.adb_serial ? "Wireless adb" : "",
-                       d.bt_link ? "Bluetooth" : ""].filter(t => t !== "").join("  ·  ")
-                color: Theme.text
-                font.family: Theme.uiFontFamily
-                font.pixelSize: Theme.fontSize - 2
+            id: extraAwake
+            ButtonRow {
+                readonly property bool timed: ShellState.idleActive && ShellState.idleActiveUntil > 0
+                buttons: (parent.cols >= 3 ? [60, 240] : [60]).map(m => ({
+                    label: parent.cols >= 4 && !parent.tall ? m / 60 + " h" : m / 60 + (m === 60 ? " hour" : " hours"),
+                    action: () => ShellState.setIdleActive(true, m) }))
+                    .concat([{ label: parent.cols >= 4 && !parent.tall ? "Lock" : "Lock now",
+                               action: () => { ShellState.activePopup = ""; Quickshell.execDetached(["hyprlock"]) } }])
+                    .concat(parent.tall && parent.cols >= 4 ? [{ label: "Sleep",
+                               action: () => { ShellState.activePopup = ""; Quickshell.execDetached(["systemctl", "suspend"]) } }] : [])
             }
         }
 
@@ -774,16 +1603,30 @@ Pill {
                         delegate: Item {
                             id: tile
                             required property string tileId
-                            readonly property var info: panel.tileInfo(tile.tileId)
                             readonly property var cell: ControlCenterTiles.layout.pos[tile.tileId] || { r: 0, c: 0, w: 1, h: 1 }
+                            // What this tile shows at its size (panel.tileView).
+                            readonly property var info: panel.tileView(tile.tileId, tile.cell.w, tile.cell.h)
                             readonly property bool small: tile.cell.w === 1
                             readonly property bool tall: tile.cell.h === 2
-                            readonly property Component extra: !tile.small ? panel.extraFor(tile.tileId, tile.tall) : null
-                            // 1-row tile with extra controls: 2 wide puts
-                            // them under a label-only top line, 3+ wide
-                            // beside the label.
-                            readonly property bool inlineNarrow: !tile.tall && !!tile.extra && tile.cell.w === 2
-                            readonly property bool inlineWide: !tile.tall && !!tile.extra && tile.cell.w >= 3
+                            readonly property Component control: tile.info.control
+                            readonly property Component body: tile.tall ? tile.info.body : null
+                            // 1 row: the control under a title line (with
+                            // `tag` on its right), or beside the header.
+                            readonly property bool inlineNarrow: !tile.tall && !!tile.control && tile.info.under
+                            readonly property bool inlineWide: !tile.tall && !!tile.control && !tile.info.under
+                            readonly property bool partsShown: tile.tall ? !!(tile.body || tile.control) : !!tile.control
+                            readonly property string subText: tile.info.sub
+                            readonly property string detail: tile.tall ? tile.info.detail : ""
+                            // Chevron strip: tiles whose tap doesn't already open their page.
+                            readonly property bool hasMore: !tile.small && tile.info.more !== "" && !tile.info.opens
+                            // Where the inline control starts: the same column
+                            // in every tile of a width, past the longest label
+                            // that gets one there ("When lid closes" at 4 wide,
+                            // "Night Light" at 3 -- underAt3 go under).
+                            // A narrow readout (`besideWidth`) sits at the right instead.
+                            readonly property real inlineX: tile.info.besideWidth
+                                ? tile.width - (tile.hasMore ? 38 : 14) - tile.info.besideWidth
+                                : 52 + (tile.cell.w >= 4 ? 112 : 90)
                             readonly property bool resizing: rightEdge.pressed || bottomEdge.pressed || corner.pressed
                             readonly property bool dragging: tile.held || tile.resizing
 
@@ -911,6 +1754,7 @@ Pill {
                                         tapArea.held = true
                                         if (tile.info.more) root.openPopup(tile.info.more)
                                     }
+                                    onWheel: (wheel) => panel.tileWheel(tile.tileId, wheel)
                                     onClicked: (mouse) => {
                                         if (tapArea.held) return
                                         if (mouse.button === Qt.RightButton) { if (tile.info.more) root.openPopup(tile.info.more) }
@@ -924,10 +1768,15 @@ Pill {
                                     // 2x1 with a control under the label: the
                                     // pair sat high (more space under the
                                     // slider than over the label) -- nudged
-                                    // down to center the pair.
-                                    y: tile.inlineNarrow ? 4 : 0
+                                    // down to center the pair. 2 rows with
+                                    // nothing under it: centered, as is the
+                                    // 1-wide icon/label/status stack; with
+                                    // something, a shorter header.
+                                    y: tile.inlineNarrow ? 3
+                                        : tile.small && tile.tall ? Math.max(0, (tile.height - 74 - smallSub.height) / 2)
+                                        : tile.tall && !tile.partsShown && tile.detail === "" ? (tile.height - panel.tileHeight) / 2 : 0
                                     width: parent.width
-                                    height: tile.inlineNarrow ? 34 : panel.tileHeight
+                                    height: tile.inlineNarrow ? 30 : tile.tall && !tile.small && (tile.partsShown || tile.detail !== "") ? 54 : panel.tileHeight
 
                                     // HeaderIcon sizes by measured ink, so
                                     // every icon -- and swaps like mic/mic-off
@@ -965,7 +1814,8 @@ Pill {
                                         anchors.leftMargin: 4
                                         anchors.rightMargin: 4
                                         horizontalAlignment: Text.AlignHCenter
-                                        text: tile.info.label
+                                        // 1x2: the lines below carry the specifics.
+                                        text: tile.tall ? tile.info.label : (tile.info.short || tile.info.label)
                                         elide: Text.ElideRight
                                         color: tile.info.active ? Theme.text : Theme.textMuted
                                         font.family: Theme.uiFontFamily
@@ -976,33 +1826,75 @@ Pill {
                                         x: 52
                                         // Up to the inline control (3+ wide;
                                         // not a sibling, so no anchor) or the
-                                        // chevron strip.
+                                        // chevron strip (or edit mode's badge).
                                         width: (tile.inlineWide ? inlineExtra.x - 10
-                                            : (moreStrip.visible ? moreStrip.x : head.width) - 6) - 52
+                                            : (moreStrip.visible ? moreStrip.x : head.width - (panel.editing ? 26 : 0)) - 6) - 52
+                                            - (tagText.visible ? tagText.width + 8 : 0)
                                         anchors.verticalCenter: parent.verticalCenter
                                         spacing: 2
-                                        Text {
+                                        // titleTail: a short muted note after
+                                        // the title (Wi-Fi's band); the title
+                                        // elides first.
+                                        Row {
                                             width: parent.width
-                                            text: tile.info.label
-                                            elide: Text.ElideRight
-                                            color: Theme.text
-                                            font.family: Theme.uiFontFamily
-                                            font.pixelSize: Theme.fontSize
-                                            font.bold: true
+                                            spacing: 6
+                                            Text {
+                                                id: titleText
+                                                width: Math.min(implicitWidth, parent.width - (titleTailText.visible ? titleTailText.implicitWidth + parent.spacing : 0))
+                                                text: tile.info.title
+                                                elide: Text.ElideRight
+                                                color: Theme.text
+                                                font.family: Theme.uiFontFamily
+                                                font.pixelSize: Theme.fontSize
+                                                font.bold: true
+                                            }
+                                            Text {
+                                                id: titleTailText
+                                                visible: text !== ""
+                                                // Centred, not on the baseline: the
+                                                // smaller text sat low beside the title.
+                                                anchors.verticalCenter: titleText.verticalCenter
+                                                text: tile.info.titleTail || ""
+                                                color: Theme.textMuted
+                                                font.family: Theme.uiFontFamily
+                                                font.pixelSize: Theme.fontSize - 2
+                                            }
                                         }
                                         Text {
-                                            visible: !tile.inlineNarrow
+                                            visible: !tile.inlineNarrow && tile.subText !== ""
                                             width: parent.width
-                                            text: tile.info.sub
+                                            text: tile.subText
                                             elide: Text.ElideRight
                                             color: Theme.textMuted
                                             font.family: Theme.uiFontFamily
                                             font.pixelSize: Theme.fontSize - 2
                                         }
                                     }
+                                    // A short status on the title line when the
+                                    // control took the status line's place.
+                                    // The title keeps its room; the tag shows
+                                    // only if it fits whole.
+                                    Text {
+                                        id: tagText
+                                        readonly property real room: (moreStrip.visible ? moreStrip.x - 4 : head.width - (panel.editing ? 30 : 14))
+                                            - 52 - titleText.implicitWidth - 10
+                                        visible: tile.inlineNarrow && tile.info.tag !== "" && room >= implicitWidth
+                                        anchors.right: moreStrip.visible ? moreStrip.left : parent.right
+                                        anchors.rightMargin: moreStrip.visible ? 4 : (panel.editing ? 30 : 14)
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: Math.min(implicitWidth, room)
+                                        horizontalAlignment: Text.AlignRight
+                                        elide: Text.ElideRight
+                                        text: tile.info.tag
+                                        color: Theme.textMuted
+                                        font.family: Theme.uiFontFamily
+                                        font.pixelSize: Theme.fontSize - 2
+                                    }
+                                    // Kept (empty) in edit mode, so the label
+                                    // and controls don't shift under the badge.
                                     Rectangle {
                                         id: moreStrip
-                                        visible: !tile.small && tile.info.more !== "" && !panel.editing
+                                        visible: tile.hasMore
                                         anchors.right: parent.right
                                         anchors.top: parent.top
                                         anchors.bottom: parent.bottom
@@ -1011,6 +1903,7 @@ Pill {
                                         radius: Theme.controlRadius
                                         color: moreArea.containsMouse ? Theme.hoverFill : "transparent"
                                         Text {
+                                            visible: !panel.editing
                                             anchors.centerIn: parent
                                             text: "" // nf-fa-chevron_right
                                             color: moreArea.containsMouse ? Theme.text : Theme.textMuted
@@ -1019,6 +1912,7 @@ Pill {
                                         }
                                         MouseArea {
                                             id: moreArea
+                                            enabled: !panel.editing
                                             anchors.fill: parent
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
@@ -1027,48 +1921,90 @@ Pill {
                                     }
                                 }
 
-                                // 1 column x 2 rows: status under the label.
+                                // 1 column x 2 rows: status under the label,
+                                // a line per " · " part.
                                 Text {
+                                    id: smallSub
                                     visible: tile.small && tile.tall
                                     anchors.top: head.bottom
                                     anchors.left: parent.left
                                     anchors.right: parent.right
                                     anchors.margins: 6
+                                    anchors.topMargin: -4
                                     horizontalAlignment: Text.AlignHCenter
                                     wrapMode: Text.WordWrap
                                     maximumLineCount: 3
                                     elide: Text.ElideRight
-                                    text: tile.info.sub
+                                    text: tile.info.lines.join("\n")
                                     color: Theme.textMuted
                                     font.family: Theme.uiFontFamily
                                     font.pixelSize: Theme.fontSize - 3
                                 }
 
-                                // 1 row, 2+ columns: extra controls under
-                                // (2 wide) or beside (3+ wide) the label.
+                                // 1 row, 2+ columns: the control under (2
+                                // wide) or beside (3+ wide) the label, or the
+                                // meter beside it.
                                 Loader {
                                     id: inlineExtra
                                     active: tile.inlineNarrow || tile.inlineWide
-                                    sourceComponent: tile.extra
+                                    sourceComponent: tile.control
+                                    // Read by the components, which adapt to the tile.
+                                    property int cols: tile.cell.w
+                                    property bool tall: false
                                     enabled: !panel.editing
-                                    x: tile.inlineWide ? 52 + 84 : 14
-                                    width: (tile.inlineWide && moreStrip.visible ? moreStrip.x - 8 : parent.width - 14) - x
-                                    y: tile.inlineWide ? (parent.height - height) / 2 : head.y + head.height - 2
+                                    x: tile.inlineWide ? tile.inlineX : 14
+                                    // Clear of edit mode's resize grip.
+                                    width: (tile.inlineWide && moreStrip.visible ? moreStrip.x - 8 : parent.width - (panel.editing ? 24 : 14)) - x
+                                    y: tile.inlineWide ? (parent.height - height) / 2 : head.y + head.height
                                     height: tile.inlineWide ? 28 : 24
                                 }
 
-                                // 2+ columns x 2 rows: extra controls.
-                                Loader {
-                                    active: tile.tall && !!tile.extra
-                                    sourceComponent: tile.extra
+                                // 2+ columns x 2 rows: the body, or the
+                                // detail line over the control, centered
+                                // under the header.
+                                Item {
+                                    visible: tile.tall && !tile.small
                                     anchors.top: head.bottom
                                     anchors.left: parent.left
                                     anchors.right: parent.right
                                     anchors.bottom: parent.bottom
                                     anchors.leftMargin: 14
-                                    anchors.rightMargin: 14
+                                    // Clear of edit mode's resize grip.
+                                    anchors.rightMargin: panel.editing ? 24 : 14
                                     anchors.bottomMargin: 10
                                     enabled: !panel.editing
+                                    Loader {
+                                        active: !!tile.body
+                                        anchors.fill: parent
+                                        sourceComponent: tile.body
+                                        property int cols: tile.cell.w
+                                        property bool tall: true
+                                    }
+                                    Column {
+                                        visible: !tile.body
+                                        width: parent.width
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        spacing: 6
+                                        Text {
+                                            visible: tile.detail !== ""
+                                            width: parent.width
+                                            elide: Text.ElideRight
+                                            text: tile.detail
+                                            color: Theme.textMuted
+                                            font.family: Theme.uiFontFamily
+                                            font.pixelSize: Theme.fontSize - 2
+                                        }
+                                        // A slider alone gets its label/value row.
+                                        Loader {
+                                            active: !tile.body && !!tile.control
+                                            visible: active
+                                            width: parent.width
+                                            height: tile.detail !== "" ? Theme.controlHeight : 40
+                                            sourceComponent: tile.control
+                                            property int cols: tile.cell.w
+                                            property bool tall: true
+                                        }
+                                    }
                                 }
 
                                 // Edit mode: the tile body drags (reorders
@@ -1129,13 +2065,15 @@ Pill {
                                     onPositionChanged: (mouse) => { if (pressed) tile.resizeTo(corner, mouse.x, mouse.y, true, true) }
                                 }
                                 // Corner grip, so the resize handle is visible.
+                                // Tucked into the corner, under the baseline of
+                                // a 1-wide tile's label.
                                 Rectangle {
                                     visible: panel.editing
                                     anchors.right: parent.right
                                     anchors.bottom: parent.bottom
-                                    anchors.margins: 4
-                                    width: 10
-                                    height: 10
+                                    anchors.margins: 3
+                                    width: 8
+                                    height: 8
                                     radius: 3
                                     color: corner.containsMouse || corner.pressed ? Theme.accentHover : Theme.accent
                                     opacity: 0.8
@@ -1365,15 +2303,18 @@ Pill {
                                 }
                             }
 
+                            // Title / artist / app. The title gets the full width;
+                            // the buttons only sit beside the two smaller lines.
                             Column {
                                 anchors.left: art.right
                                 anchors.leftMargin: 10
-                                anchors.right: mediaButtons.left
-                                anchors.rightMargin: 8
+                                anchors.right: parent.right
+                                anchors.rightMargin: 6
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 2
                                 Text {
                                     width: parent.width
+                                    rightPadding: 4
                                     text: mediaCard.player ? (mediaCard.player.trackTitle || mediaCard.player.identity || "") : ""
                                     elide: Text.ElideRight
                                     color: Theme.text
@@ -1381,38 +2322,60 @@ Pill {
                                     font.pixelSize: Theme.fontSize
                                     font.bold: true
                                 }
-                                Text {
+                                Item {
                                     width: parent.width
-                                    text: mediaCard.player ? [mediaCard.player.trackArtist, mediaCard.player.identity].filter(s => !!s).join(" · ") : ""
-                                    elide: Text.ElideRight
-                                    color: Theme.textMuted
-                                    font.family: Theme.uiFontFamily
-                                    font.pixelSize: Theme.fontSize - 2
-                                }
-                            }
+                                    // Keeps room for the buttons when the player gives neither line.
+                                    height: Math.max(lowerLines.height, 24)
 
-                            Row {
-                                id: mediaButtons
-                                anchors.right: parent.right
-                                anchors.rightMargin: 6
-                                anchors.verticalCenter: parent.verticalCenter
-                                spacing: 0
+                                    Column {
+                                        id: lowerLines
+                                        anchors.left: parent.left
+                                        anchors.right: mediaButtons.left
+                                        anchors.rightMargin: 8
+                                        spacing: 2
+                                        Text {
+                                            width: parent.width
+                                            visible: text !== ""
+                                            text: mediaCard.player ? (mediaCard.player.trackArtist || "") : ""
+                                            elide: Text.ElideRight
+                                            color: Theme.textMuted
+                                            font.family: Theme.uiFontFamily
+                                            font.pixelSize: Theme.fontSize - 2
+                                        }
+                                        Text {
+                                            width: parent.width
+                                            visible: text !== ""
+                                            text: mediaCard.player ? (mediaCard.player.identity || "") : ""
+                                            elide: Text.ElideRight
+                                            color: Theme.textDim
+                                            font.family: Theme.uiFontFamily
+                                            font.pixelSize: Theme.fontSize - 3
+                                        }
+                                    }
 
-                                MediaButton {
-                                    glyph: "\u{f04ae}" // nf-md-skip_previous
-                                    enabledState: !!mediaCard.player && mediaCard.player.canGoPrevious
-                                    onClicked: mediaCard.player.previous()
-                                }
-                                MediaButton {
-                                    glyph: mediaCard.player && mediaCard.player.isPlaying ? "\u{f03e4}" : "\u{f040a}" // pause / play
-                                    big: true
-                                    enabledState: !!mediaCard.player && mediaCard.player.canTogglePlaying
-                                    onClicked: mediaCard.player.togglePlaying()
-                                }
-                                MediaButton {
-                                    glyph: "\u{f04ad}" // nf-md-skip_next
-                                    enabledState: !!mediaCard.player && mediaCard.player.canGoNext
-                                    onClicked: mediaCard.player.next()
+                                    Row {
+                                        id: mediaButtons
+                                        anchors.right: parent.right
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        spacing: 0
+
+                                        MediaButton {
+                                            glyph: "\u{f04ae}" // nf-md-skip_previous
+                                            enabledState: !!mediaCard.player && mediaCard.player.canGoPrevious
+                                            onClicked: mediaCard.player.previous()
+                                        }
+                                        MediaButton {
+                                            glyph: mediaCard.player && mediaCard.player.isPlaying ? "\u{f03e4}" : "\u{f040a}" // pause / play
+                                            big: true
+                                            enabledState: !!mediaCard.player && mediaCard.player.canTogglePlaying
+                                            onClicked: mediaCard.player.togglePlaying()
+                                        }
+                                        MediaButton {
+                                            glyph: "\u{f04ad}" // nf-md-skip_next
+                                            enabledState: !!mediaCard.player && mediaCard.player.canGoNext
+                                            onClicked: mediaCard.player.next()
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1530,11 +2493,7 @@ Pill {
         onSetWarm: (warm) => ShellState.forceSunsetWarm(warm)
         onSetTemperature: (k) => ShellState.setSunsetKelvin(k)
         onSetScheduleFollow: (follow) => ShellState.setScheduleFollow(follow)
-        // hyprsunset only reads its config at startup -- see Bar.qml.
-        onScheduleSaved: {
-            ShellState.setScheduleFollow(true)
-            Quickshell.execDetached(["systemctl", "--user", "restart", "hyprsunset.service"])
-        }
+        onScheduleSaved: ShellState.restartSunsetSchedule()
     }
     readonly property Item _idlePage: IdlePopup {
         contentWidth: root.cardWidth
@@ -1558,6 +2517,16 @@ Pill {
         parent: root.popupHost
         anchorItem: root
         shown: ShellState.activePopup === "qs-wifi" && ShellState.activePopupScreen === root.screenName
+        contentWidth: root.cardWidth
+        screenName: root.screenName
+        onBack: root.openPopup(root.popupId)
+    }
+
+    // --- Proton VPN page ---
+    readonly property Item _vpnContent: VpnPage {
+        parent: root.popupHost
+        anchorItem: root
+        shown: ShellState.activePopup === "qs-vpn" && ShellState.activePopupScreen === root.screenName
         contentWidth: root.cardWidth
         screenName: root.screenName
         onBack: root.openPopup(root.popupId)
@@ -2001,12 +2970,13 @@ Pill {
             font.family: Theme.uiFontFamily
             font.pixelSize: Theme.fontSize - 3
         }
+        // y, not anchors switched by `compact`: the Loader starts at height
+        // 0 (compact), and dropping verticalCenter for bottom on the way to
+        // a 2-row tile left the value under the track, outside the tile.
         Text {
             id: tsPct
             anchors.right: parent.right
-            anchors.bottom: ts.compact ? undefined : tsTrack.top
-            anchors.bottomMargin: 6
-            anchors.verticalCenter: ts.compact ? tsTrack.verticalCenter : undefined
+            y: ts.compact ? tsTrack.y + (tsTrack.height - height) / 2 : tsTrack.y - height - 6
             width: ts.compact ? Math.max(32, implicitWidth) : implicitWidth
             horizontalAlignment: Text.AlignRight
             text: ts.valueText
@@ -2044,25 +3014,153 @@ Pill {
     }
 
     // Small button inside a tile's extra area.
+    // A list row of the Wi-Fi/Bluetooth bodies: name, status on the
+    // right, the whole row a button.
+    component TileListRow: Rectangle {
+        id: lr
+        property string name: ""
+        property string status: ""
+        property bool current: false
+        signal clicked()
+        width: parent ? parent.width : 0
+        height: 20
+        radius: 4
+        color: lrArea.containsMouse ? Theme.hoverFill : "transparent"
+        Text {
+            anchors.left: parent.left
+            anchors.leftMargin: 4
+            anchors.right: lrStatus.left
+            anchors.rightMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            elide: Text.ElideRight
+            text: lr.name
+            color: lr.current ? Theme.text : Theme.textMuted
+            font.family: Theme.uiFontFamily
+            font.pixelSize: Theme.fontSize - 2
+            font.bold: lr.current
+        }
+        Text {
+            id: lrStatus
+            anchors.right: parent.right
+            anchors.rightMargin: 4
+            anchors.verticalCenter: parent.verticalCenter
+            text: lr.status
+            color: lr.current ? Theme.success : Theme.textDim
+            font.family: Theme.uiFontFamily
+            font.pixelSize: Theme.fontSize - 3
+        }
+        MouseArea {
+            id: lrArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: lr.clicked()
+        }
+    }
+    // Wide 1-row readouts.
+    component TileReadout: Text {
+        horizontalAlignment: Text.AlignRight
+        verticalAlignment: Text.AlignVCenter
+        elide: Text.ElideLeft
+        color: Theme.textMuted
+        font.family: Theme.uiFontFamily
+        font.pixelSize: Theme.fontSize - 2
+    }
+    // Buttons laid out in a row, widths by label length so a long one
+    // ("Balanced", "Until 08:00") doesn't elide next to short ones.
+    component ButtonRow: Row {
+        id: br
+        // [{label, selected, available, action}]
+        property var buttons: []
+        spacing: 4
+        FontMetrics { id: brMetrics; font.family: Theme.uiFontFamily; font.pixelSize: Theme.fontSize - 2 }
+        readonly property var weights: br.buttons.map(b => brMetrics.advanceWidth(b.label) + 18)
+        readonly property real total: br.weights.reduce((a, b) => a + b, 0)
+        Repeater {
+            model: br.buttons
+            delegate: TileButton {
+                required property var modelData
+                required property int index
+                width: (br.width - br.spacing * (br.buttons.length - 1)) * br.weights[index] / br.total
+                label: modelData.label
+                selected: !!modelData.selected
+                available: modelData.available !== false
+                onClicked: modelData.action()
+            }
+        }
+    }
+    // Small two-line readout, right-aligned (1-row wide tiles).
+    component Readout2: Column {
+        property string line1: ""
+        property string line2: ""
+        anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+        spacing: 1
+        TileReadout { width: parent.width; text: parent.line1 }
+        TileReadout { width: parent.width; text: parent.line2; visible: text !== ""; color: Theme.textDim }
+    }
+    // History graph like the System tile's: area + line.
+    component MiniGraph: Canvas {
+        id: mg
+        property var history: []
+        property real maxValue: 1   // 0 = auto (largest sample)
+        property color tint: Theme.accent
+        onHistoryChanged: requestPaint()
+        onWidthChanged: requestPaint()
+        onHeightChanged: requestPaint()
+        onPaint: {
+            const ctx = getContext("2d")
+            ctx.reset()
+            const h = mg.history
+            if (!h || h.length < 2) return
+            const top = mg.maxValue > 0 ? mg.maxValue : Math.max(1, ...h)
+            const step = width / (SystemStats.historyLength - 1)
+            const x0 = width - (h.length - 1) * step
+            const y = v => height - Math.min(1, v / top) * height
+            ctx.beginPath()
+            ctx.moveTo(x0, height)
+            for (let i = 0; i < h.length; i++) ctx.lineTo(x0 + i * step, y(h[i]))
+            ctx.lineTo(x0 + (h.length - 1) * step, height)
+            ctx.closePath()
+            ctx.fillStyle = Qt.rgba(mg.tint.r, mg.tint.g, mg.tint.b, 0.3)
+            ctx.fill()
+            ctx.beginPath()
+            for (let i = 0; i < h.length; i++) {
+                if (i === 0) ctx.moveTo(x0, y(h[0]))
+                else ctx.lineTo(x0 + i * step, y(h[i]))
+            }
+            ctx.strokeStyle = mg.tint
+            ctx.lineWidth = 1.5
+            ctx.stroke()
+        }
+    }
+
     component TileButton: Rectangle {
         id: tb
         property string label: ""
         property bool selected: false
+        // Dimmed and inert when false (phone offline, no adapter). Not
+        // `enabled`: that's inherited, and edit mode disables every tile.
+        property bool available: true
         signal clicked()
         anchors.bottom: parent ? parent.bottom : undefined
         height: Math.min(Theme.controlHeight, parent ? parent.height : Theme.controlHeight)
         radius: Theme.controlRadius
+        opacity: tb.available ? 1 : 0.4
         color: tb.selected ? Theme.accent : tbArea.containsMouse ? Theme.hoverFill : Theme.controlFill
+        // Not bold when selected: the fill already says so, and bold
+        // "Balanced" overflowed a third of a 2-wide tile.
         Text {
             anchors.centerIn: parent
+            width: Math.min(implicitWidth, tb.width - 8)
+            elide: Text.ElideRight
             text: tb.label
             color: tb.selected ? Theme.textOnLight : Theme.text
             font.family: Theme.uiFontFamily
             font.pixelSize: Theme.fontSize - 2
-            font.bold: tb.selected
         }
         MouseArea {
             id: tbArea
+            enabled: tb.available
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor

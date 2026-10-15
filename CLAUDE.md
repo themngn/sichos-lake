@@ -204,14 +204,33 @@ Everything else lives in `quickshell/modules/`:
   is 0..1, not a percentage. Its tiles are Android-style editable (pencil in the header: drag to
   reorder, drag the right/bottom edge or corner to resize up to 4x2, remove/add -- by badge, click,
   or dragging a tile between the grid and the spare "Add tiles" list; tiles pack first-fit,
-  and a 2-row tile at least 2 wide gets extra controls from `extraFor()`). SUPER+N toggles it on the
+  and what a tile shows at each size -- header lines, inline control, a 2-row tile's body -- comes from
+  `tileView(id, w, h)`; its `titleTail` is a short muted note after the title, e.g. a 1-row Wi-Fi
+  tile 2+ wide shows the band, "Wi-Fi 5 GHz", from `NetInfo`, so the SSID keeps the status line).
+  `~/Documents/sichos/control-center-tiles.html` is a sheet of every tile at every size, rendered
+  offscreen from the config -- regenerate it after changing what tiles show. SUPER+N toggles it on the
   focused monitor (`quickshell ipc call controlcenter toggle`). The toggle-row popups (HDR, Night Light,
   Stay Awake, Game Focus) and System Update are also its pages (`qs-hdr` etc.) — its own instances with
-  `backPopupId` set. `SystemStats` (CPU/RAM/temp) and `VpnStatus` (Proton VPN, read from nmcli's
-  active connections since the Flatpak app has no CLI) only poll while its main page is open. The tile layout is the `ControlCenterTiles` singleton
+  `backPopupId` set. `SystemStats` (CPU/RAM/temp) only polls while its main page is open; `VpnStatus` (Proton VPN) while
+  that or its VPN page is. The VPN page (`VpnPage.qml`, `qs-vpn`, the VPN tile's chevron) drives Proton's
+  own CLI, which the Flatpak ships beside the GUI (`flatpak run --command=protonvpn com.protonvpn.www`,
+  sharing the app's sign-in, `settings.json` and server cache): connect (= the last server, from the
+  app's/CLI's logs, so ones picked in the app count; fastest if none) / profiles / favorites (a star on
+  any country or server row) and recent servers (both in `~/.config/quickshell/vpn-recent.json`) / country → city → server picker with search, and the settings `config set` can change
+  (the protocol isn't one -- that stays in the app). State still comes from nmcli's active "ProtonVPN
+  <server>" connection, so connections made in the app show too. The app's 26 MB `serverlist.json` is
+  summarised by `scripts/vpn-servers.py` (countries, then one country's servers on expand). The tile layout is the `ControlCenterTiles` singleton
   (`~/.config/quickshell/control-center.json`), a ListModel rather than a JS array so a live
-  reorder moves delegates instead of rebuilding them mid-drag. A new tile = an id in its `allIds`
-  plus a case in QuickSettings' `tileInfo()`/`tileToggle()` (and its glyph measured into HeaderIcon). **Bar hover popups don't own windows**: the toggle
+  reorder moves delegates instead of rebuilding them mid-drag. Its switches persist: Stay Awake, Silence (with a
+  timed mute's deadline), Night Light on/off + Follow schedule, and Bluetooth on/off (BlueZ's AutoEnable
+  re-powers it every boot otherwise) in `~/.config/quickshell/shell-state.json` (`ShellState`), Game Focus in
+  `game-focus.json`, Lid Close (sleep / screen off when another monitor is connected; `LidSettings`, read by
+  `hypr/keybindings.lua`'s lid binds on every close) in `lid-close.json`, HDR in `hdr-monitors.json` (re-applied after every Hyprland `configreloaded`, which
+  resets monitor rules); everything else is kept by its own owner (NetworkManager, WirePlumber,
+  power-profiles-daemon, systemd-backlight, `hyprsunset.conf`/`hypridle.conf`, `monitors.lua`). A new
+  setting needs the same. Night Light never re-sends hyprsunset's own schedule switch (that showed as a
+  double toggle) -- `ShellState._syncSunset` pushes only when hyprsunset's actual temperature disagrees. A new tile = an id in its `allIds`
+  plus a case in QuickSettings' `tileInfo()`/`tileToggle()`, per-size content in `tileView()` (and its glyph measured into HeaderIcon). **Bar hover popups don't own windows**: the toggle
   row's, the clock's calendar, Weather, the right-side widgets with hover popups (AI usage, Bluetooth,
   System Update, Display) and custom widgets that opt in (alert-widget) all render a `MorphContent`
   into the bar's one `MorphPopup` card. Each widget assigns its content to a property (not a child —

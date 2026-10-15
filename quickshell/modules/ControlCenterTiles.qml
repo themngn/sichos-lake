@@ -18,7 +18,7 @@ QtObject {
     // Every tile that exists, in the order "Add tiles" lists them.
     readonly property var allIds: ["wifi", "bluetooth", "airplane", "nightlight", "silence", "micmute",
         "awake", "gamefocus", "hdr", "opaque", "phone", "powerprofile", "sound", "display",
-        "update", "vpn", "stats"]
+        "update", "vpn", "stats", "lid"]
     readonly property int columns: 4
     readonly property int maxRows: 2
     readonly property var defaults: [
@@ -183,6 +183,7 @@ QtObject {
         interval: 400
         onTriggered: {
             root._saving = true
+            adapter.saved = true
             adapter.tiles = root._list()
         }
     }
@@ -193,12 +194,16 @@ QtObject {
         onAdapterUpdated: writeAdapter()
         // Fill once from disk (or the defaults). Not on our own writes: that
         // would rebuild the model mid-drag.
-        onLoaded: if (!root._saving) root._fill(adapter.tiles.length > 0 ? adapter.tiles : root.defaults)
+        // `saved` tells an emptied grid (every tile removed) from a file
+        // that never had a layout -- both have no tiles, and the first
+        // used to come back as the defaults on the next start.
+        onLoaded: if (!root._saving) root._fill(adapter.saved || adapter.tiles.length > 0 ? adapter.tiles : root.defaults)
         onLoadFailed: root._fill(root.defaults)
 
         adapter: JsonAdapter {
             id: adapter
             property var tiles: []
+            property bool saved: false
         }
     }
 }
