@@ -292,7 +292,7 @@ write_atomic() {
 # ------------------------------------------------------------- user files
 
 declare -a CHANGED=() WARN=() ERRORS=() NOTES=() PROBLEMS=()
-QS_CHANGED=0
+QS_CHANGED=0 QS_NEW=0
 
 deploy_file() {
     local rel="$1" dest new="$WORK/new" old="$WORK/old"
@@ -314,10 +314,15 @@ deploy_file() {
             return 0
         fi
     fi
+    local created=0
+    [ -e "$dest" ] || created=1
     if write_atomic "$new" "$dest" "$(file_mode "$TO" "$rel")"; then
         rm -f "$CONFLICTS/$rel"
         CHANGED+=("$(tilde "$dest")")
-        [[ "$rel" == quickshell/*.qml || "$rel" == quickshell/*.js ]] && QS_CHANGED=1
+        if [[ "$rel" == quickshell/*.qml || "$rel" == quickshell/*.js ]]; then
+            QS_CHANGED=1
+            [ "$created" -eq 1 ] && QS_NEW=1
+        fi
     else
         ERRORS+=("couldn't write $(tilde "$dest")")
     fi
@@ -361,13 +366,17 @@ sweep_conflicts() {
     return 0
 }
 
-# quickshell hot-reloads on every content change, so the copies above
-# already make it reload -- possibly mid-copy, on a half-copied tree, which
-# fails; the last file landing triggers one more on the complete tree. The
-# log tells whether that final reload worked ("Configuration Loaded" after
-# the last "Reloading configuration..."). Touching shell.qml does NOT
-# reload (no content change), hence the IPC retry (ShellState's "shell"
-# target) if the final reload failed.
+# quickshell hot-reloads when a file it loaded changes content, so the copies
+# above already make it reload -- possibly mid-copy, on a half-copied tree,
+# which fails or (a missing singleton) loads with ReferenceErrors. A file it
+# never loaded isn't watched: creating one triggers nothing, so a new
+# singleton landing after the file using it was never picked up (seen with
+# SichosVersion.qml). Hence new files are written first (apply()), and when
+# any was created an explicit reload follows the copies. The log tells
+# whether the final reload worked ("Configuration Loaded" after the last
+# "Reloading configuration..."). Touching shell.qml does NOT reload (no
+# content change); reloads on request go through ShellState's "shell" IPC
+# target.
 QS_LOG="" QS_ID="" QS_MARK=0 QS_RESULT=""
 qs_log_lines() { LANG=C.UTF-8 quickshell log "$QS_LOG" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g'; }
 qs_watch_start() {
@@ -404,15 +413,23 @@ qs_watch_result() {
         last="$out"
     done
 }
+qs_reload_now() {
+    # --any-display (selects the default config; --id excludes it): the
+    # instance-on-my-display filter applies to ipc too
+    LANG=C.UTF-8 quickshell ipc --any-display call shell reload >/dev/null 2>&1
+}
 qs_check_reload() {
     local r
     [ -n "$QS_LOG" ] || return 0
+    if [ "$QS_NEW" -eq 1 ]; then
+        qs_watch_result 2 >/dev/null   # let the copies' own reloads settle first
+        QS_MARK="$(qs_log_lines | wc -l)"
+        qs_reload_now
+    fi
     r="$(qs_watch_result 8)"
     if [[ "$r" == failed:* ]]; then
         QS_MARK="$(qs_log_lines | wc -l)"
-        # --any-display (selects the default config; --id excludes it): the
-        # instance-on-my-display filter applies to ipc too
-        LANG=C.UTF-8 quickshell ipc --any-display call shell reload >/dev/null 2>&1 && r="$(qs_watch_result 8)"
+        qs_reload_now && r="$(qs_watch_result 8)"
     fi
     case "$r" in
         ok|"") QS_RESULT=ok ;;
@@ -450,10 +467,18 @@ apply() {
         # Only .qml/.js changes reload quickshell; scripts are run on demand
         printf '%s\n' "${added[@]}" "${deleted[@]}" | grep -qE '^quickshell/.*\.(qml|js)$' && qs_watch_start
 
-        # Theme.qml first: a reload that picks up modules using new tokens
-        # before the new Theme floods the log with `Unable to assign [undefined]`.
-        for rel in "${added[@]}"; do [ "$rel" = quickshell/modules/Theme.qml ] && deploy_file "$rel"; done
-        for rel in "${added[@]}"; do [ "$rel" = quickshell/modules/Theme.qml ] || deploy_file "$rel"; done
+        # New files first: not watched yet, so they reload nothing, and the
+        # reloads the changed files set off already see them. Then Theme.qml:
+        # a reload that picks up modules using new tokens before the new
+        # Theme floods the log with `Unable to assign [undefined]`.
+        local -a fresh=() existing=()
+        for rel in "${added[@]}"; do
+            path="$(dest_for "$rel")"
+            if [ -n "$path" ] && [ ! -e "$path" ]; then fresh+=("$rel"); else existing+=("$rel"); fi
+        done
+        for rel in "${fresh[@]}"; do deploy_file "$rel"; done
+        for rel in "${existing[@]}"; do [ "$rel" = quickshell/modules/Theme.qml ] && deploy_file "$rel"; done
+        for rel in "${existing[@]}"; do [ "$rel" = quickshell/modules/Theme.qml ] || deploy_file "$rel"; done
         for rel in "${deleted[@]}"; do remove_file "$rel"; done
         [ "$QS_CHANGED" -eq 1 ] && qs_check_reload
 
