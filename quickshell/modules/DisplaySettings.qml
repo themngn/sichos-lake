@@ -128,11 +128,10 @@ Pill {
         implicitHeight: bg.implicitHeight
 
         // `popupHoverHandler` alone only sees the mouse while it's over
-        // `bg`'s own surface -- once a ModePicker's dropdown opens (a
-        // separate floating PopupWindow, see ModePicker's own comment),
-        // moving the mouse into IT hands mouse-over to that other surface
-        // instead, and this popup would otherwise think the pointer left
-        // entirely and close itself out from under the open dropdown.
+        // `bg` -- a ModePicker's open dropdown is drawn over the card but
+        // isn't inside `bg` (see ModePicker's own comment), so this popup
+        // could otherwise think the pointer left and close itself out from
+        // under the open dropdown.
         // Each ModePicker bumps this while its own box or dropdown is
         // hovered (a plain counter rather than an OR of named siblings,
         // since there are two of them and neither needs to know about the
@@ -1322,27 +1321,17 @@ Pill {
         // flat array of display strings, one of which should equal `current`
         // so it gets highlighted in the open list.
         //
-        // The option list is a second PopupWindow -- a genuine floating
-        // overlay, not a child sized into this Item's own layout, so opening
-        // it never resizes the Display popup or shoves its other rows
-        // around. Two things had to be worked around to get this rendering
-        // in the right place, both confirmed live:
-        //   1. Anchoring straight to `box` (anchor.item) puts it two
-        //      xdg_popup levels deep off the bar's layer-shell surface (box
-        //      lives inside the Display popup, itself already one level
-        //      deep) -- Quickshell reports it visible with the right size,
-        //      but nothing ever renders. Anchoring to `root.QsWindow.window`
-        //      (the bar's own PanelWindow) instead keeps this popup a
-        //      sibling of the Display popup, one level deep, which renders.
-        //   2. `PopupAnchor.mapFromItem` does NOT do real cross-window
-        //      coordinate translation despite being built for exactly this
-        //      -- it just returns box's position relative to its own
-        //      popup's content root. `barRectForBox()` below computes the
-        //      real answer by hand (Wayland doesn't hand a client back its
-        //      own popup's resolved position, so there's no API to read
-        //      this out directly) -- see its own comment for why it has to
-        //      be a function called from `anchor.onAnchoring`, not a
-        //      declarative property binding.
+        // The option list is drawn over the card itself (parented to `popup`,
+        // high z), not inside this Item's own layout, so opening it never
+        // resizes the popup or shoves its other rows around. It used to be a
+        // second PopupWindow anchored to the bar (a popup nested under the
+        // card's own never rendered), but that made it a sibling of the bar's
+        // MorphPopup, whose surface stacked above it with an input region
+        // covering the card -- so the pointer never reached the list
+        // (confirmed live: its HoverHandler never reported hovered) and the
+        // picker closed it ~200ms after leaving the box. The card clips, so a
+        // list must fit inside it -- the pickers sit near the top of a tall
+        // card, which leaves room for every resolution/rate list seen here.
         component ModePicker: Item {
             id: picker
             property string current: ""
@@ -1355,16 +1344,15 @@ Pill {
             height: box.height
 
             // Collapses the dropdown when the Display popup itself closes
-            // (hover-out) -- listPopup is anchored to the bar, not to
-            // `popup`, so it wouldn't otherwise notice and the arrow glyph
-            // would stay stuck on "▲" for next time this reopens.
+            // (hover-out), so the arrow glyph doesn't stay stuck on "▲" for
+            // next time this reopens.
             Connections {
                 target: popup
                 function onShownChanged() { if (!popup.shown) picker.expanded = false }
             }
 
             // True while the pointer is over this picker's own box or its
-            // open dropdown (a separate window -- see listHover below).
+            // open dropdown (see listHover below).
             // Bumps popup.extraHoverCount so the Display popup doesn't close
             // out from under an open dropdown (point 1), and closes the
             // dropdown itself, debounced, once neither is hovered any more
@@ -1386,57 +1374,11 @@ Pill {
                 onTriggered: picker.expanded = false
             }
 
-            // `box`'s rect in the BAR window's coordinate space -- has to be
-            // a function called from anchor.onAnchoring below, never a
-            // `readonly property rect: ...` binding: Qt's coordinate mapping
-            // functions (mapToItem/mapFromItem) are not reactive (Quickshell
-            // documents this on PopupAnchor's own `anchoring` signal), so a
-            // property binding using them evaluates exactly once, during
-            // construction -- before `box`/`root` are even parented into
-            // their real item trees -- and then never re-evaluates, no
-            // matter how wrong that first answer was. Confirmed live: such a
-            // property came back a degenerate {x:-2,y:0,w:30,h:24} (root's
-            // own local size, i.e. no ancestor transform applied at all) and
-            // stayed that way across restarts. `anchoring()` is emitted by
-            // Quickshell's own WaylandPopupPositioner right before it reads
-            // the rect back to build the xdg_positioner, which is both the
-            // one moment the whole hierarchy is guaranteed laid out AND
-            // guaranteed to be read by that exact positioning pass.
-            //
-            // The Display popup's own on-screen position (needed to place
-            // box, which lives inside it, into the bar window's coordinate
-            // space) is read directly via plain QtQuick `Window.window.x/y`
-            // rather than predicted -- first attempt here hand-replicated
-            // the xdg_positioner math (centered under `root`, then
-            // Hyprland's own slide-to-fit clamp since `root` sits near the
-            // bar's right edge), which landed close but ~16px off in
-            // testing. `Window.window` gives Qt's own tracked *global*
-            // position for any window (confirmed live: the bar's is exactly
-            // its monitor's origin, e.g. 2560 for the second monitor;
-            // `popup`'s is a real absolute coordinate too, not local/zeroed
-            // the way Quickshell's own WindowInterface has no equivalent
-            // property for) -- subtracting the two gives popup's exact
-            // position relative to the bar, no guessing required.
-            function barRectForBox() {
-                const popupWin = box.Window.window
-                const barWin = root.Window.window
-                if (!popupWin || !barWin) return Qt.rect(0, 0, 1, 1)
-
-                // box's own position within its window (the bar's
-                // MorphPopup surface) -- ordinary same-window mapping, exact
-                // now that this runs after layout instead of during
-                // construction.
-                const b = box.mapToItem(null, 0, 0, box.width, box.height)
-
-                // The 2px gap under the box is baked into the returned
-                // height instead of an anchor.margins.top on listPopup --
-                // that's a no-op for gravity: Bottom (marginsRemoved() moves
-                // the top edge down and shrinks the height by the same
-                // amount, leaving y+h, the actual anchor point, unchanged).
-                return Qt.rect(
-                    (popupWin.x - barWin.x) + b.x,
-                    (popupWin.y - barWin.y) + b.y,
-                    b.width, b.height + 2)
+            // mapToItem isn't reactive, so the list is placed on each open.
+            onExpandedChanged: if (picker.expanded) {
+                const p = box.mapToItem(popup, 0, box.height + 2)
+                listBg.x = p.x
+                listBg.y = p.y
             }
 
             Rectangle {
@@ -1502,38 +1444,20 @@ Pill {
                 }
             }
 
-            PopupWindow {
-                id: listPopup
-                // Anchored to the bar (see barRectForBox's own comment), so
-                // this does NOT inherit the Display popup's own visibility
-                // automatically -- without the `&& popup.shown` an
-                // expanded dropdown would keep floating on screen after the
-                // Display popup itself closes on hover-out.
-                visible: picker.expanded && popup.shown
-                anchor.window: root.QsWindow.window
-                anchor.edges: Edges.Bottom
-                anchor.gravity: Edges.Bottom
-                color: "transparent"
-                implicitWidth: listBg.implicitWidth
-                implicitHeight: listBg.implicitHeight
-
-                Connections {
-                    target: listPopup.anchor
-                    function onAnchoring() {
-                        listPopup.anchor.rect = picker.barRectForBox()
-                    }
-                }
-
             // Its own bordered panel (not bare rows loose on a transparent
             // window) so it actually reads as a dropdown rather than plain
             // text floating in space.
             Rectangle {
                 id: listBg
-                SurfaceAppear { target: listBg; shown: listPopup.visible }
+                parent: popup
+                z: 100
+                visible: picker.expanded && popup.shown
+                SurfaceAppear { target: listBg; shown: listBg.visible }
                 implicitWidth: picker.boxWidth
                 implicitHeight: optionsColumn.implicitHeight + 4
                 radius: Theme.controlRadius
-                color: Theme.surfaceRaisedFor(listPopup.screen)
+                // Solid even under glass: it covers the card's own rows.
+                color: Theme.surfaceRaised
                 border.width: 1
                 border.color: Theme.surfaceBorder
 
@@ -1542,6 +1466,12 @@ Pill {
                 // true while the pointer is anywhere over the dropdown.
                 HoverHandler {
                     id: listHover
+                }
+                // Keeps the rows underneath from reacting through the gaps
+                // between options.
+                MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
                 }
 
                 Column {
@@ -1589,7 +1519,6 @@ Pill {
                     }
                 }
             }
-        }
         }
     }
 }
