@@ -257,6 +257,17 @@ render() {
     patch_like_deployed "$2" "$4" "$3"
 }
 
+# Whether deployed file $3 is still repo file $2 as of rev $1 (scratch file
+# $4): as install.sh would have left it, or as a plain copy without its
+# deploy-time edits (hand-copied files, e.g. hyprlock.conf with a literal
+# $HOME, seen on a second machine).
+unmodified_since() {
+    local rev="$1" rel="$2" dest="$3" tmp="$4"
+    render "$rev" "$rel" "$dest" "$tmp" || return 1
+    cmp -s "$tmp" "$dest" && return 0
+    git show "$rev:$rel" > "$tmp" && cmp -s "$tmp" "$dest"
+}
+
 file_mode() { [ "$(git ls-tree "$1" -- "$2" | cut -c1-6)" = 100755 ] && echo 755 || echo 644; }
 
 # $1 staged file, $2 dest, $3 mode [, $4 = "root"]: temp file in the same
@@ -293,7 +304,7 @@ deploy_file() {
     if [ -e "$dest" ]; then
         # Not in the deployed version at all = a file of the user's own sits
         # where the repo now adds one: also local, also kept.
-        if ! render "$FROM" "$rel" "$dest" "$old" || ! cmp -s "$old" "$dest"; then
+        if ! unmodified_since "$FROM" "$rel" "$dest" "$old"; then
             mkdir -p "$CONFLICTS/$(dirname "$rel")" && cp "$new" "$CONFLICTS/$rel"
             WARN+=("$(tilde "$dest") has local edits, kept; $(short "$TO")'s version: $(tilde "$CONFLICTS/$rel")")
             return 0
@@ -314,7 +325,7 @@ remove_file() {
     { [ -z "$dest" ] || [ ! -e "$dest" ]; } && return 0
     [ "$rel" = hypr/monitors.lua ] && return 0
     rm -f "$CONFLICTS/$rel"
-    if render "$FROM" "$rel" "$dest" "$old" && cmp -s "$old" "$dest"; then
+    if unmodified_since "$FROM" "$rel" "$dest" "$old"; then
         if rm -f "$dest"; then
             CHANGED+=("removed $(tilde "$dest")")
             [[ "$rel" == quickshell/*.qml || "$rel" == quickshell/*.js ]] && QS_CHANGED=1
@@ -764,7 +775,7 @@ cmd_status() {
         skipped "$rel" "$dest" && continue
         if [ ! -e "$dest" ]; then
             echo "  missing   $(tilde "$dest")"; n=$((n + 1))
-        elif render "$dep" "$rel" "$dest" "$WORK/f" && ! cmp -s "$WORK/f" "$dest"; then
+        elif git cat-file -e "$dep:$rel" 2>/dev/null && ! unmodified_since "$dep" "$rel" "$dest" "$WORK/f"; then
             echo "  modified  $(tilde "$dest")"; n=$((n + 1))
         fi
     done < <(git ls-tree -r -z --name-only "$dep")
