@@ -438,6 +438,10 @@ apply() {
 
     if [ ${#ERRORS[@]} -eq 0 ] && [ "$(deployed_rev 2>/dev/null)" != "$TO" ]; then
         set_stamp "$TO" || ERRORS+=("couldn't record the deployed version")
+        # System files in step with FROM and none changed: still in step at TO
+        if [ "$n_sys" -eq 0 ] && [ "$(read_stamp "$SYS_STAMP" 2>/dev/null)" = "$FROM" ]; then
+            write_stamp "$SYS_STAMP" "$TO"
+        fi
     fi
     [ ${#ERRORS[@]} -gt 0 ] && NOTES+=("deployed version left at $(short "$FROM"); re-run ./update.sh to retry")
     if [ -n "$QS_RESULT" ] && [ "$QS_RESULT" != ok ]; then
@@ -667,7 +671,12 @@ cmd_system() {
     FROM="$(read_stamp "$SYS_STAMP")"; rc=$?
     [ $rc -eq 1 ] && die "no system version recorded yet. If the system files match a commit (e.g. right after install.sh): ./update.sh system mark [rev]"
     [ $rc -ne 0 ] && die "the recorded system version isn't in this repo: ./update.sh system mark <the rev it really is>"
-    if [ "$FROM" = "$TO" ]; then echo "system files are up to date ($(short "$TO"))"; return 0; fi
+    if [ "$FROM" != "$TO" ] && ! git diff --no-renames --name-only "$FROM" "$TO" | while read -r rel; do
+            sys_relevant "$rel" && exit 1; done; then :; else
+        # Nothing system-level between the two: just move the version along
+        [ "$FROM" = "$TO" ] || write_stamp "$SYS_STAMP" "$TO"
+        echo "system files are up to date ($(short "$TO"))"; return 0
+    fi
     if [ -n "$SUDO" ]; then "$SUDO" -v || die "needs sudo"; fi
     WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
 
@@ -719,11 +728,13 @@ cmd_status() {
 
     if sys="$(read_stamp "$SYS_STAMP")"; then
         if [ -n "$dep" ] && [ "$sys" != "$dep" ]; then
-            echo "system files at $(short "$sys"); changed since:"
-            git diff --no-renames --name-only "$sys" "$dep" | while read -r rel; do
-                sys_relevant "$rel" && echo "  $rel"
-            done
-            echo "  -> ./update.sh system"
+            f="$(git diff --no-renames --name-only "$sys" "$dep" | while read -r rel; do
+                sys_relevant "$rel" && echo "  $rel"; done)"
+            if [ -n "$f" ]; then
+                echo "system files at $(short "$sys"); changed since:"
+                echo "$f"
+                echo "  -> ./update.sh system"
+            fi
         fi
     else
         echo "system files: no version recorded (./update.sh system mark <rev> once they match a commit)"
