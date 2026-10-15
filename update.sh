@@ -190,6 +190,14 @@ sys_relevant() {
     [ -n "$(sys_dest_for "$1")" ] || [ "$1" = packages.txt ] || [[ "$1" == cage/* ]]
 }
 
+# repo paths `system` would act on between $1 and $2, one per line
+sys_changes() {
+    local rel
+    git diff --no-renames --name-only "$1" "$2" | while IFS= read -r rel; do
+        if sys_relevant "$rel"; then echo "$rel"; fi
+    done
+}
+
 # Re-applies install.sh's deploy-time edits of hypr files, and settings the
 # shell's UI keeps in deployed files, to $2 (a staged copy of repo file $1),
 # detecting them from $3 (the deployed copy). Keep in sync with install.sh's
@@ -671,8 +679,7 @@ cmd_system() {
     FROM="$(read_stamp "$SYS_STAMP")"; rc=$?
     [ $rc -eq 1 ] && die "no system version recorded yet. If the system files match a commit (e.g. right after install.sh): ./update.sh system mark [rev]"
     [ $rc -ne 0 ] && die "the recorded system version isn't in this repo: ./update.sh system mark <the rev it really is>"
-    if [ "$FROM" != "$TO" ] && ! git diff --no-renames --name-only "$FROM" "$TO" | while read -r rel; do
-            sys_relevant "$rel" && exit 1; done; then :; else
+    if [ -z "$(sys_changes "$FROM" "$TO")" ]; then
         # Nothing system-level between the two: just move the version along
         [ "$FROM" = "$TO" ] || write_stamp "$SYS_STAMP" "$TO"
         echo "system files are up to date ($(short "$TO"))"; return 0
@@ -728,11 +735,10 @@ cmd_status() {
 
     if sys="$(read_stamp "$SYS_STAMP")"; then
         if [ -n "$dep" ] && [ "$sys" != "$dep" ]; then
-            f="$(git diff --no-renames --name-only "$sys" "$dep" | while read -r rel; do
-                sys_relevant "$rel" && echo "  $rel"; done)"
+            f="$(sys_changes "$sys" "$dep")"
             if [ -n "$f" ]; then
                 echo "system files at $(short "$sys"); changed since:"
-                echo "$f"
+                sed 's/^/  /' <<< "$f"
                 echo "  -> ./update.sh system"
             fi
         fi
