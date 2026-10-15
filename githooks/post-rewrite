@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# git rebase / git pull --rebase / git commit --amend
+exec "$(dirname "$0")/sichos-deploy"

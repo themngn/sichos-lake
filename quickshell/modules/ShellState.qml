@@ -316,6 +316,14 @@ QtObject {
         function showAll() { root.barSoloScreen = "" }
     }
 
+    // update.sh's retry after a deploy left quickshell on a failed reload:
+    // the file watcher only reloads on a content change (touching shell.qml
+    // does nothing), so a reload of identical files needs asking for.
+    property IpcHandler _shellIpc: IpcHandler {
+        target: "shell"
+        function reload(): void { Quickshell.reload(false) }
+    }
+
     // Whether the bar/terminal transparency toggle is in "opaque" mode.
     // kitty.conf's background_opacity line is the actual source of truth
     // (see toggle-transparency.py) — this is just loaded from it once at

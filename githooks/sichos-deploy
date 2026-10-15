@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Shared by the hooks in this directory: deploys HEAD via update.sh (which
+# diffs against the last deployed commit, so every hook does the same thing
+# and a missed run is caught up by the next). Never fails the git command.
+[ "$(git config --bool sichos.autodeploy)" = false ] && exit 0
+# `git worktree`s (e.g. Claude Code's) share these hooks, but deploying a
+# side branch from one would silently swap the live config under you.
+[ "$(git rev-parse --git-dir)" = "$(git rev-parse --git-common-dir)" ] || exit 0
+gd="$(git rev-parse --git-dir)"
+# Bisect steps are throwaway checkouts; `git bisect reset` brings HEAD back
+# and nothing was deployed in between.
+if [ -f "$gd/BISECT_LOG" ]; then
+    echo "sichos: bisect in progress, not deploying (git bisect reset, then it catches up)"
+    exit 0
+fi
+top="$(git rev-parse --show-toplevel)"
+[ -x "$top/update.sh" ] || exit 0
+"$top/update.sh" --hook || true
+exit 0

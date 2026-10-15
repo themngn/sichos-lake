@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Branch switch, and the checkout a (rebasing) pull does. $3 = 1 for a branch
+# checkout, 0 for `git checkout -- <file>`. Mid-rebase checkouts are skipped:
+# post-rewrite deploys once the rebase is done.
+[ "$3" = 1 ] || exit 0
+[ "$1" = "$2" ] && exit 0
+gd="$(git rev-parse --git-dir)"
+{ [ -d "$gd/rebase-merge" ] || [ -d "$gd/rebase-apply" ]; } && exit 0
+exec "$(dirname "$0")/sichos-deploy"

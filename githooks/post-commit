@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# A commit deploys its own files, so "committed" also means "live" on this
+# machine (usually a no-op: the change was hand-deployed while testing).
+# Skipped for each pick of a rebase; post-rewrite covers the whole rebase.
+gd="$(git rev-parse --git-dir)"
+{ [ -d "$gd/rebase-merge" ] || [ -d "$gd/rebase-apply" ]; } && exit 0
+exec "$(dirname "$0")/sichos-deploy"

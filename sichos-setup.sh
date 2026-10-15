@@ -9,6 +9,9 @@
 # Nothing touches the system until you select Install on the Finalize step;
 # it then execs install.sh with the right flags/env vars — all the actual
 # work still lives there.
+#
+# First install only, like install.sh: later config changes are deployed by
+# update.sh (run by the git hooks in githooks/), not by re-running this.
 
 set -uo pipefail
 

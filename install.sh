@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# FIRST INSTALL ONLY. Re-running it isn't how a machine gets updates: after
+# this, config changes are deployed by update.sh, which the git hooks in
+# githooks/ run after every pull/commit/rebase/branch switch (this script
+# enables them at the end). See update.sh's header.
+#
 # Installs everything in this directory onto the current machine:
 #   - base packages this desktop needs (packages.txt), Hyprland + quickshell
 #     from the lionheartp/Hyprland COPR
@@ -1701,6 +1706,19 @@ else
         done <<< "$IMPORTED_KEYS"
         echo "    added $ADDED new key(s) to ~/.ssh/authorized_keys"
     fi
+fi
+
+echo "==> auto-updates (git hooks + update.sh)"
+
+# Everything above deployed the working tree's configs, so HEAD is the
+# deployed version from here on; the hooks then deploy each later change
+# (see update.sh). Only when this is a git checkout (not a tarball copy).
+if git -C "$HERE" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git -C "$HERE" config core.hooksPath githooks
+    "$HERE/update.sh" mark || echo "    couldn't record the deployed version; run ./update.sh mark by hand"
+    echo "    enabled: pulls/commits in $HERE now deploy their config changes"
+else
+    echo "    not a git checkout, skipped (updates: re-clone and use git)"
 fi
 
 cat <<EOF

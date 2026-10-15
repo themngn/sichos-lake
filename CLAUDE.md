@@ -21,11 +21,25 @@ places — the repo file (what `install.sh` ships to every future machine) and t
   to differ permanently — it's genuinely per-machine (actual connected monitor names/positions), so the
   repo's copy is just a template, not something to reconcile. Before trusting any other file, diff it
   against the other copy rather than assuming they match.
+- **`install.sh` and `sichos-setup.sh` are for the first install of a machine only** (packages, COPRs,
+  sudo/system steps, interactive choices) — don't re-run them to pick up config changes. Updates go
+  through `update.sh`, run automatically by the git hooks in `githooks/` (enabled by `git config
+  core.hooksPath githooks`; `install.sh` sets it): after every commit, amend, pull/merge, rebase and
+  branch switch in the main checkout it deploys whatever changed since the last deployed commit
+  (`~/.local/state/sichos/deployed-rev`). It never overwrites a deployed file with local edits (the new
+  version is parked under `~/.local/state/sichos/update-conflicts/` instead), removes files deleted
+  from the repo only if unmodified, keeps `install.sh`'s per-machine `--alt`/`--vm`/browser edits, and
+  only lists system files (SDDM, Plymouth, ...) since a hook can't sudo. `./update.sh switch <rev>`
+  deploys any commit/tag/branch without a checkout and pins it (hooks stop following HEAD), `back` /
+  `latest` / `list` / `status` — see its header. Not run from `git worktree`s, so working in one
+  doesn't touch the live config; `git config sichos.autodeploy false` turns the hooks off. When a
+  deployed path's mapping or one of `install.sh`'s deploy-time `sed` patches changes, update
+  `update.sh`'s `dest_for`/`patch_like_deployed` too.
 - `install.sh` only ever copies forward — it never deletes a deployed file whose repo source was removed
-  or renamed. Don't treat a file's presence under `$HOME` as proof it's still part of the current config
-  — check the repo first.
+  or renamed (`update.sh` does, for removals after the install). Don't treat a file's presence under
+  `$HOME` as proof it's still part of the current config — check the repo first.
 - Practical workflow for a config edit: change it in the repo, then copy that same file to its deployed
-  path (or re-run the relevant step of `install.sh`) so it's live immediately — Hyprland/quickshell both
+  path so it's live immediately (committing it deploys it too, via the hooks) — Hyprland/quickshell both
   hot-reload on save, so this is the fast path to actually seeing the change, not an extra chore.
   Conversely, if a fix gets hand-tested by editing the deployed file directly first, port it back into the
   repo before considering the task done — a fix that only exists under `$HOME` is invisible to
@@ -70,7 +84,8 @@ it before "fixing" something that looks odd but is deliberately worked around.
 - When hand-deploying several quickshell files at once, its hot-reload can fire mid-copy and fail on a
   half-copied tree (e.g. `X is not a type` for a file that hasn't landed yet). Check the log
   (`quickshell log "$(ls -t /run/user/$(id -u)/quickshell/by-id/*/log.qslog | head -1)"`) for
-  "Configuration Loaded", and `touch ~/.config/quickshell/shell.qml` to reload again if it failed.
+  "Configuration Loaded", and `quickshell ipc call shell reload` to reload again if it failed —
+  `touch`ing `shell.qml` does **not** reload (the watcher reacts to content changes only; checked live).
   When a change adds new `Theme.qml` tokens, copy `Theme.qml` *first*: a reload that picks up the
   modules before the new Theme floods the log with `Unable to assign [undefined]` warnings. Only the
   output after the last "Reloading configuration..." line reflects the current files.
@@ -94,8 +109,9 @@ it before "fixing" something that looks odd but is deliberately worked around.
   pointer over it closes after ~300ms (the hover close check), so grab within ~0.25s; the Control Center
   doesn't (it closes only on a click outside). Restore the deployed file from the repo afterwards and confirm with
   `quickshell ipc show` that `dbgpopup` is gone.
-- `./install.sh` — copies every config in this repo to its target under `$HOME` (idempotent,
-  backs up any differing existing file as `<name>.bak`). System-level steps (packages,
+- `./install.sh` — first install only (see above): copies every config in this repo to its target
+  under `$HOME` (backs up any differing existing file as `<name>.bak`), then records HEAD as deployed and
+  enables the auto-update hooks. System-level steps (packages,
   Plymouth, SDDM) run via `sudo` and prompt for a password. Flags: `--vm` (force software rendering
   for VM guests), `--alt` (SUPER → ALT as main modifier). Numerous `SKIP_*`/`SICHOS_*` env vars control
   optional steps (Flatpak apps, Telegram/Discord/Steam/Lutris/LibreOffice, git identity, SSH key/server,
