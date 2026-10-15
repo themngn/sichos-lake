@@ -259,7 +259,8 @@ Pill {
             : net.wiredUp ? "Ethernet" : "Not connected"
         readonly property string btSubtitle: !root.adapter ? "No adapter"
             : !root.adapter.enabled ? "Off"
-            : bt.connectedDevices.length > 0 ? bt.connectedDevices.map(d => d.name || d.deviceName).join(", ")
+            : bt.connectedDevices.length > 1 ? bt.connectedDevices.length + " connected"
+            : bt.connectedDevices.length === 1 ? bt.connectedDevices[0].name || bt.connectedDevices[0].deviceName
             : "On"
 
         readonly property bool micMuted: !!(root.source && root.source.audio && root.source.audio.muted)
@@ -501,11 +502,19 @@ Pill {
                 if (devs.length === 1) v.short = devs[0].name || devs[0].deviceName
                 else if (devs.length > 1) v.short = devs.length + " devices"
                 v.lines = devs.length === 0 ? [v.sub]
-                    : [devs[0].name || devs[0].deviceName, batt(devs[0]), devs.length > 1 ? "+" + (devs.length - 1) + " more" : ""].filter(t => t)
-                if (w >= 3 && !tall && devs.some(d => batt(d))) {
+                    : devs.length > 1 ? [devs.length + " connected"]
+                    : [devs[0].name || devs[0].deviceName, batt(devs[0])].filter(t => t)
+                // A bare percentage can't say whose it is once the status
+                // line is just a count, so at 3 wide (no names in the
+                // readout) it shows only for a single device.
+                if (w >= 3 && !tall && devs.some(d => batt(d)) && (w >= 4 || devs.length === 1)) {
                     v.control = meterBt
                     v.under = false
                     if (w >= 4) v.sub = devs.length + " connected"
+                    // 3 wide shows bare percentages: at the right edge, so the
+                    // device name keeps the status line (from the shared
+                    // inline column it got ~90px, "GuliKit Controll…").
+                    else v.besideWidth = 34
                 }
                 if (tall) {
                     v.body = bodyBt
@@ -1284,62 +1293,35 @@ Pill {
             }
         }
         // Bluetooth body: paired devices, connected first; a tap connects or
-        // disconnects (BluetoothIndicator.activate). 3+ wide: Pair (opens the
-        // page and scans) and Visible beside the list.
+        // disconnects (BluetoothIndicator.activate). The whole width, for
+        // device names; pairing and Visible are on the page (the chevron).
         Component {
             id: bodyBt
-            Row {
-                id: btBody
-                spacing: 10
-                readonly property bool side: parent.cols >= 3
-                Column {
-                    id: btList
-                    width: btBody.side ? btBody.width - 90 - 10 : btBody.width
-                    spacing: 2
-                    readonly property var devices: root.adapter && root.adapter.enabled ? bt.pairedDevices.slice(0, 3) : []
-                    Repeater {
-                        model: btList.devices
-                        delegate: TileListRow {
-                            required property var modelData
-                            name: modelData.name || modelData.deviceName
-                            current: modelData.connected
-                            status: modelData.state === BluetoothDeviceState.Connecting ? "Connecting…"
-                                : modelData.state === BluetoothDeviceState.Disconnecting ? "Disconnecting…"
-                                : modelData.connected ? (modelData.batteryAvailable && modelData.battery > 0 ? panel.pct(modelData.battery) : "Connected")
-                                : "Connect"
-                            onClicked: bt.activate(modelData)
-                        }
-                    }
-                    Text {
-                        visible: btList.devices.length === 0
-                        text: !root.adapter ? "No adapter" : !root.adapter.enabled ? "Bluetooth is off" : "No paired devices"
-                        color: Theme.textDim
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 2
+            Column {
+                id: btList
+                spacing: 2
+                readonly property var devices: root.adapter && root.adapter.enabled ? bt.pairedDevices.slice(0, 3) : []
+                Repeater {
+                    model: btList.devices
+                    delegate: TileListRow {
+                        required property var modelData
+                        name: modelData.name || modelData.deviceName
+                        current: modelData.connected
+                        status: modelData.state === BluetoothDeviceState.Connecting ? "Connecting…"
+                            : modelData.state === BluetoothDeviceState.Disconnecting ? "Disconnecting…"
+                            : modelData.connected ? (modelData.batteryAvailable && modelData.battery > 0 ? panel.pct(modelData.battery) : "\u{f0337}")
+                            : "Connect"
+                        statusGlyph: status === "\u{f0337}"
+                        onClicked: bt.activate(modelData)
                     }
                 }
-                Column {
-                    visible: btBody.side
-                    width: 90
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 6
-                    TileButton {
-                        width: parent.width
-                        anchors.bottom: undefined
-                        height: Theme.controlHeight
-                        label: "Pair…"
-                        available: !!(root.adapter && root.adapter.enabled)
-                        onClicked: { root.openPopup("qs-bluetooth"); if (!root.adapter.discovering) bt.toggleScan() }
-                    }
-                    TileButton {
-                        width: parent.width
-                        anchors.bottom: undefined
-                        height: Theme.controlHeight
-                        label: "Visible"
-                        available: !!(root.adapter && root.adapter.enabled)
-                        selected: !!(root.adapter && root.adapter.discoverable)
-                        onClicked: root.adapter.discoverable = !root.adapter.discoverable
-                    }
+                // Off / no adapter: the header's status line already says so.
+                Text {
+                    visible: btList.devices.length === 0 && !!(root.adapter && root.adapter.enabled)
+                    text: "No paired devices"
+                    color: Theme.textDim
+                    font.family: Theme.uiFontFamily
+                    font.pixelSize: Theme.fontSize - 2
                 }
             }
         }
@@ -3020,6 +3002,8 @@ Pill {
         id: lr
         property string name: ""
         property string status: ""
+        // `status` is a Nerd Font glyph (Inter has none of them).
+        property bool statusGlyph: false
         property bool current: false
         signal clicked()
         width: parent ? parent.width : 0
@@ -3046,8 +3030,8 @@ Pill {
             anchors.verticalCenter: parent.verticalCenter
             text: lr.status
             color: lr.current ? Theme.success : Theme.textDim
-            font.family: Theme.uiFontFamily
-            font.pixelSize: Theme.fontSize - 3
+            font.family: lr.statusGlyph ? Theme.fontFamily : Theme.uiFontFamily
+            font.pixelSize: lr.statusGlyph ? Math.round(Theme.fontSize * 1.25) : Theme.fontSize - 3
         }
         MouseArea {
             id: lrArea

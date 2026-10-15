@@ -5,7 +5,9 @@ import Quickshell.Bluetooth
 // Bluetooth indicator and menu (BluetoothIndicator.qml).
 // Hover (with 250ms initial delay, or immediate switch if another menu is already open)
 // opens the device panel, staying open while hovered over the popup.
-// Bluetooth scan runs for a maximum of 30 seconds with a visible countdown timer.
+// Laid out like a phone's/GNOME's Bluetooth page: power switch, "Visible to
+// nearby devices", My devices (click = connect, gear = details:
+// auto-connect, forget), Available devices (searched for on open).
 Pill {
     id: root
     property string screenName: ""
@@ -21,7 +23,7 @@ Pill {
     // you actually care about.
     readonly property var sortedDevices: root.adapter
         ? root.adapter.devices.values.slice().sort((a, b) => {
-            if (a.paired !== b.paired) return a.paired ? -1 : 1
+            if (root.isMine(a) !== root.isMine(b)) return root.isMine(a) ? -1 : 1
             if (a.connected !== b.connected) return a.connected ? -1 : 1
             return a.name.localeCompare(b.name)
           })
@@ -52,19 +54,49 @@ Pill {
         }
     }
 
-    function toggleScan() {
-        if (!root.adapter) return
-        if (root.adapter.discovering) {
-            root.adapter.discovering = false
-            root.scanRemaining = 30
-        } else {
-            root.scanRemaining = 30
-            // BlueZ starts with Pairable off here; a phone pairing from its
-            // side is refused unless this is on.
-            root.adapter.pairable = true
-            root.adapter.discovering = true
+    // Opening the page searches by itself, like a phone's Bluetooth
+    // settings. Still capped at 30s rather than for as long as it's open:
+    // inquiry shares the radio, and connected headphones stutter during it.
+    function startScan() {
+        if (!root.adapter || !root.adapter.enabled || root.adapter.discovering) return
+        root._scanStartedHere = true
+        root.scanRemaining = 30
+        root.adapter.pairable = true
+        root.adapter.discovering = true
+    }
+    property bool _scanStartedHere: false
+    function _syncAutoScan() {
+        if (root.popupOpen && root.btEnabled) {
+            root.startScan()
+        } else if (!root.popupOpen) {
+            if (root._scanStartedHere && root.isScanning) root.adapter.discovering = false
+            root._scanStartedHere = false
+            root.expandedDevice = ""
         }
     }
+    onBtEnabledChanged: if (root.btEnabled) root._syncAutoScan()
+
+    // Visible (discoverable): BlueZ turns it off by itself after
+    // DiscoverableTimeout (180s here), so the row counts that down.
+    readonly property bool visibleOn: !!(root.adapter && root.adapter.discoverable)
+    property int visibleRemaining: 0
+    onVisibleOnChanged: root.visibleRemaining = root.visibleOn && root.adapter ? root.adapter.discoverableTimeout : 0
+    Timer {
+        interval: 1000
+        repeat: true
+        running: root.visibleOn && root.visibleRemaining > 0
+        onTriggered: root.visibleRemaining--
+    }
+    function setVisible(on) {
+        if (!root.adapter) return
+        // A phone pairing from its side is refused while Pairable is off.
+        if (on) root.adapter.pairable = true
+        root.adapter.discoverable = on
+    }
+    function clock(sec) { return Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0") }
+
+    // Address of the device whose details are open (one at a time).
+    property string expandedDevice: ""
 
     // --- Hover Management with Trigger Delay, Immediate Switch & Stay on Hover ---
     // QuickSettings.qml embeds a hidden instance of this as a submenu of its
@@ -127,7 +159,7 @@ Pill {
     onHoveredChanged: _updateHoverState()
     // An embedded (QuickSettings) instance opens by a click inside the card
     // with no pill of its own to hover, so arm the close check on open too.
-    onPopupOpenChanged: _updateHoverState()
+    onPopupOpenChanged: { _updateHoverState(); _syncAutoScan() }
     onPopupHoveredChanged: _updateHoverState()
 
     BarIcon {
@@ -143,10 +175,15 @@ Pill {
 
     // Paired devices are "My devices"; everything else found by a scan is
     // "Other devices", minus the many that only advertise an address.
-    readonly property var pairedDevices: root.sortedDevices.filter(d => d.paired)
-    readonly property var otherDevices: root.sortedDevices.filter(d => !d.paired
+    readonly property var pairedDevices: root.sortedDevices.filter(d => root.isMine(d))
+    readonly property var otherDevices: root.sortedDevices.filter(d => !root.isMine(d)
         && !!d.name && !/^([0-9A-F]{2}[-:]){5}[0-9A-F]{2}$/i.test(d.name))
 
+    // "My devices" = paired or trusted, as GNOME counts them. The GuliKit
+    // (Xbox-mode) controller connects as trusted without ever bonding: BlueZ
+    // reports it Paired only while connected, so a paired-only list dropped
+    // it the moment it disconnected.
+    function isMine(d) { return d.paired || d.bonded || d.trusted }
     function deviceGlyph(d) {
         const icon = d.icon || ""
         if (icon.startsWith("audio-headset") || icon.startsWith("audio-headphones")) return "\u{f02cb}"
@@ -156,14 +193,37 @@ Pill {
         if (icon === "input-gaming") return "\u{f02b4}"
         if (icon === "phone") return "\u{f011c}"
         if (icon === "computer") return "\u{f0322}"
+        if (icon === "input-tablet") return "\u{f04f7}"
+        if (icon === "video-display") return "\u{f0379}"
+        if (icon === "printer") return "\u{f042a}"
+        if (icon.startsWith("camera")) return "\u{f0100}"
         return "\u{f00af}"
+    }
+    function typeName(d) {
+        const icon = d.icon || ""
+        if (icon.startsWith("audio-headset")) return "Headset"
+        if (icon.startsWith("audio-headphones")) return "Headphones"
+        if (icon.startsWith("audio")) return "Speaker"
+        if (icon === "input-mouse") return "Mouse"
+        if (icon === "input-keyboard") return "Keyboard"
+        if (icon === "input-gaming") return "Game controller"
+        if (icon === "input-tablet") return "Tablet"
+        if (icon === "phone") return "Phone"
+        if (icon === "computer") return "Computer"
+        if (icon === "video-display") return "Display"
+        if (icon === "printer") return "Printer"
+        if (icon.startsWith("camera")) return "Camera"
+        return "Device"
     }
     function statusFor(d) {
         if (d.pairing) return "Pairing…"
         if (d.state === BluetoothDeviceState.Connecting) return "Connecting…"
         if (d.state === BluetoothDeviceState.Disconnecting) return "Disconnecting…"
         if (d.connected) return "Connected" + (d.batteryAvailable ? " · " + Math.round(d.battery * 100) + "% battery" : "")
-        return d.paired ? "Not connected" : ""
+        // Unpaired (found by the search): what it is, so "JBL" vs "JBL" reads.
+        if (root.isMine(d)) return "Not connected"
+        const t = root.typeName(d)
+        return t === "Device" ? "" : t
     }
     // connect() rather than pair() for a new device: pair() alone doesn't
     // bring up a profile afterward, so BlueZ drops the link as unused within
@@ -364,12 +424,38 @@ Pill {
                     }
                 }
 
-                Text {
+                Column {
                     visible: !root.btEnabled
-                    text: root.adapter ? "Bluetooth is off" : "No Bluetooth adapter"
-                    color: Theme.textDim
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 1
+                    width: parent.width
+                    spacing: 4
+                    Text {
+                        text: root.adapter ? "Bluetooth is off" : "No Bluetooth adapter"
+                        color: Theme.text
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 1
+                    }
+                    Text {
+                        visible: !!root.adapter
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        text: "Turn it on to use headphones, mice, keyboards, controllers and phones."
+                        color: Theme.textDim
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 2
+                    }
+                }
+
+                // This PC: visible to phones looking for it.
+                SettingRow {
+                    visible: root.btEnabled
+                    width: parent.width
+                    title: "Visible to nearby devices"
+                    subtitle: !root.adapter ? ""
+                        : root.visibleOn ? "As \u201c" + root.adapter.name + "\u201d"
+                            + (root.visibleRemaining > 0 ? " · " + root.clock(root.visibleRemaining) + " left" : "")
+                        : "Lets a phone find this PC as \u201c" + root.adapter.name + "\u201d"
+                    checked: root.visibleOn
+                    onToggled: root.setVisible(!root.visibleOn)
                 }
 
                 Column {
@@ -380,14 +466,10 @@ Pill {
                     SectionLabel { text: "My devices" }
                     Repeater {
                         model: root.pairedDevices
-                        delegate: DeviceRow {
+                        delegate: DeviceEntry {
                             required property var modelData
                             width: content.width
                             device: modelData
-                            glyph: root.deviceGlyph(modelData)
-                            status: root.statusFor(modelData)
-                            onActivated: root.activate(modelData)
-                            onForget: modelData.forget()
                         }
                     }
                 }
@@ -402,33 +484,48 @@ Pill {
                         height: Theme.controlHeight
                         SectionLabel {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: root.isScanning ? "Searching… (" + root.scanRemaining + "s)" : "Other devices"
+                            text: "Available devices"
+                        }
+                        Row {
+                            visible: root.isScanning
+                            anchors.right: parent.right
+                            anchors.rightMargin: 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 6
+                            Spinner { anchors.verticalCenter: parent.verticalCenter; running: root.isScanning && panel.shown }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "Searching"
+                                color: Theme.textMuted
+                                font.family: Theme.uiFontFamily
+                                font.pixelSize: Theme.fontSize - 2
+                            }
                         }
                         PromptButton {
+                            visible: !root.isScanning
                             anchors.right: parent.right
                             anchors.verticalCenter: parent.verticalCenter
-                            label: root.isScanning ? "Stop" : "Scan"
-                            onClicked: root.toggleScan()
+                            label: "Search again"
+                            onClicked: root.startScan()
                         }
                     }
                     Repeater {
                         model: root.otherDevices
-                        delegate: DeviceRow {
+                        delegate: DeviceEntry {
                             required property var modelData
                             width: content.width
                             device: modelData
-                            glyph: root.deviceGlyph(modelData)
-                            status: root.statusFor(modelData)
-                            onActivated: root.activate(modelData)
                         }
                     }
                     Text {
                         visible: root.otherDevices.length === 0
+                        width: parent.width
+                        wrapMode: Text.WordWrap
                         topPadding: 4
-                        text: root.isScanning ? "Looking for devices…" : "Scan to find new devices"
+                        text: root.isScanning ? "Put the device in pairing mode to see it here" : "No new devices found"
                         color: Theme.textDim
                         font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 1
+                        font.pixelSize: Theme.fontSize - 2
                     }
                 }
             }
@@ -446,11 +543,13 @@ Pill {
         id: pb
         property string label: ""
         property bool primary: false
+        property bool danger: false
         signal clicked()
         width: pbText.implicitWidth + 20
         height: Theme.controlHeight - 2
         radius: Theme.controlRadius
-        color: pb.primary ? (pbArea.containsMouse ? Theme.accentHover : Theme.accent)
+        color: pb.danger ? Theme.danger
+            : pb.primary ? (pbArea.containsMouse ? Theme.accentHover : Theme.accent)
             : pbArea.containsMouse ? Theme.hoverFill : Theme.controlFill
         Text {
             id: pbText
@@ -470,110 +569,261 @@ Pill {
         }
     }
 
-    // Device row: type icon, name, status (battery when it reports one);
-    // clicking connects/disconnects (or cancels pairing). Paired devices get
-    // a forget button on hover.
-    component DeviceRow: Rectangle {
-        id: row
-        property var device: null
-        property string glyph: ""
-        property string status: ""
-        signal activated()
-        signal forget()
-
-        readonly property bool busy: !!row.device && (row.device.pairing
-            || row.device.state === BluetoothDeviceState.Connecting
-            || row.device.state === BluetoothDeviceState.Disconnecting)
-        readonly property bool hovering: rowArea.containsMouse || forgetArea.containsMouse
-
-        height: Theme.controlHeight + 14
+    // Title + muted subtitle on the left, a switch on the right; the whole
+    // row toggles.
+    component SettingRow: Rectangle {
+        id: sr
+        property string title: ""
+        property string subtitle: ""
+        property bool checked: false
+        signal toggled()
+        height: srText.implicitHeight + 16
         radius: Theme.controlRadius
-        color: row.device && row.device.connected ? Theme.selectedFill
-            : row.hovering ? Theme.hoverFill : "transparent"
-
+        color: srArea.containsMouse ? Theme.hoverFill : "transparent"
         MouseArea {
-            id: rowArea
+            id: srArea
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: row.activated()
-        }
-
-        Text {
-            id: devGlyph
-            anchors.left: parent.left
-            anchors.leftMargin: 10
-            anchors.verticalCenter: parent.verticalCenter
-            width: 22
-            text: row.glyph
-            color: row.device && row.device.connected ? Theme.text : Theme.textMuted
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 5
+            onClicked: sr.toggled()
         }
         Column {
-            anchors.left: devGlyph.right
-            anchors.leftMargin: 8
-            anchors.right: rowActions.left
-            anchors.rightMargin: 8
+            id: srText
+            anchors.left: parent.left
+            anchors.leftMargin: 10
+            anchors.right: srSwitch.left
+            anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
+            spacing: 1
             Text {
                 width: parent.width
-                text: row.device ? (row.device.name || row.device.deviceName) : ""
+                text: sr.title
                 elide: Text.ElideRight
                 color: Theme.text
                 font.family: Theme.uiFontFamily
                 font.pixelSize: Theme.fontSize - 1
-                font.bold: !!row.device && row.device.connected
             }
             Text {
                 visible: text !== ""
                 width: parent.width
-                text: row.status
+                text: sr.subtitle
                 elide: Text.ElideRight
-                color: row.device && row.device.connected ? Theme.success : row.busy ? Theme.accent : Theme.textMuted
+                color: Theme.textMuted
                 font.family: Theme.uiFontFamily
                 font.pixelSize: Theme.fontSize - 3
             }
         }
-        Row {
-            id: rowActions
+        Switch {
+            id: srSwitch
             anchors.right: parent.right
-            anchors.rightMargin: 6
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 4
+            anchors.rightMargin: 10
+            checked: sr.checked
+            onToggled: sr.toggled()
+        }
+    }
+
+    // Small rotating arc for "Searching".
+    component Spinner: Item {
+        id: sp
+        property bool running: false
+        width: 12
+        height: 12
+        Rectangle {
+            anchors.fill: parent
+            radius: width / 2
+            color: "transparent"
+            border.width: 2
+            border.color: Theme.track
+        }
+        Rectangle {
+            width: 4
+            height: 4
+            radius: 2
+            x: sp.width / 2 - 2
+            y: 0
+            color: Theme.accent
+        }
+        RotationAnimation on rotation {
+            running: sp.running
+            from: 0
+            to: 360
+            duration: 900
+            loops: Animation.Infinite
+        }
+    }
+
+    // Device: icon, name, status (battery when it reports one); a click
+    // connects (or pairs, or cancels pairing) -- on a connected one it opens
+    // the details instead. Paired devices
+    // have a gear for their details -- auto-connect, connect, forget --
+    // instead of a bare trash can that one stray click used to fire.
+    component DeviceEntry: Column {
+        id: entry
+        property var device: null
+        readonly property bool expanded: !!entry.device && root.isMine(entry.device) && root.expandedDevice === entry.device.address
+        readonly property bool busy: !!entry.device && (entry.device.pairing
+            || entry.device.state === BluetoothDeviceState.Connecting
+            || entry.device.state === BluetoothDeviceState.Disconnecting)
+        // Forget asks once more; resets if not confirmed in a few seconds.
+        property bool confirmForget: false
+        onExpandedChanged: entry.confirmForget = false
+        Timer { running: entry.confirmForget; interval: 4000; onTriggered: entry.confirmForget = false }
+        spacing: 2
+
+        Rectangle {
+            id: row
+            readonly property bool hovering: rowArea.containsMouse || gearArea.containsMouse
+            width: parent.width
+            height: Theme.controlHeight + 14
+            radius: Theme.controlRadius
+            color: entry.device && entry.device.connected ? Theme.selectedFill
+                : row.hovering || entry.expanded ? Theme.hoverFill : "transparent"
+
+            MouseArea {
+                id: rowArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                // A connected device's row opens its details rather than
+                // disconnecting it -- a stray click used to drop headphones
+                // mid-call. Disconnect is in the details.
+                onClicked: {
+                    if (entry.device.connected) root.expandedDevice = entry.expanded ? "" : entry.device.address
+                    else root.activate(entry.device)
+                }
+            }
 
             Text {
+                id: devGlyph
+                anchors.left: parent.left
+                anchors.leftMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
-                visible: row.hovering || row.busy
-                rightPadding: 4
-                text: !row.device ? ""
-                    : row.device.pairing ? "Cancel"
-                    : row.device.connected ? "Disconnect"
-                    : row.busy ? ""
-                    : row.device.paired ? "Connect" : "Pair"
-                color: Theme.accent
-                font.family: Theme.uiFontFamily
-                font.pixelSize: Theme.fontSize - 2
+                width: 22
+                text: entry.device ? root.deviceGlyph(entry.device) : ""
+                color: entry.device && entry.device.connected ? Theme.text : Theme.textMuted
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSize + 5
             }
-            Rectangle {
-                visible: !!row.device && row.device.paired && row.hovering
-                width: Theme.controlHeight - 4
-                height: Theme.controlHeight - 4
-                radius: Theme.controlRadius
-                color: forgetArea.containsMouse ? Theme.hoverFill : Theme.controlFill
+            Column {
+                anchors.left: devGlyph.right
+                anchors.leftMargin: 8
+                anchors.right: rowActions.left
+                anchors.rightMargin: 8
+                anchors.verticalCenter: parent.verticalCenter
                 Text {
-                    anchors.centerIn: parent
-                    text: "\u{f0a7a}" // nf-md-trash_can_outline
-                    color: forgetArea.containsMouse ? Theme.text : Theme.textMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize
+                    width: parent.width
+                    text: entry.device ? (entry.device.name || entry.device.deviceName) : ""
+                    elide: Text.ElideRight
+                    color: Theme.text
+                    font.family: Theme.uiFontFamily
+                    font.pixelSize: Theme.fontSize - 1
+                    font.bold: !!entry.device && entry.device.connected
                 }
-                MouseArea {
-                    id: forgetArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: row.forget()
+                Text {
+                    visible: text !== ""
+                    width: parent.width
+                    text: entry.device ? root.statusFor(entry.device) : ""
+                    elide: Text.ElideRight
+                    color: entry.device && entry.device.connected ? Theme.success : entry.busy ? Theme.accent : Theme.textMuted
+                    font.family: Theme.uiFontFamily
+                    font.pixelSize: Theme.fontSize - 3
+                }
+            }
+            Row {
+                id: rowActions
+                anchors.right: parent.right
+                anchors.rightMargin: 6
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 4
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: row.hovering || entry.busy
+                    rightPadding: 4
+                    text: !entry.device ? ""
+                        : entry.device.pairing ? "Cancel"
+                        : entry.device.connected || entry.busy ? ""
+                        : root.isMine(entry.device) ? "Connect" : "Pair"
+                    color: Theme.accent
+                    font.family: Theme.uiFontFamily
+                    font.pixelSize: Theme.fontSize - 2
+                }
+                Rectangle {
+                    visible: !!entry.device && root.isMine(entry.device)
+                    width: Theme.controlHeight - 4
+                    height: Theme.controlHeight - 4
+                    radius: Theme.controlRadius
+                    color: gearArea.containsMouse ? Theme.hoverFill : entry.expanded ? Theme.controlFill : "transparent"
+                    Text {
+                        anchors.centerIn: parent
+                        text: "\u{f0493}" // nf-md-cog
+                        color: gearArea.containsMouse || entry.expanded ? Theme.text : Theme.textMuted
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSize + 3
+                    }
+                    MouseArea {
+                        id: gearArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.expandedDevice = entry.expanded ? "" : entry.device.address
+                    }
+                }
+            }
+        }
+
+        // Details
+        Column {
+            visible: entry.expanded
+            width: parent.width
+            leftPadding: 10
+            rightPadding: 10
+            topPadding: 4
+            bottomPadding: 6
+            spacing: 6
+
+            Text {
+                width: parent.width - 20
+                elide: Text.ElideRight
+                text: !entry.device ? "" : [root.typeName(entry.device), entry.device.address,
+                    entry.device.batteryAvailable ? "Battery " + Math.round(entry.device.battery * 100) + "%" : ""]
+                    .filter(t => t).join(" · ")
+                color: Theme.textMuted
+                font.family: Theme.uiFontFamily
+                font.pixelSize: Theme.fontSize - 3
+            }
+            // Trusted = BlueZ lets it connect (back) by itself.
+            Item {
+                width: parent.width - 20
+                height: 24
+                Text {
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Connect automatically"
+                    color: Theme.text
+                    font.family: Theme.uiFontFamily
+                    font.pixelSize: Theme.fontSize - 2
+                }
+                Switch {
+                    anchors.right: parent.right
+                    checked: !!entry.device && entry.device.trusted
+                    onToggled: entry.device.trusted = !entry.device.trusted
+                }
+            }
+            Row {
+                spacing: 6
+                PromptButton {
+                    label: !entry.device ? "" : entry.device.connected ? "Disconnect" : "Connect"
+                    onClicked: root.activate(entry.device)
+                }
+                PromptButton {
+                    label: entry.confirmForget ? "Forget for sure?" : "Forget"
+                    danger: entry.confirmForget
+                    onClicked: {
+                        if (!entry.confirmForget) { entry.confirmForget = true; return }
+                        root.expandedDevice = ""
+                        entry.device.forget()
+                    }
                 }
             }
         }

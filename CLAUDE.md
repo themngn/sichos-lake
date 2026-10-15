@@ -208,7 +208,8 @@ Everything else lives in `quickshell/modules/`:
   `tileView(id, w, h)`; its `titleTail` is a short muted note after the title, e.g. a 1-row Wi-Fi
   tile 2+ wide shows the band, "Wi-Fi 5 GHz", from `NetInfo`, so the SSID keeps the status line).
   `~/Documents/sichos/control-center-tiles.html` is a sheet of every tile at every size, rendered
-  offscreen from the config -- regenerate it after changing what tiles show. SUPER+N toggles it on the
+  offscreen from the deployed config by `~/Documents/sichos/tiles-gen/gen.sh` (deploy first) --
+  regenerate it after every Control Center change. SUPER+N toggles it on the
   focused monitor (`quickshell ipc call controlcenter toggle`). The toggle-row popups (HDR, Night Light,
   Stay Awake, Game Focus) and System Update are also its pages (`qs-hdr` etc.) — its own instances with
   `backPopupId` set. `SystemStats` (CPU/RAM/temp) only polls while its main page is open; `VpnStatus` (Proton VPN) while
