@@ -28,13 +28,22 @@ places — the repo file (what `install.sh` ships to every future machine) and t
   branch switch in the main checkout it deploys whatever changed since the last deployed commit
   (`~/.local/state/sichos/deployed-rev`). It never overwrites a deployed file with local edits (the new
   version is parked under `~/.local/state/sichos/update-conflicts/` instead), removes files deleted
-  from the repo only if unmodified, keeps `install.sh`'s per-machine `--alt`/`--vm`/browser edits, and
-  only lists system files (SDDM, Plymouth, ...) since a hook can't sudo. `./update.sh switch <rev>`
+  from the repo only if unmodified, and carries over `install.sh`'s per-machine `--alt`/`--vm`/browser
+  edits plus settings the UI stores inside deployed files (kitty's `background_opacity`,
+  `hyprsunset.conf` times, `hypridle.conf` listeners). System files (SDDM, Plymouth, polkit,
+  kernel-install, firewalld, root's zsh, new `packages.txt` entries) need sudo, so a hook only says
+  so: `./update.sh system` applies them, same rules, tracked in `system-rev`, with install.sh's
+  follow-ups (initramfs rebuild, boot-entry retitle, firewalld reload). `./update.sh switch <rev>`
   deploys any commit/tag/branch without a checkout and pins it (hooks stop following HEAD), `back` /
   `latest` / `list` / `status` — see its header. Not run from `git worktree`s, so working in one
-  doesn't touch the live config; `git config sichos.autodeploy false` turns the hooks off. When a
-  deployed path's mapping or one of `install.sh`'s deploy-time `sed` patches changes, update
-  `update.sh`'s `dest_for`/`patch_like_deployed` too.
+  doesn't touch the live config; `git config sichos.autodeploy false` turns the hooks off.
+  **`update.sh` is the only place that maps repo paths to deployed paths** — `install.sh` deploys
+  every user config through `update.sh install` (desktop-overrides excepted: each depends on its app
+  being selected). A new config file under an already-mapped directory needs nothing; a new location
+  needs a `dest_for` (or `sys_dest_for`, plus the matching `install.sh` system step) case, and a new
+  deploy-time patch or UI-written setting needs a `patch_like_deployed` case, or every update after it
+  shows up as a "local edit". Test changes to it with `SICHOS_SYSROOT`/`SICHOS_SUDO` and a sandbox
+  `HOME` *and* `XDG_STATE_HOME` (set on this machine, so overriding `HOME` alone writes the real state).
 - `install.sh` only ever copies forward — it never deletes a deployed file whose repo source was removed
   or renamed (`update.sh` does, for removals after the install). Don't treat a file's presence under
   `$HOME` as proof it's still part of the current config — check the repo first.
@@ -44,7 +53,7 @@ places — the repo file (what `install.sh` ships to every future machine) and t
   Conversely, if a fix gets hand-tested by editing the deployed file directly first, port it back into the
   repo before considering the task done — a fix that only exists under `$HOME` is invisible to
   `install.sh` and will be lost/overwritten on the next deploy or reinstall.
-- Repo path → deployed path is a flat mapping unless noted otherwise: `hypr/` → `~/.config/hypr/`,
+- Repo path → deployed path (implemented in `update.sh`'s `dest_for`/`sys_dest_for`) is a flat mapping unless noted otherwise: `hypr/` → `~/.config/hypr/`,
   `quickshell/` → `~/.config/quickshell/`, `kitty/kitty.conf` → `~/.config/kitty/kitty.conf`,
   `qt6ct/qt6ct.conf` → `~/.config/qt6ct/qt6ct.conf`, `hyprquickframe/theme.toml` →
   `~/.config/hyprquickframe/theme.toml`, `fastfetch/` → `~/.config/fastfetch/`, `fontconfig/` → `~/.config/fontconfig/`,
@@ -109,9 +118,10 @@ it before "fixing" something that looks odd but is deliberately worked around.
   pointer over it closes after ~300ms (the hover close check), so grab within ~0.25s; the Control Center
   doesn't (it closes only on a click outside). Restore the deployed file from the repo afterwards and confirm with
   `quickshell ipc show` that `dbgpopup` is gone.
-- `./install.sh` — first install only (see above): copies every config in this repo to its target
-  under `$HOME` (backs up any differing existing file as `<name>.bak`), then records HEAD as deployed and
-  enables the auto-update hooks. System-level steps (packages,
+- `./install.sh` — first install only (see above): packages, repos, services and system steps, with
+  every user config deployed by `update.sh install` (backs up any differing existing file as
+  `<name>.bak`, records HEAD as deployed); ends by enabling the auto-update hooks and recording the
+  system files' version. Needs a git checkout. System-level steps (packages,
   Plymouth, SDDM) run via `sudo` and prompt for a password. Flags: `--vm` (force software rendering
   for VM guests), `--alt` (SUPER → ALT as main modifier). Numerous `SKIP_*`/`SICHOS_*` env vars control
   optional steps (Flatpak apps, Telegram/Discord/Steam/Lutris/LibreOffice, git identity, SSH key/server,

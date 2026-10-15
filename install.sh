@@ -115,6 +115,14 @@ done
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Config files are deployed from git (update.sh install), and later updates
+# arrive through git hooks -- checked up front rather than failing halfway
+# through, after all the sudo steps.
+if ! command -v git >/dev/null 2>&1 || ! git -C "$HERE" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "install.sh: $HERE must be a git checkout (git clone the repo, then run it from there)" >&2
+    exit 1
+fi
+
 # Copies src to dest, backing up dest first (as dest.bak) if it already
 # exists with different content. Used for every plain-file config we deploy.
 install_file() {
@@ -736,30 +744,20 @@ else
     echo "    installed to ~/.local/share/fonts/MSCoreFonts"
 fi
 
-echo "==> Hyprland config"
+echo "==> config files (update.sh install)"
 
-for f in "$HERE"/hypr/*; do
-    base="$(basename "$f")"
-    # monitors.lua is genuinely per-machine (see CLAUDE.md) — the repo's copy
-    # is only a template for a fresh install to seed. Once a real deployed
-    # one exists, re-running install.sh must never touch it: install_file()
-    # would otherwise overwrite the live monitor layout with that generic
-    # template on every run, backing up the real config as .bak instead of
-    # leaving it in place.
-    if [ "$base" = "monitors.lua" ] && [ -f "$HOME/.config/hypr/monitors.lua" ]; then
-        continue
-    fi
-    install_file "$f" "$HOME/.config/hypr/$base"
-done
-# hyprlock.conf/hyprpaper.conf keep a literal "$HOME" placeholder in the repo
-# rather than a real path (there's no per-machine value to template there
-# otherwise) — but hyprlang only reliably expands $VAR inside cmd[...] shell
-# contexts (confirmed: hyprpaper --verbose never even logs parsing its own
-# preload/wallpaper lines, so it can't be used to test plain-scalar
-# expansion either), not in a plain scalar like background{path=...}. Patch
-# the real path in at deploy time instead of trusting that expansion.
-sed -i "s|\$HOME|$HOME|g" "$HOME/.config/hypr/hyprlock.conf" "$HOME/.config/hypr/hyprpaper.conf"
-echo "    installed to ~/.config/hypr (Hyprland reloads config automatically on save)"
+# Every user-level config file (hypr, quickshell, kitty, zsh, fastfetch, ...)
+# goes through update.sh, the one place that maps repo paths to their deployed
+# location -- the same code that deploys every later change from the git
+# hooks, so a first install and an update can't disagree about where a file
+# goes. It deploys HEAD (committed files only), keeps a differing existing
+# file as <name>.bak like install_file() does, never replaces an existing
+# monitors.lua (per-machine; the repo's is just a template), expands
+# hyprlock/hyprpaper's literal $HOME (hyprlang doesn't in a plain scalar), and
+# records HEAD as the deployed version. desktop-overrides/ stay below, since
+# each one depends on its app being selected.
+"$HERE/update.sh" install
+echo "    Hyprland and quickshell reload their config automatically on save"
 
 if [ "$VM" -eq 1 ]; then
     ENV_LUA="$HOME/.config/hypr/env.lua"
@@ -867,14 +865,6 @@ elif [ -n "${BROWSER_FLATPAK_ID[$DEFAULT_BROWSER]:-}" ]; then
 else
     echo "    unrecognized DEFAULT_BROWSER=$DEFAULT_BROWSER, leaving Firefox as default"
 fi
-
-echo "==> quickshell config"
-
-while IFS= read -r -d '' f; do
-    rel="${f#"$HERE"/quickshell/}"
-    install_file "$f" "$HOME/.config/quickshell/$rel"
-done < <(find "$HERE/quickshell" -type f -print0)
-echo "    installed to ~/.config/quickshell (hot-reloads automatically)"
 
 echo "==> quickshell custom widgets (user-local, not tracked by this repo)"
 
@@ -984,10 +974,9 @@ else
     git clone --depth 1 https://github.com/Ronin-CK/HyprQuickFrame "$HQF_DIR"
 fi
 
-# ~/.config/hyprquickframe/theme.toml is checked before the repo's own copy
-# (see HyprQuickFrame's README) — same defaults, animations turned off.
-install_file "$HERE/hyprquickframe/theme.toml" "$HOME/.config/hyprquickframe/theme.toml"
-echo "    theme installed to ~/.config/hyprquickframe (animations disabled)"
+# ~/.config/hyprquickframe/theme.toml (deployed by update.sh install above)
+# is checked before the clone's own copy (see HyprQuickFrame's README) — same
+# defaults, animations turned off.
 
 echo "==> satty (HyprQuickFrame's annotationTool)"
 
@@ -1007,16 +996,6 @@ else
     sudo dnf copr disable -y mineiro/satty >/dev/null 2>&1 || true
     echo "    WARNING: satty unavailable for Fedora $(rpm -E %fedora) — skipped (screenshot Edit action won't work)"
 fi
-
-echo "==> kitty config"
-
-install_file "$HERE/kitty/kitty.conf" "$HOME/.config/kitty/kitty.conf"
-echo "    installed to ~/.config/kitty"
-
-echo "==> neovim config (transparent background)"
-
-install_file "$HERE/nvim/init.lua" "$HOME/.config/nvim/init.lua"
-echo "    installed to ~/.config/nvim"
 
 echo "==> zsh (shell + prompt)"
 
@@ -1046,15 +1025,12 @@ else
     echo "    installed oh-my-posh to ~/.local/bin"
 fi
 
-# Unlike kitty.conf/qt6ct.conf (files nobody but this repo writes), Fedora
-# ships a default ~/.zshrc and any pre-existing user has their own — on a
-# fresh machine install_file() backs that up as ~/.zshrc.bak and replaces
-# it with this one. Intentional (this is an opinionated personal distro
-# config, not a generic zsh installer), just not free like the other two.
-install_file "$HERE/zsh/.zshrc" "$HOME/.zshrc"
-install_file "$HERE/zsh/.zsh_plugins.txt" "$HOME/.zsh_plugins.txt"
-install_file "$HERE/zsh/prompt.toml" "$HOME/.config/prompt.toml"
-echo "    installed ~/.zshrc, ~/.zsh_plugins.txt, ~/.config/prompt.toml"
+# ~/.zshrc, ~/.zsh_plugins.txt and ~/.config/prompt.toml were deployed by
+# update.sh install above. Unlike kitty.conf/qt6ct.conf (files nobody but
+# this repo writes), Fedora ships a default ~/.zshrc and any pre-existing
+# user has their own — on a fresh machine it's backed up as ~/.zshrc.bak and
+# replaced. Intentional (this is an opinionated personal distro config, not a
+# generic zsh installer), just not free like the other two.
 
 # Last, since antidote/oh-my-posh above must already be in place before the
 # next login shell starts — flipping this first and failing partway through
@@ -1113,17 +1089,12 @@ else
     echo "    root's login shell already zsh"
 fi
 
-echo "==> pavucontrol-dark GTK4 theme"
-
-# A *named* theme under ~/.local/share/themes, not ~/.config/gtk-4.0/gtk.css:
+# pavucontrol-dark GTK4 theme (deployed by update.sh install): a *named* theme under ~/.local/share/themes, not ~/.config/gtk-4.0/gtk.css:
 # the latter is a global user stylesheet applied to every GTK4 app, including
 # libadwaita ones like Nautilus, which already do their own correct dark
 # styling via the color-scheme portal — a global override collided with that
 # and broke Nautilus. A named theme only applies to processes explicitly
 # launched with GTK_THEME=pavucontrol-dark (Volume.qml, for pavucontrol only).
-install_file "$HERE/themes/pavucontrol-dark/gtk-4.0/gtk.css" \
-    "$HOME/.local/share/themes/pavucontrol-dark/gtk-4.0/gtk.css"
-echo "    installed to ~/.local/share/themes/pavucontrol-dark"
 
 echo "==> qt6ct (Qt app dark theme)"
 
@@ -1138,8 +1109,7 @@ if ! rpm -q qt6ct >/dev/null 2>&1; then
 else
     echo "    qt6ct already installed"
 fi
-install_file "$HERE/qt6ct/qt6ct.conf" "$HOME/.config/qt6ct/qt6ct.conf"
-echo "    installed to ~/.config/qt6ct (dark palette: darker.conf)"
+echo "    config: ~/.config/qt6ct/qt6ct.conf (dark palette: darker.conf, deployed by update.sh install)"
 
 echo "==> wlctl (wifi TUI, used by quickshell/scripts/wlctl-toggle.sh)"
 
@@ -1155,22 +1125,6 @@ else
     sudo install -Dm755 "$HOME/.cargo/bin/wlctl" /usr/local/bin/wlctl
     echo "    installed to /usr/local/bin/wlctl"
 fi
-
-echo "==> suppressing nm-applet autostart (wlctl replaces its tray icon)"
-
-install_file "$HERE/autostart-overrides/nm-applet.desktop" "$HOME/.config/autostart/nm-applet.desktop"
-echo "    installed to ~/.config/autostart (overrides /etc/xdg/autostart/nm-applet.desktop)"
-
-echo "==> fastfetch config (SichOS branding)"
-
-install_file "$HERE/fastfetch/config.jsonc" "$HOME/.config/fastfetch/config.jsonc"
-install_file "$HERE/fastfetch/logo.txt" "$HOME/.config/fastfetch/logo.txt"
-echo "    installed to ~/.config/fastfetch"
-
-echo "==> fontconfig (Twemoji as the preferred emoji font)"
-
-install_file "$HERE/fontconfig/conf.d/55-sichos-twemoji.conf" "$HOME/.config/fontconfig/conf.d/55-sichos-twemoji.conf"
-echo "    installed to ~/.config/fontconfig/conf.d (apps pick it up on restart)"
 
 echo "==> sichos-gamepad (native controller overlay daemon)"
 
@@ -1379,12 +1333,8 @@ fi
 
 echo "==> wallpaper"
 
-mkdir -p "$HOME/Pictures"
-if [ -f "$HOME/Pictures/wallpaper.jpg" ] && ! cmp -s "$HERE/wallpaper/wallpaper.jpg" "$HOME/Pictures/wallpaper.jpg"; then
-    cp "$HOME/Pictures/wallpaper.jpg" "$HOME/Pictures/wallpaper.jpg.bak"
-    echo "    backed up existing wallpaper to Pictures/wallpaper.jpg.bak"
-fi
-cp "$HERE/wallpaper/wallpaper.jpg" "$HOME/Pictures/wallpaper.jpg"
+# ~/Pictures/wallpaper.jpg itself was deployed by update.sh install above;
+# this only makes a running hyprpaper show it.
 
 if pgrep -x hyprpaper >/dev/null 2>&1 && [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
     pkill hyprpaper
@@ -1710,16 +1660,14 @@ fi
 
 echo "==> auto-updates (git hooks + update.sh)"
 
-# Everything above deployed the working tree's configs, so HEAD is the
-# deployed version from here on; the hooks then deploy each later change
-# (see update.sh). Only when this is a git checkout (not a tarball copy).
-if git -C "$HERE" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    git -C "$HERE" config core.hooksPath githooks
-    "$HERE/update.sh" mark || echo "    couldn't record the deployed version; run ./update.sh mark by hand"
-    echo "    enabled: pulls/commits in $HERE now deploy their config changes"
-else
-    echo "    not a git checkout, skipped (updates: re-clone and use git)"
-fi
+# From here on this machine updates itself: the hooks run update.sh after
+# every pull/commit/rebase/branch switch, deploying what changed since the
+# recorded version (update.sh install recorded HEAD for the user configs
+# above; the system steps above just deployed HEAD's system files too).
+# install.sh is never needed again for config changes -- see update.sh.
+git -C "$HERE" config core.hooksPath githooks
+"$HERE/update.sh" system mark || echo "    couldn't record the system files' version; run ./update.sh system mark by hand"
+echo "    enabled: config changes now deploy on pull/commit; system ones via ./update.sh system"
 
 cat <<EOF
 
