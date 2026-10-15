@@ -54,33 +54,50 @@ commit them (or deploy them by hand, see below).
 
 ## Seeing a change live while you work
 
-Committing deploys it — but you don't have to commit to try something out:
+Committing deploys a change — but you don't have to commit to try something out:
 
-1. **Copy the file over the deployed one.** Edit it in the repo, then e.g.
+```sh
+./update.sh try                      # deploy every uncommitted change to a config file, now
+./update.sh try quickshell/modules   # ...or only under some paths
+```
 
-   ```sh
-   cp quickshell/modules/Bar.qml ~/.config/quickshell/modules/Bar.qml
-   ```
+`try` takes the repo's **working tree** — edited files, new (untracked) files, deleted files — and deploys
+them the same careful way a normal update does: new files first and `Theme.qml` before the rest (so
+quickshell's hot reload sees a complete tree), your UI settings carried over, and a check that
+quickshell really reloaded. Edit more, run `try` again; a file you reverted in the repo goes back to its
+committed version on the next `try`. The Version tile shows `N uncommitted live` meanwhile, and
+`./update.sh status` lists the files.
 
-   Hyprland / quickshell reload within a second or so. Repo paths map flatly: `hypr/` →
-   `~/.config/hypr/`, `quickshell/` → `~/.config/quickshell/`, and so on (the full list is in
-   [`CLAUDE.md`](CLAUDE.md) and `update.sh`'s `dest_for`).
-2. **Or edit the deployed file directly** under `~/.config/...`, then port the change back into the repo.
+When you're done:
 
-When you later commit that same change, the hook sees the deployed file already matches and leaves it
-alone — no conflict.
+- **Keep it — commit.** The hook sees the deployed files already match and just stops counting them as
+  live. Files you haven't committed yet stay live through commits and pulls (the hook prints
+  `kept live`, it doesn't treat them as conflicts).
+- **Drop it — `./update.sh undo`.** Puts every file `try` deployed back to the deployed commit's
+  version (restores deleted files, removes new ones). `./update.sh undo <path>` for just some.
 
-**If you drop an experiment instead** (`git checkout -- <file>`), the copied version stays live:
-`./update.sh status` lists it as `modified`, and updates will keep it as a local edit. Put it back by
-copying the repo version over it again.
+Safety:
+
+- `try` only replaces a deployed file that's untouched or that an earlier `try` put there. One with
+  local edits that didn't come from the repo is kept and reported; `try --force <path>` replaces it
+  (backup as `<name>.bak`).
+- `undo` keeps a file you edited by hand *after* trying it; `undo --force <path>` replaces it
+  (with a `.bak`).
+- `./update.sh undo --all` also puts back every *other* deployed file that differs from the deployed
+  commit — leftovers from hand-copying or old experiments. It lists them and asks first (`--yes` to
+  skip the question); each gets a `.bak`.
+- System files are never tried (they need sudo): commit them, then `./update.sh system`.
+- While anything is live, `./update.sh switch` refuses — commit or undo first.
+
+Copying a file by hand (`cp quickshell/modules/Bar.qml ~/.config/quickshell/modules/`) still works, and
+so does editing the deployed file directly. Just know that `update.sh` can't tell those from local edits:
+`status` lists them as `modified`, updates keep them, and `undo --all` is how to put them back.
 
 Tips:
 
-- A **brand-new** `.qml` file isn't watched by quickshell until it has been loaded once, so copying only
-  a new file reloads nothing. Copy new files *first*, then the files that use them — or force a reload:
-  `quickshell ipc call shell reload`. (Touching `shell.qml` does **not** reload; quickshell reacts to
-  content changes only.)
-- When a change adds new `Theme.qml` tokens, copy `Theme.qml` first.
+- quickshell only watches files it has already loaded: a brand-new `.qml` file copied by hand reloads
+  nothing (`try` handles this). Force a reload with `quickshell ipc call shell reload` — touching
+  `shell.qml` does **not** reload; quickshell reacts to content changes only.
 - Did it load? `quickshell log --pid "$(pgrep -xo quickshell)" | tail` — look for
   `Configuration Loaded` after the last `Reloading configuration...`.
 
@@ -93,6 +110,8 @@ Tips:
 ./update.sh switch <rev>    # deploy any commit / tag / branch, without checking it out (pins it)
 ./update.sh back            # go back to the version deployed before this one
 ./update.sh latest          # follow HEAD again
+./update.sh try [paths]     # deploy uncommitted changes now, to see them live (--force: over local edits)
+./update.sh undo [paths]    # put back what try deployed (--all: every differing file, asks; --yes)
 ./update.sh system          # apply pending system-level changes (asks for sudo)
 ./update.sh info            # one JSON line about the deployed version (the Version tile uses it)
 ./update.sh install         # first install: deploy every config (install.sh runs this)
@@ -148,7 +167,7 @@ The Control Center's **Version** tile (add it with the pencil → "Add tiles") s
 version this machine runs:
 
 - the deployed **commit hash**, with the **branch** (or tag, or pin) and how long ago it was deployed
-- underneath, what needs a look — `pinned`, `N behind HEAD`, `N to pull`, `N to push`,
+- underneath, what needs a look — `pinned`, `N behind HEAD`, `N uncommitted live`, `N to pull`, `N to push`,
   `N parked edits`, `N system`, `auto-update off` — or else the commit message
 - at 2 rows, the commit message in full and one status line
 - lit when the deployed version isn't HEAD

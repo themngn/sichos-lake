@@ -27,6 +27,8 @@ QtObject {
     readonly property int conflicts: known ? Number(info.conflicts) || 0 : 0
     readonly property int systemPending: known ? Number(info.system_pending) || 0 : 0
     readonly property bool hooks: known && info.hooks === "1"
+    // Uncommitted files deployed by `update.sh try`
+    readonly property int live: known ? Number(info.live) || 0 : 0
     // The deployed commit isn't what the checkout is on: pinned, or a deploy
     // failed / hooks are off
     readonly property bool offHead: known && info.deployed !== info.head
@@ -35,6 +37,7 @@ QtObject {
     // Things worth a look, in the order the tile shows them
     readonly property var flags: !known ? [] : [
         root.pinned ? "pinned" : root.offHead ? (root.behindHead > 0 ? root.behindHead + " behind HEAD" : "not HEAD") : "",
+        root.live > 0 ? root.live + " uncommitted live" : "",
         root.behindOrigin > 0 ? root.behindOrigin + " to pull" : "",
         root.aheadOrigin > 0 ? root.aheadOrigin + " to push" : "",
         root.conflicts > 0 ? root.conflicts + (root.conflicts === 1 ? " parked edit" : " parked edits") : "",

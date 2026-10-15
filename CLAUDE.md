@@ -52,8 +52,10 @@ places — the repo file (what `install.sh` ships to every future machine) and t
 - `install.sh` only ever copies forward — it never deletes a deployed file whose repo source was removed
   or renamed (`update.sh` does, for removals after the install). Don't treat a file's presence under
   `$HOME` as proof it's still part of the current config — check the repo first.
-- Practical workflow for a config edit: change it in the repo, then copy that same file to its deployed
-  path so it's live immediately (committing it deploys it too, via the hooks) — Hyprland/quickshell both
+- Practical workflow for a config edit: change it in the repo, then `./update.sh try [path]` to deploy
+  the uncommitted change live (it orders new files/`Theme.qml` first and checks quickshell's reload;
+  `./update.sh undo` drops it again) — committing deploys it too, via the hooks. A plain `cp` to the
+  deployed path also works but looks like a local edit to `update.sh`. Hyprland/quickshell both
   hot-reload on save, so this is the fast path to actually seeing the change, not an extra chore.
   Conversely, if a fix gets hand-tested by editing the deployed file directly first, port it back into the
   repo before considering the task done — a fix that only exists under `$HOME` is invisible to

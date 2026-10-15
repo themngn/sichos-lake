@@ -19,6 +19,16 @@
 #   ./update.sh system         apply system-level changes (sudo): SDDM,
 #                              Plymouth, polkit, kernel-install, firewalld,
 #                              root's zsh files, new packages.txt entries
+#   ./update.sh try [--force] [paths...]
+#                              deploy the repo's UNCOMMITTED changes to user
+#                              config files now, to see them live (new files,
+#                              edits, deletions); again after more edits; a
+#                              file reverted in the repo goes back too
+#   ./update.sh undo [--all [--yes]] [--force] [paths...]
+#                              put what `try` deployed back to the deployed
+#                              commit's version; --all also every other
+#                              deployed file that differs from it (backed up
+#                              as .bak, asks first)
 #   ./update.sh install        first install: deploy every user config at HEAD
 #                              (a differing existing file is kept as .bak)
 #   ./update.sh mark [rev]     record <rev> (default HEAD) as deployed without
@@ -57,6 +67,11 @@
 #   - monitors.lua (per-machine) is never replaced once it exists, and
 #     desktop-overrides/ (and, for `system`, root's zsh files and the
 #     firewalld service) only update copies install.sh actually deployed
+# `try` keeps a list of what it deployed (~/.local/state/sichos/live.tsv:
+# repo path + checksum of the deployed file, or "deleted"): only files it
+# put there (checksum still matches) or untouched ones are replaced by a later
+# try/undo, and the hooks keep a still-uncommitted live file as it is (a note,
+# not a conflict) and drop it from the list once a commit makes it match.
 # A file that couldn't be written leaves the recorded version where it was,
 # so the next run retries it. Output is also appended to
 # ~/.local/state/sichos/update.log; problems (conflicts, pending system
@@ -81,6 +96,7 @@ PIN="$STATE/deployed-pinned"
 HISTORY="$STATE/deploy-history"
 CONFLICTS="$STATE/update-conflicts"
 LOG="$STATE/update.log"
+LIVE="$STATE/live.tsv"
 mkdir -p "$STATE"
 
 SYSROOT="${SICHOS_SYSROOT:-}"
@@ -289,6 +305,31 @@ write_atomic() {
     return 1
 }
 
+# ------------------------------------------------- live (`try`) bookkeeping
+
+declare -A LIVE_SHA=()
+sha_of() { sha256sum "$1" 2>/dev/null | cut -d' ' -f1; }
+load_live() {
+    local rel sum
+    LIVE_SHA=()
+    [ -f "$LIVE" ] || return 0
+    while IFS=$'\t' read -r rel sum; do
+        [ -n "$rel" ] && LIVE_SHA[$rel]="$sum"
+    done < "$LIVE"
+}
+save_live() {
+    local rel
+    if [ ${#LIVE_SHA[@]} -eq 0 ]; then rm -f "$LIVE"; return 0; fi
+    for rel in "${!LIVE_SHA[@]}"; do printf '%s\t%s\n' "$rel" "${LIVE_SHA[$rel]}"; done | sort > "$LIVE.tmp" \
+        && mv -f "$LIVE.tmp" "$LIVE"
+}
+# Whether the deployed file is still exactly what `try` put there
+live_ours() {
+    local rel="$1" dest="$2" rec="${LIVE_SHA[$1]:-}"
+    [ -n "$rec" ] || return 1
+    if [ "$rec" = deleted ]; then [ ! -e "$dest" ]; else [ -f "$dest" ] && [ "$(sha_of "$dest")" = "$rec" ]; fi
+}
+
 # ------------------------------------------------------------- user files
 
 declare -a CHANGED=() WARN=() ERRORS=() NOTES=() PROBLEMS=()
@@ -303,6 +344,13 @@ deploy_file() {
     render "$TO" "$rel" "$dest" "$new" || { ERRORS+=("can't read $rel at $(short "$TO")"); return; }
     if [ -f "$dest" ] && cmp -s "$new" "$dest"; then
         rm -f "$CONFLICTS/$rel"
+        unset 'LIVE_SHA[$rel]'   # a tried change, now committed
+        return 0
+    fi
+    # Still the uncommitted version `try` deployed: that's work in progress,
+    # not a conflict -- it stays live until committed or undone.
+    if live_ours "$rel" "$dest"; then
+        NOTES+=("kept live (uncommitted, ./update.sh try): $(tilde "$dest")")
         return 0
     fi
     if [ -e "$dest" ]; then
@@ -331,9 +379,17 @@ deploy_file() {
 remove_file() {
     local rel="$1" dest old="$WORK/old"
     dest="$(dest_for "$rel")"
+    if [ -n "$dest" ] && [ "${LIVE_SHA[$rel]:-}" = deleted ] && [ ! -e "$dest" ]; then
+        unset 'LIVE_SHA[$rel]'   # a tried deletion, now committed
+        return 0
+    fi
     { [ -z "$dest" ] || [ ! -e "$dest" ]; } && return 0
     [ "$rel" = hypr/monitors.lua ] && return 0
     rm -f "$CONFLICTS/$rel"
+    if live_ours "$rel" "$dest"; then
+        NOTES+=("kept live (uncommitted, ./update.sh try): $(tilde "$dest")")
+        return 0
+    fi
     if unmodified_since "$FROM" "$rel" "$dest" "$old"; then
         if rm -f "$dest"; then
             CHANGED+=("removed $(tilde "$dest")")
@@ -455,6 +511,7 @@ apply() {
     WORK="$(mktemp -d)"
     trap 'rm -rf "$WORK"' EXIT
 
+    load_live
     sweep_conflicts
     if [ "$FROM" != "$TO" ]; then
         while IFS= read -r -d '' status && IFS= read -r -d '' path; do
@@ -490,6 +547,7 @@ apply() {
         printf '%s\n' "${CHANGED[@]}" | grep -q 'wallpaper\.jpg' && NOTES+=("restart hyprpaper to show the new wallpaper")
     fi
 
+    save_live
     if [ ${#ERRORS[@]} -eq 0 ] && [ "$(deployed_rev 2>/dev/null)" != "$TO" ]; then
         set_stamp "$TO" && poke_shell || ERRORS+=("couldn't record the deployed version")
         # System files in step with FROM and none changed: still in step at TO
@@ -537,6 +595,10 @@ cmd_switch() {
     [ -n "${1:-}" ] || die "usage: ./update.sh switch <commit|tag|branch>"
     lock; need_stamp
     TO="$(resolve "$1")" || die "unknown revision: $1"
+    load_live
+    if [ ${#LIVE_SHA[@]} -gt 0 ] && [ "$TO" != "$(resolve HEAD)" ]; then
+        die "${#LIVE_SHA[@]} uncommitted file(s) are live from ./update.sh try -- commit them or ./update.sh undo first"
+    fi
     if [ "$TO" = "$(resolve HEAD)" ]; then rm -f "$PIN"; else printf '%s\n' "$1" > "$PIN"; fi
     apply "switch $([[ "$1" =~ ^[0-9a-f]{40}$ ]] && short "$1" || echo "$1")" || return 1
     [ -f "$PIN" ] && echo "  pinned: hooks won't follow HEAD until ./update.sh latest"
@@ -609,6 +671,188 @@ cmd_install() {
         return 1
     fi
     set_stamp "$TO" && rm -f "$PIN"
+}
+
+# ------------------------------------------------------------ try / undo
+
+# The working tree's version of $1, as it would be deployed, into $3 ($2 =
+# the deployed path, for the carry-overs)
+render_worktree() {
+    cp "$HERE/$1" "$3" && patch_like_deployed "$1" "$3" "$2"
+}
+
+try_file() {
+    local rel="$1" dest new="$WORK/new" base="$WORK/base" ours=0 mode=644
+    dest="$(dest_for "$rel")"
+    [ -z "$dest" ] && return 0
+    skipped "$rel" "$dest" && return 0
+    if [ ! -e "$dest" ] || live_ours "$rel" "$dest" || unmodified_since "$TO" "$rel" "$dest" "$base"; then ours=1; fi
+
+    if [ -f "$HERE/$rel" ]; then
+        render_worktree "$rel" "$dest" "$new" || { ERRORS+=("can't read $rel"); return; }
+        if [ -f "$dest" ] && cmp -s "$new" "$dest"; then
+            # Already live; or back to the committed version (reverted in the repo)
+            if render "$TO" "$rel" "$dest" "$base" && cmp -s "$base" "$dest"; then unset 'LIVE_SHA[$rel]'
+            else LIVE_SHA[$rel]="$(sha_of "$dest")"; fi
+            return 0
+        fi
+        if [ "$ours" -eq 0 ]; then
+            if [ "$FORCE" -eq 0 ]; then
+                WARN+=("$(tilde "$dest") has local edits not from the repo, kept (./update.sh try --force $rel replaces it, backup as .bak)")
+                return 0
+            fi
+            cp -p "$dest" "$dest.bak" && NOTES+=("backed up $(tilde "$dest") as $(basename "$dest").bak")
+        fi
+        [ -x "$HERE/$rel" ] && mode=755
+        local created=0
+        [ -e "$dest" ] || created=1
+        if ! write_atomic "$new" "$dest" "$mode"; then ERRORS+=("couldn't write $(tilde "$dest")"); return; fi
+        if render "$TO" "$rel" "$dest" "$base" && cmp -s "$base" "$dest"; then
+            unset 'LIVE_SHA[$rel]'; CHANGED+=("restored $(tilde "$dest") (as committed)")
+        else
+            LIVE_SHA[$rel]="$(sha_of "$dest")"; CHANGED+=("$(tilde "$dest")")
+        fi
+        if [[ "$rel" == quickshell/*.qml || "$rel" == quickshell/*.js ]]; then
+            QS_CHANGED=1; [ "$created" -eq 1 ] && QS_NEW=1
+        fi
+    else
+        # Deleted in the working tree
+        [ -e "$dest" ] || { [ -n "${LIVE_SHA[$rel]:-}" ] || LIVE_SHA[$rel]=deleted; return 0; }
+        if [ "$ours" -eq 0 ]; then
+            if [ "$FORCE" -eq 0 ]; then
+                WARN+=("$(tilde "$dest") has local edits not from the repo, kept although $rel is deleted (try --force removes it, backup as .bak)")
+                return 0
+            fi
+            cp -p "$dest" "$dest.bak"
+        fi
+        if rm -f "$dest"; then
+            LIVE_SHA[$rel]=deleted; CHANGED+=("removed $(tilde "$dest")")
+            [[ "$rel" == quickshell/*.qml || "$rel" == quickshell/*.js ]] && QS_CHANGED=1
+        else
+            ERRORS+=("couldn't remove $(tilde "$dest")")
+        fi
+    fi
+}
+
+FORCE=0
+cmd_try() {
+    local rel path n_sys=0
+    local -a paths=() cand=() fresh=() existing=()
+    for a in "$@"; do case "$a" in --force) FORCE=1 ;; *) paths+=("$a") ;; esac; done
+    lock; need_stamp
+    TO="$(resolve HEAD)" || die "no HEAD"
+    [ -f "$PIN" ] && die "the config is pinned to $(cat "$PIN"); try works on top of HEAD -- ./update.sh latest first"
+    [ "$FROM" = "$TO" ] || die "deployed is $(short "$FROM"), HEAD is $(short "$TO") -- ./update.sh first, then try"
+    WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
+    load_live
+
+    # Uncommitted changes (tracked + new untracked files), plus everything
+    # live from an earlier try (it may have been reverted since)
+    mapfile -t cand < <({
+        git diff --name-only HEAD -- "${paths[@]}"
+        git ls-files --others --exclude-standard -- "${paths[@]}"
+        for rel in "${!LIVE_SHA[@]}"; do
+            if [ ${#paths[@]} -eq 0 ]; then echo "$rel"; else for path in "${paths[@]}"; do [[ "$rel" == "${path%/}"* ]] && echo "$rel"; done; fi
+        done
+    } | sort -u)
+    for rel in "${cand[@]}"; do
+        sys_relevant "$rel" && n_sys=$((n_sys + 1))
+        path="$(dest_for "$rel")"
+        [ -z "$path" ] && continue
+        if [ ! -e "$path" ] && [ -f "$HERE/$rel" ]; then fresh+=("$rel"); else existing+=("$rel"); fi
+    done
+    if printf '%s\n' "${fresh[@]}" "${existing[@]}" | grep -qE '^quickshell/.*\.(qml|js)$'; then qs_watch_start; fi
+    # Same order as apply(): new files, Theme.qml, the rest
+    for rel in "${fresh[@]}"; do try_file "$rel"; done
+    for rel in "${existing[@]}"; do [ "$rel" = quickshell/modules/Theme.qml ] && try_file "$rel"; done
+    for rel in "${existing[@]}"; do [ "$rel" = quickshell/modules/Theme.qml ] || try_file "$rel"; done
+    [ "$QS_CHANGED" -eq 1 ] && qs_check_reload
+    if [ -n "$QS_RESULT" ] && [ "$QS_RESULT" != ok ]; then WARN+=("$QS_RESULT"); fi
+    [ "$n_sys" -gt 0 ] && NOTES+=("$n_sys system-level file(s) changed too: try doesn't deploy those (they need sudo; commit, then ./update.sh system)")
+    save_live
+    if [ ${#CHANGED[@]} -eq 0 ] && [ ${#WARN[@]} -eq 0 ] && [ ${#ERRORS[@]} -eq 0 ]; then
+        echo "nothing to try: no uncommitted changes to deployed config files${paths[*]:+ under ${paths[*]}}"
+    else
+        report "sichos try $(date '+%F %T') (on $(short "$TO"), ${#LIVE_SHA[@]} file(s) live)" | tee -a "$LOG"
+    fi
+    poke_shell
+    [ ${#ERRORS[@]} -eq 0 ]
+}
+
+undo_file() {
+    local rel="$1" drift="$2" dest base="$WORK/base" mode
+    dest="$(dest_for "$rel")"
+    [ -z "$dest" ] && { unset 'LIVE_SHA[$rel]'; return 0; }
+    if [ "$drift" -eq 0 ] && ! live_ours "$rel" "$dest" && [ "$FORCE" -eq 0 ]; then
+        WARN+=("$(tilde "$dest") was edited after try, kept (./update.sh undo --force $rel replaces it, backup as .bak)")
+        return 0
+    fi
+    # Anything that isn't exactly what try put there gets a backup
+    if [ -e "$dest" ] && { [ "$drift" -eq 1 ] || ! live_ours "$rel" "$dest"; }; then
+        cp -p "$dest" "$dest.bak" && NOTES+=("backed up $(tilde "$dest") as $(basename "$dest").bak")
+    fi
+    if render "$FROM" "$rel" "$dest" "$base"; then
+        mode="$(file_mode "$FROM" "$rel")"
+        if [ -f "$dest" ] && cmp -s "$base" "$dest"; then :
+        elif write_atomic "$base" "$dest" "$mode"; then CHANGED+=("restored $(tilde "$dest")")
+        else ERRORS+=("couldn't write $(tilde "$dest")"); return; fi
+    elif [ -e "$dest" ]; then
+        if rm -f "$dest"; then CHANGED+=("removed $(tilde "$dest")"); else ERRORS+=("couldn't remove $(tilde "$dest")"); return; fi
+    fi
+    [[ "$rel" == quickshell/*.qml || "$rel" == quickshell/*.js ]] && QS_CHANGED=1
+    unset 'LIVE_SHA[$rel]'
+}
+
+cmd_undo() {
+    local all=0 yes=0 rel dest path ans
+    local -a paths=() targets=() drift=()
+    for a in "$@"; do
+        case "$a" in --all) all=1 ;; --yes|-y) yes=1 ;; --force) FORCE=1 ;; *) paths+=("$a") ;; esac
+    done
+    lock; need_stamp
+    TO="$FROM"
+    WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
+    load_live
+    for rel in "${!LIVE_SHA[@]}"; do
+        if [ ${#paths[@]} -eq 0 ]; then targets+=("$rel")
+        else for path in "${paths[@]}"; do [[ "$rel" == "${path%/}"* ]] && targets+=("$rel"); done; fi
+    done
+    if [ "$all" -eq 1 ]; then
+        # Every other deployed file that isn't the deployed commit's version
+        while IFS= read -r -d '' rel; do
+            [ -n "${LIVE_SHA[$rel]:-}" ] && continue
+            dest="$(dest_for "$rel")"
+            [ -z "$dest" ] && continue
+            skipped "$rel" "$dest" && continue
+            [ "$rel" = hypr/monitors.lua ] && continue
+            if [ ${#paths[@]} -gt 0 ]; then
+                local hit=0; for path in "${paths[@]}"; do [[ "$rel" == "${path%/}"* ]] && hit=1; done
+                [ "$hit" -eq 1 ] || continue
+            fi
+            if [ ! -e "$dest" ] || ! unmodified_since "$FROM" "$rel" "$dest" "$WORK/f"; then drift+=("$rel"); fi
+        done < <(git ls-tree -r -z --name-only "$FROM" -- "${paths[@]}")
+        if [ ${#drift[@]} -gt 0 ]; then
+            echo "Not from ./update.sh try, but differ from $(short "$FROM") (each gets a .bak first):"
+            for rel in "${drift[@]}"; do dest="$(dest_for "$rel")"; echo "  $([ -e "$dest" ] && echo modified || echo missing)  $(tilde "$dest")"; done
+            if [ "$yes" -eq 0 ]; then
+                [ -t 0 ] || die "re-run with --yes to replace these"
+                read -r -p "Replace them with $(short "$FROM")'s version? [y/N] " ans
+                [[ "$ans" == [yY]* ]] || { echo "left as they are"; drift=(); }
+            fi
+        fi
+    fi
+    if [ ${#targets[@]} -eq 0 ] && [ ${#drift[@]} -eq 0 ]; then
+        echo "nothing to undo${paths[*]:+ under ${paths[*]}}"; return 0
+    fi
+    if printf '%s\n' "${targets[@]}" "${drift[@]}" | grep -qE '^quickshell/.*\.(qml|js)$'; then qs_watch_start; fi
+    for rel in "${targets[@]}"; do undo_file "$rel" 0; done
+    for rel in "${drift[@]}"; do undo_file "$rel" 1; done
+    [ "$QS_CHANGED" -eq 1 ] && qs_check_reload
+    if [ -n "$QS_RESULT" ] && [ "$QS_RESULT" != ok ]; then WARN+=("$QS_RESULT"); fi
+    save_live
+    report "sichos undo $(date '+%F %T') (back to $(short "$FROM"))" | tee -a "$LOG"
+    poke_shell
+    [ ${#ERRORS[@]} -eq 0 ]
 }
 
 # ----------------------------------------------------------- system files
@@ -800,7 +1044,8 @@ cmd_info() {
         behind_head "${dep:+$(git rev-list --count "$dep..$head" 2>/dev/null)}" \
         upstream "$upstream" ahead "$ahead" behind "$behind" fetched "$fetched" \
         dirty "$(git status --porcelain 2>/dev/null | wc -l)" \
-        conflicts "$n_conf" system "${sys:+$(short "$sys")}" system_pending "$sys_pending" hooks "$hooks"
+        conflicts "$n_conf" system "${sys:+$(short "$sys")}" system_pending "$sys_pending" hooks "$hooks" \
+        live "$( [ -f "$LIVE" ] && wc -l < "$LIVE" || echo 0)"
 }
 
 cmd_list() {
@@ -842,6 +1087,16 @@ cmd_status() {
         echo "system files: no version recorded (./update.sh system mark <rev> once they match a commit)"
     fi
 
+    load_live
+    if [ ${#LIVE_SHA[@]} -gt 0 ]; then
+        echo "live from ./update.sh try (uncommitted; commit them or ./update.sh undo):"
+        for rel in $(printf '%s\n' "${!LIVE_SHA[@]}" | sort); do
+            dest="$(dest_for "$rel")"
+            if live_ours "$rel" "$dest"; then f=""; else f="  (edited since)"; fi
+            [ "${LIVE_SHA[$rel]}" = deleted ] && f=" (deleted)$f"
+            echo "  $(tilde "$dest")$f"
+        done
+    fi
     if [ -d "$CONFLICTS" ] && [ -n "$(find "$CONFLICTS" -type f -print -quit)" ]; then
         echo "parked versions waiting for a manual merge:"
         find "$CONFLICTS" -type f | sort | while read -r f; do
@@ -858,6 +1113,7 @@ cmd_status() {
         dest="$(dest_for "$rel")"
         [ -z "$dest" ] && continue
         skipped "$rel" "$dest" && continue
+        [ -n "${LIVE_SHA[$rel]:-}" ] && continue
         if [ ! -e "$dest" ]; then
             echo "  missing   $(tilde "$dest")"; n=$((n + 1))
         elif git cat-file -e "$dep:$rel" 2>/dev/null && ! unmodified_since "$dep" "$rel" "$dest" "$WORK/f"; then
@@ -865,6 +1121,7 @@ cmd_status() {
         fi
     done < <(git ls-tree -r -z --name-only "$dep")
     [ "$n" -eq 0 ] && echo "  none"
+    [ "$n" -gt 0 ] && echo "  (./update.sh undo --all puts these back, with backups)"
     return 0
 }
 
@@ -884,6 +1141,8 @@ case "${1:-latest}" in
     system) cmd_system "${2:-}" "${3:-}" ;;
     install) cmd_install ;;
     info) cmd_info "${2:-}" ;;
+    try) shift; cmd_try "$@" ;;
+    undo) shift; cmd_undo "$@" ;;
     mark) cmd_mark "${2:-}" ;;
     --hook) cmd_hook ;;
     -h|--help|help) sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//' ;;
