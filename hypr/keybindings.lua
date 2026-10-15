@@ -9,59 +9,99 @@ local mainMod = "SUPER" -- Sets "Windows" key as main modifier
 -- Laptop lid switch handling. Closing the lid doesn't disconnect the internal
 -- panel the way unplugging a monitor does, so Hyprland keeps treating it as a
 -- live output even though nothing is visible. systemd-logind's own defaults
--- already do the right thing for suspend (HandleLidSwitch=suspend when
--- undocked, HandleLidSwitchDocked=ignore -- which per `man logind.conf` also
--- covers "more than one display connected", not just an actual docking
--- station -- so a lid close with an external monitor attached doesn't
--- suspend at all); what's missing is Hyprland disabling the now-invisible
--- internal panel in that docked case, so windows/workspaces stop landing on
--- it. Device confirmed present as "Lid Switch" via `hyprctl devices` and the
--- bind syntax verified live via `hyprctl eval` before adding this. Harmless
--- no-op on any machine without a lid switch (desktops).
+-- already do the right thing undocked (HandleLidSwitch=suspend), and ignore
+-- the lid when docked (HandleLidSwitchDocked=ignore -- which per `man
+-- logind.conf` also covers "more than one display connected"). What happens
+-- in that docked case is the Control Center's "Lid" tile
+-- (quickshell/modules/LidSettings.qml, ~/.config/quickshell/lid-close.json):
+--   "keep"  -- turn the internal panel off, keep working on the others;
+--   "sleep" -- the same, then suspend (the panel stays off if the machine
+--              is woken with the lid still shut, e.g. from a USB keyboard).
+-- Harmless no-op on any machine without a lid switch (desktops).
 --
--- Two things this got wrong the first time (confirmed live via journalctl
--- after a real incident -- see git log for this comment's revision): (1) it
--- disabled unconditionally, including the plain undocked case where the
--- panel is the *only* output and the lid close just triggers a real suspend
--- -- if the matching re-enable doesn't survive that suspend/resume cycle,
--- the panel is left disabled with nothing else to show, i.e. permanently
--- black until a reboot. Now the disable only fires when another monitor is
--- actually active (docked). The re-enable stays unconditional on purpose --
--- it's a harmless no-op on an already-enabled panel, whereas guarding it too
--- would risk stranding a genuinely-disabled one forever (e.g. undocking
--- while docked and closed, then opening). (2) it hardcoded "eDP-1" -- common
--- but not universal (older/other laptops use LVDS-1 or DSI-1), so this now
--- detects the internal panel once at load time by connector prefix instead,
--- the same prefix set an earlier, since-reverted monitor-watch.py daemon
--- used for the same purpose.
-local function detectInternalPanel()
-    for _, m in ipairs(hl.get_monitors()) do
-        if m.name:match("^eDP") or m.name:match("^LVDS") or m.name:match("^DSI") then
-            return m.name
+-- Things this got wrong before (see git log): (1) it disabled the panel
+-- undocked too, where it's the *only* output -- if the re-enable doesn't
+-- survive the suspend/resume that follows, it stays black until a reboot.
+-- The disable still only fires when another monitor is active; the
+-- re-enable stays unconditional (a no-op on an enabled panel). (2) It
+-- hardcoded "eDP-1"; the panel is found by connector prefix. (3) It looked
+-- the panel up in hl.get_monitors() once at load time -- empty at
+-- Hyprland's start, so the lid did nothing until the next config reload.
+-- The connector name now comes from /sys/class/drm, which also has it while
+-- it's disabled. (4) The binds weren't `locked`, so nothing fired while
+-- hyprlock was up (closing the lid on a locked session, or opening it to a
+-- resume's lock screen).
+local LID_SETTINGS = os.getenv("HOME") .. "/.config/quickshell/lid-close.json"
+
+local function readAll(cmd)
+    local p = io.popen(cmd)
+    if not p then return "" end
+    local out = p:read("*a") or ""
+    p:close()
+    return out
+end
+
+local function internalPanel()
+    for name in readAll("ls /sys/class/drm"):gmatch("card%d+%-([%w%-]+)") do
+        if name:match("^eDP") or name:match("^LVDS") or name:match("^DSI") then
+            return name
         end
     end
     return nil -- desktop, or a panel naming scheme this doesn't recognize
 end
 
-local INTERNAL_PANEL = detectInternalPanel()
-
-local function otherMonitorActive()
+local function otherMonitorActive(panel)
     for _, m in ipairs(hl.get_monitors()) do
-        if m.name ~= INTERNAL_PANEL then
+        if m.name ~= panel then
             return true
         end
     end
     return false
 end
 
-hl.bind("switch:on:Lid Switch", function()
-    if INTERNAL_PANEL and otherMonitorActive() then
-        hl.monitor({ output = INTERNAL_PANEL, disabled = true })
+local function lidCloseMode()
+    local f = io.open(LID_SETTINGS, "r")
+    if not f then return "keep" end
+    local s = f:read("*a") or ""
+    f:close()
+    return s:match('"mode"%s*:%s*"(%a+)"') or "keep"
+end
+
+local function lidClosed()
+    return readAll("cat /proc/acpi/button/lid/*/state 2>/dev/null"):match("closed") ~= nil
+end
+
+-- Returns whether it turned the panel off (i.e. we're docked).
+local function panelOffIfDocked()
+    local panel = internalPanel()
+    if panel and otherMonitorActive(panel) then
+        hl.monitor({ output = panel, disabled = true })
+        return true
     end
-end)
+    return false
+end
+
+hl.bind("switch:on:Lid Switch", function()
+    if panelOffIfDocked() and lidCloseMode() == "sleep" then
+        hl.exec_cmd("systemctl suspend")
+    end
+end, { locked = true })
 hl.bind("switch:off:Lid Switch", function()
-    if INTERNAL_PANEL then
-        hl.monitor({ output = INTERNAL_PANEL, disabled = false })
+    local panel = internalPanel()
+    if panel then
+        hl.monitor({ output = panel, disabled = false })
+    end
+end, { locked = true })
+
+-- The lid can be shut without a switch event to go with it: a config reload
+-- resets monitor rules (turning a panel the lid hid back on), and Hyprland
+-- may start, or a monitor be plugged in, with the lid already closed.
+if lidClosed() then
+    panelOffIfDocked()
+end
+hl.on("monitor.added", function()
+    if lidClosed() then
+        panelOffIfDocked()
     end
 end)
 
