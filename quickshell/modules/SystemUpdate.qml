@@ -34,6 +34,12 @@ Pill {
     property bool lastCheckOk: true
     property var lastUpdateEpoch: null
     property var checkedAt: null
+    // [{name, version, kind: "dnf"|"flatpak"}], dnf first -- capped at 200
+    // rows by system-update-check.py, so it can be fewer than `count`.
+    property var packages: []
+    // From `dnf needs-restarting -r` (kernel-version fallback); refreshed by
+    // the re-check updateProc fires when the update console closes.
+    property bool rebootNeeded: false
     property bool updating: false
 
     tooltipText: root.count
@@ -110,6 +116,27 @@ Pill {
         if (!checkProc.running) checkProc.running = true
     }
     readonly property bool checking: checkProc.running
+    // Goes through PowerMenu's IpcHandler rather than `systemctl reboot`
+    // directly, so it gets the same cancellable countdown and graceful
+    // app close as picking Reboot from the power menu.
+    function reboot() {
+        if (ShellState.activePopup === root.popupId) ShellState.activePopup = ""
+        Quickshell.execDetached(["quickshell", "ipc", "call", "power", "run", "reboot"])
+    }
+
+    // Shared by the cache file and checkProc -- both carry the same JSON.
+    // Caches written before `packages`/`rebootNeeded` existed just leave
+    // those at their defaults.
+    function _apply(data) {
+        root.count = data.count !== undefined ? data.count : null
+        root.dnfCount = data.dnfCount !== undefined ? data.dnfCount : null
+        root.flatpakCount = data.flatpakCount !== undefined ? data.flatpakCount : null
+        root.packages = Array.isArray(data.packages) ? data.packages : []
+        root.rebootNeeded = data.rebootNeeded === true
+        root.lastCheckOk = data.lastCheckOk !== false
+        root.lastUpdateEpoch = data.lastUpdateEpoch || null
+        root.checkedAt = data.checkedAt || null
+    }
 
     function _dateText(epoch) {
         if (!epoch) return "unknown"
@@ -288,13 +315,7 @@ Pill {
         printErrors: false
         onLoaded: {
             try {
-                const data = JSON.parse(text())
-                root.count = data.count !== undefined ? data.count : null
-                root.dnfCount = data.dnfCount !== undefined ? data.dnfCount : null
-                root.flatpakCount = data.flatpakCount !== undefined ? data.flatpakCount : null
-                root.lastCheckOk = data.lastCheckOk !== false
-                root.lastUpdateEpoch = data.lastUpdateEpoch || null
-                root.checkedAt = data.checkedAt || null
+                root._apply(JSON.parse(text()))
             } catch (e) { /* no cache yet -- stays hidden until checkProc finishes */ }
         }
     }
@@ -305,13 +326,7 @@ Pill {
         stdout: StdioCollector {
             onStreamFinished: {
                 try {
-                    const data = JSON.parse(text)
-                    root.count = data.count !== undefined ? data.count : null
-                    root.dnfCount = data.dnfCount !== undefined ? data.dnfCount : null
-                    root.flatpakCount = data.flatpakCount !== undefined ? data.flatpakCount : null
-                    root.lastCheckOk = data.lastCheckOk !== false
-                    root.lastUpdateEpoch = data.lastUpdateEpoch || null
-                    root.checkedAt = data.checkedAt || null
+                    root._apply(JSON.parse(text))
                 } catch (e) { /* keep last known values on parse failure */ }
             }
         }
@@ -333,6 +348,7 @@ Pill {
                   "-e", "bash", Quickshell.env("HOME") + "/.config/quickshell/scripts/system-update-run.sh"]
         onExited: {
             root.updating = false
+            // Also what refreshes rebootNeeded after the upgrade.
             checkProc.running = true
         }
     }

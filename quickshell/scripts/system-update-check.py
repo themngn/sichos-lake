@@ -14,12 +14,13 @@ import time
 CACHE_PATH = os.path.expanduser("~/.config/quickshell/system-update-cache.json")
 
 
-def dnf_pending_count():
+def dnf_pending_updates():
     # `dnf -q check-update` exit codes: 0 = no updates, 100 = updates
     # available, anything else = a real error (no network, broken repo,
     # metadata lock held by another dnf/rpm run, ...) -- only the first two
-    # are a trustworthy count, so callers must treat everything else as
-    # "unknown" rather than "zero".
+    # are a trustworthy list, so callers must treat everything else as
+    # "unknown" rather than "nothing pending". Returns (name.arch, version)
+    # pairs, one per update line.
     try:
         result = subprocess.run(
             ["dnf", "-q", "check-update"],
@@ -31,24 +32,25 @@ def dnf_pending_count():
     if result.returncode not in (0, 100):
         return None
 
-    count = 0
+    updates = []
     for line in result.stdout.splitlines():
         parts = line.split()
         # A real update line is "name.arch  version  repo" (3 fields, dotted
-        # first field). The blank separator line and an "Obsoleting
-        # Packages" section header/body never match that shape.
+        # first field). The blank separator line, dnf5's "Upgrades" header
+        # and an "Obsoleting Packages" section header/body never match that
+        # shape.
         if len(parts) == 3 and "." in parts[0]:
-            count += 1
-    return count
+            updates.append((parts[0], parts[1]))
+    return updates
 
 
-def flatpak_pending_count():
+def flatpak_pending_updates():
     # install.sh always installs the flatpak package itself (only individual
     # apps are optional), but this script also runs unmodified against
     # whatever's actually on disk, so a machine without it just reports zero
     # flatpak updates rather than an error.
     if shutil.which("flatpak") is None:
-        return 0
+        return []
 
     # `flatpak remote-ls --updates` looked like the obvious tool for this but
     # is unreliable: confirmed live it kept reporting several refs (e.g.
@@ -67,14 +69,25 @@ def flatpak_pending_count():
     except (ImportError, ValueError):
         return None
 
-    total = 0
+    refs = []
     try:
         for installation in (Flatpak.Installation.new_system(),
                               Flatpak.Installation.new_user()):
-            total += len(installation.list_installed_refs_for_update())
+            refs.extend(installation.list_installed_refs_for_update())
     except GLib.Error:
         return None
-    return total
+
+    updates = []
+    for ref in refs:
+        # Runtimes/extensions (and some apps) ship no appdata, so the ref
+        # name is the only label there is. The version column is the branch,
+        # not a release number: the installed appdata version is the *old*
+        # one, and the pending one isn't known without fetching the remote's
+        # appstream data -- the branch at least tells "stable" apps apart
+        # from runtime branches like "24.08".
+        updates.append((ref.get_appdata_name() or ref.get_name(),
+                        ref.get_branch() or ""))
+    return updates
 
 
 def last_update_epoch():
@@ -95,6 +108,59 @@ def last_update_epoch():
     return max(times) if times else None
 
 
+def reboot_needed():
+    # `dnf needs-restarting -r` exit codes: 0 = nothing core changed since
+    # boot, 1 = reboot needed. Anything else (plugin missing, a metadata
+    # lock, ...) falls through to the kernel comparison below rather than
+    # failing the whole check -- this is an extra hint, not the widget's
+    # main job.
+    try:
+        result = subprocess.run(
+            ["dnf", "needs-restarting", "-r"],
+            capture_output=True, text=True, timeout=60,
+        )
+        if result.returncode in (0, 1):
+            return result.returncode == 1
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+    # Fallback: only catches kernel updates (not glibc/systemd/...), but
+    # that's the one that matters most. kernel-core carries the actual
+    # vmlinuz, and its version-release.arch is exactly what `uname -r`
+    # reports for it.
+    try:
+        result = subprocess.run(
+            ["rpm", "-q", "kernel-core", "--last"],
+            capture_output=True, text=True, timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    lines = result.stdout.split("\n")
+    if result.returncode != 0 or not lines[0].startswith("kernel-core-"):
+        return None
+    newest = lines[0].split()[0][len("kernel-core-"):]
+    return newest != os.uname().release
+
+
+def dnf_rows(updates):
+    # Dropping `.arch` makes multilib pairs (foo.i686 + foo.x86_64) identical
+    # rows, so those collapse to one -- dnfCount still counts every update
+    # line, matching what dnf itself reports.
+    rows = []
+    seen = set()
+    for name_arch, version in sorted(updates, key=lambda u: u[0].lower()):
+        name = name_arch.rsplit(".", 1)[0]
+        if (name, version) not in seen:
+            seen.add((name, version))
+            rows.append({"name": name, "version": version, "kind": "dnf"})
+    return rows
+
+
+def flatpak_rows(updates):
+    return [{"name": name, "version": version, "kind": "flatpak"}
+            for name, version in sorted(updates, key=lambda u: u[0].lower())]
+
+
 def main():
     # On a transient failure (no wifi at boot, a repo hiccup), keep whatever
     # counts were last known good rather than flashing the widget to
@@ -107,16 +173,37 @@ def main():
     except (OSError, json.JSONDecodeError):
         pass
 
-    dnf_count = dnf_pending_count()
-    flatpak_count = flatpak_pending_count()
+    dnf_updates = dnf_pending_updates()
+    flatpak_updates = flatpak_pending_updates()
+    dnf_count = len(dnf_updates) if dnf_updates is not None else None
+    flatpak_count = len(flatpak_updates) if flatpak_updates is not None else None
 
     resolved_dnf = dnf_count if dnf_count is not None else previous.get("dnfCount")
     resolved_flatpak = flatpak_count if flatpak_count is not None else previous.get("flatpakCount")
+
+    # Same per-source keep-last-known-good rule for the popup's package
+    # list (absent in caches written before it existed -- then a failed
+    # source just contributes no rows). dnf first; capped so a fresh
+    # install's thousand-package backlog doesn't bloat the cache file and
+    # every QML reload of it.
+    previous_packages = previous.get("packages") or []
+    packages = (
+        (dnf_rows(dnf_updates) if dnf_updates is not None
+         else [p for p in previous_packages if p.get("kind") == "dnf"])
+        + (flatpak_rows(flatpak_updates) if flatpak_updates is not None
+           else [p for p in previous_packages if p.get("kind") == "flatpak"])
+    )[:200]
+
+    reboot = reboot_needed()
+    if reboot is None:
+        reboot = bool(previous.get("rebootNeeded", False))
 
     data = {
         "dnfCount": resolved_dnf,
         "flatpakCount": resolved_flatpak,
         "count": (resolved_dnf or 0) + (resolved_flatpak or 0),
+        "packages": packages,
+        "rebootNeeded": reboot,
         "lastCheckOk": dnf_count is not None and flatpak_count is not None,
         "lastUpdateEpoch": last_update_epoch(),
         "checkedAt": time.time(),
