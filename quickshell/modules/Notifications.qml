@@ -479,6 +479,10 @@ Scope {
                                             ? "file://" + n.appIcon
                                             : Quickshell.iconPath(n.appIcon, true)
                                     }
+
+                                    // Even when the photo above stands in for
+                                    // the app icon (a Telegram sender's).
+                                    PhoneBadge { appIcon: toast.latest.appIcon || "" }
                                 }
 
                                 Text {

@@ -386,7 +386,10 @@ Everything else lives in `quickshell/modules/`:
   `~/.config/quickshell/notification-history.json`, with its own folding of consecutive repeats, plus
   a non-persisted registry of live `Notification` objects so a history entry can still invoke its
   sender's actions; `NotificationCenter.qml` is the bar bell + drawer. Clicking a toast or center entry
-  runs the notification's `default` action, else `NotificationHistory.focusOrLaunchApp()`.
+  runs the notification's `default` action, else `NotificationHistory.focusOrLaunchApp()`. Phone notifications (sichlink) get a
+  `PhoneBadge.qml` on their icon, recognised by their app icon path under `~/.cache/sichlink/notification-icons/`. A Notification
+  Center entry of one has a bell button that mutes/unmutes its app (`Sichlink.muteApp` → the phone's own list, also
+  edited in the sichlink app's "Choose apps" and the Phone page).
 
 #### UI style
 

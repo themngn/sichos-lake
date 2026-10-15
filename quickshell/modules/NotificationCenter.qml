@@ -194,6 +194,14 @@ Pill {
                         // NotificationHistory.add()) lists each message's body
                         // separately, each with its own close, instead of one body.
                         readonly property bool expanded: entryItem.modelData.count > 1
+                        // A phone notification's app (sichlink keeps its icon as
+                        // <package>.png, see PhoneBadge.qml), for the mute button.
+                        readonly property string phonePackage: {
+                            const m = (entryItem.modelData.appIcon || "").match(/\/sichlink\/notification-icons\/([^/]+)\.png$/)
+                            return m ? m[1] : ""
+                        }
+                        readonly property bool phoneMuted: entryItem.phonePackage !== ""
+                            && Sichlink.notifApps.some(a => a.package === entryItem.phonePackage && a.muted)
                         width: list.width
                         height: entryContent.height + 2 * Theme.cardPadding
                         color: entryMouse.containsMouse ? Theme.hoverFill : Theme.controlFill
@@ -238,12 +246,15 @@ Pill {
                                             ? "file://" + entryItem.modelData.appIcon
                                             : Quickshell.iconPath(entryItem.modelData.appIcon, true)
                                     }
+
+                                    PhoneBadge { appIcon: entryItem.modelData.appIcon || "" }
                                 }
 
                                 Text {
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: entryHeader.width - entryIcon.width - closeGlyph.implicitWidth
                                         - (countBadge.visible ? countBadge.width + entryHeader.spacing : 0)
+                                        - (muteGlyph.visible ? muteGlyph.implicitWidth + entryHeader.spacing : 0)
                                         - 2 * entryHeader.spacing
                                     text: entryItem.modelData.summary
                                     font.family: Theme.uiFontFamily
@@ -277,6 +288,28 @@ Pill {
                                         font.pixelSize: Theme.fontSize - 3
                                         font.bold: true
                                         color: Theme.textOnLight
+                                    }
+                                }
+
+                                // Phone notifications: stop (or resume) this app's
+                                // notifications coming from the phone -- the phone's own
+                                // list, the same one its app and the Phone page edit.
+                                Text {
+                                    id: muteGlyph
+                                    visible: entryItem.phonePackage !== "" && !!Sichlink.phone
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: entryItem.phoneMuted ? "\u{f009a}" : "\u{f009b}" // nf-md-bell / bell_off
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontSize - 1
+                                    color: muteArea.containsMouse ? Theme.text : Theme.textDim
+
+                                    MouseArea {
+                                        id: muteArea
+                                        anchors.fill: parent
+                                        anchors.margins: -6
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: Sichlink.muteApp(entryItem.phonePackage, !entryItem.phoneMuted)
                                     }
                                 }
 
