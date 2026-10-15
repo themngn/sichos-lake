@@ -10,6 +10,10 @@ Also appends installed Steam games (read straight from Steam's own
 appmanifest_*.acf files, not .desktop entries — Steam doesn't generate one
 per game unless the user manually asks for a desktop shortcut) with
 `"steam": true` so the launcher's Games folder can find them.
+
+Installed Epic Games Launcher (the native Linux "eglv2" build) titles are
+appended the same way, also tagged `"steam": true` — the flag just means
+"belongs in the Games folder", whatever store the game came from.
 """
 import configparser
 import glob
@@ -157,6 +161,64 @@ def _steam_games():
     return games
 
 
-new_games = _steam_games()
+# Epic (eglv2) keeps its install registry as an append-only JSONL log under
+# ~/.local/share/com.epicgames.eglv2 — one record per state change, so the
+# last record per installationId is the current one. Records carry no title;
+# that comes from the launcher's catalog cache, keyed by itemId. Launching
+# goes through the classic com.epicgames.launcher://apps/<ns>:<item>:<artifact>
+# deep link (registered to the AppImage's .desktop entry), which eglv2 still
+# honours — silently, without popping its own window up.
+_EPIC_DATA = os.path.expanduser("~/.local/share/com.epicgames.eglv2")
+_EPIC_IMAGES = os.path.expanduser("~/.cache/com.epicgames.eglv2/images")
+# Squarer art first: it reads better at launcher-icon size than the wide box.
+_EPIC_IMAGE_PREFERENCE = ("DieselGameBoxLogo", "Thumbnail", "DieselGameBoxTall", "DieselGameBox")
+
+
+def _epic_games():
+    installs = {}
+    try:
+        with open(os.path.join(_EPIC_DATA, "installations.jsonl"), encoding="utf-8") as f:
+            for line in f:
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if "installationId" in rec:
+                    installs[rec["installationId"]] = rec
+    except OSError:
+        return []
+    try:
+        with open(os.path.join(_EPIC_DATA, "cache", "prod", "catalog-cache.json"), encoding="utf-8") as f:
+            catalog = json.load(f).get("items", {})
+    except (OSError, json.JSONDecodeError):
+        catalog = {}
+
+    games = []
+    for rec in installs.values():
+        if not rec.get("complete") or not os.path.isdir(rec.get("dir", "")):
+            continue
+        ns, item_id, artifact = rec.get("namespace"), rec.get("itemId"), rec.get("artifactId")
+        if not (ns and item_id and artifact):
+            continue
+        item = catalog.get(item_id, {}).get("item", {})
+        name = item.get("title") or os.path.basename(rec["dir"].rstrip("/"))
+        entry = {
+            "name": name,
+            "exec": f"xdg-open 'com.epicgames.launcher://apps/{ns}%3A{item_id}%3A{artifact}?action=launch&silent=true'",
+            "icon": "EpicGamesLauncher",
+            "terminal": False,
+            "steam": True,
+        }
+        images = {k.get("type"): k.get("md5") for k in item.get("keyImages", [])}
+        for kind in _EPIC_IMAGE_PREFERENCE:
+            path = os.path.join(_EPIC_IMAGES, f"{images.get(kind)}.jpg")
+            if images.get(kind) and os.path.isfile(path):
+                entry["iconFile"] = path
+                break
+        games.append(entry)
+    return games
+
+
+new_games = _steam_games() + _epic_games()
 apps = sorted(list(apps_by_base.values()) + new_games, key=lambda a: a["name"].lower())
 json.dump(apps, sys.stdout)
