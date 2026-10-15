@@ -2,10 +2,12 @@ import QtQuick
 import QtQuick.Window
 import Quickshell
 import Quickshell.Io
+import Quickshell.Hyprland
 
 // Display Settings indicator and popup: a top-down layout diagram of every
 // connected monitor (doubles as a picker -- click a box to select it, current
-// bar's own screen selected by default) plus a Settings section for whichever
+// bar's own screen selected by default; drag one to rearrange the monitors,
+// see layoutBox.drop) plus a Settings section for whichever
 // monitor is selected: name/description, a resolution/refresh-rate combo-box
 // pair, a brightness slider (DDC for a desktop monitor, the laptop panel's
 // own backlight otherwise), a Variable refresh rate checkbox, and a "Use this
@@ -332,11 +334,40 @@ Pill {
             popup.saveMonitorConfig(name, null, String(scale))
         }
 
-        function saveMonitorConfig(name, modeSpec, scale) {
+        function saveMonitorConfig(name, modeSpec, scale, position) {
             const args = ["python3", Quickshell.env("HOME") + "/.config/quickshell/scripts/save-monitor-config.py", name]
             if (modeSpec) args.push("--mode", modeSpec)
             if (scale) args.push("--scale", scale)
+            if (position) args.push("--position", position)
             Quickshell.execDetached(args)
+        }
+
+        // A dragged monitor's new spot (layout px). Shown right away by
+        // patching freshMonitors, then re-read from Hyprland once it has
+        // applied it. Sichlink's headless SICHLINK-1 only moves live -- the
+        // save script gives any other output without a block of its own one,
+        // but not virtual ones (see its header).
+        function applyPosition(name, x, y) {
+            popup.freshMonitors = popup.freshMonitors.map(m => m.name === name ? Object.assign({}, m, { x: x, y: y }) : m)
+            Quickshell.execDetached(["hyprctl", "eval",
+                'hl.monitor({output="' + name + '",position="' + x + "x" + y + '"})'])
+            popup.saveMonitorConfig(name, null, null, x + "x" + y)
+            refreshTimer.restart()
+        }
+        Timer {
+            id: refreshTimer
+            interval: 400
+            onTriggered: monitorsProc.running = true
+        }
+        // Live while open: a monitor plugged in or out, the lid turning the
+        // built-in panel off or on, a mode/position change, a reload.
+        Connections {
+            target: Hyprland
+            enabled: popup.shown
+            function onRawEvent(event) {
+                if (/^(monitoradded|monitorremoved|configreloaded)/.test(event.name))
+                    refreshTimer.restart()
+            }
         }
 
         // Any non-zero vrr counts as on (1 = always, 2 = fullscreen-only,
@@ -422,11 +453,25 @@ Pill {
                     color: Theme.separator
                 }
 
-                Text {
-                    text: "Layout"
-                    color: Theme.textMuted
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 2
+                Item {
+                    width: popup.contentWidth
+                    height: layoutLabel.implicitHeight
+                    Text {
+                        id: layoutLabel
+                        text: "Layout"
+                        color: Theme.textMuted
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 2
+                    }
+                    Text {
+                        visible: layoutBox.rects.filter(r => r.movable).length > 1
+                        anchors.right: parent.right
+                        anchors.baseline: layoutLabel.baseline
+                        text: "Drag to rearrange"
+                        color: Theme.textDim
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 3
+                    }
                 }
 
                 // Miniature top-down map of the real monitor arrangement --
@@ -462,19 +507,43 @@ Pill {
                             const scale = m.scale > 0 ? m.scale : 1
                             const rotated = (m.transform === 1 || m.transform === 3
                                 || m.transform === 5 || m.transform === 7)
+                            // A disabled output may report no size; its
+                            // preferred mode stands in.
+                            const mode = /^(\d+)x(\d+)/.exec((m.availableModes || [])[0] || "")
+                            const pw = m.width > 0 ? m.width : mode ? +mode[1] : 1920
+                            const ph = m.height > 0 ? m.height : mode ? +mode[2] : 1080
                             return {
                                 name: m.name,
                                 isCurrent: m.name === root.screenName,
+                                disabled: !!m.disabled,
+                                // The lid turns the built-in panel off
+                                // (hypr/keybindings.lua); anything else
+                                // disabled was done by hand.
+                                offText: popup.isLaptopPanel(m.name) ? "Off · lid closed" : "Off",
                                 brand: popup.isLaptopPanel(m.name) ? "Built-in Display" : popup.friendlyMake(m.make),
                                 model: popup.isLaptopPanel(m.name) ? "" : m.model,
                                 vrrCapable: popup.vrrCapable(m),
                                 hdrCapable: popup.hdrCapability[m.name] === true,
+                                // A disabled or mirrored output has no place
+                                // of its own in the layout to move.
+                                movable: !m.disabled && (!m.mirrorOf || m.mirrorOf === "none"),
                                 x: m.x,
                                 y: m.y,
-                                w: (rotated ? m.height : m.width) / scale,
-                                h: (rotated ? m.width : m.height) / scale
+                                w: (rotated ? ph : pw) / scale,
+                                h: (rotated ? pw : ph) / scale
                             }
                         })
+                        // A disabled output keeps its last spot unless that
+                        // now overlaps a live one (or there's none); then it
+                        // sits beside them, top-aligned.
+                        const live = items.filter(i => !i.disabled)
+                        for (const i of items) {
+                            if (!i.disabled || live.length === 0) continue
+                            if (live.some(o => i.x < o.x + o.w && i.x + i.w > o.x && i.y < o.y + o.h && i.y + i.h > o.y)) {
+                                i.x = Math.max(...live.map(o => o.x + o.w))
+                                i.y = Math.min(...live.map(o => o.y))
+                            }
+                        }
 
                         const minX = Math.min(...items.map(i => i.x))
                         const minY = Math.min(...items.map(i => i.y))
@@ -492,16 +561,90 @@ Pill {
                         const rects = items.map(i => ({
                             name: i.name,
                             isCurrent: i.isCurrent,
+                            disabled: i.disabled,
+                            offText: i.offText,
                             brand: i.brand,
                             model: i.model,
                             vrrCapable: i.vrrCapable,
                             hdrCapable: i.hdrCapable,
+                            movable: i.movable,
                             rx: (i.x - minX) * fit,
                             ry: (i.y - minY) * fit,
                             rw: Math.max(2, i.w * fit),
                             rh: Math.max(2, i.h * fit)
                         }))
-                        return { rects: rects, height: spanY * fit }
+                        // items/fit/minX/minY: for turning a drag in box px
+                        // back into layout px (snap/drop below).
+                        return { rects: rects, height: spanY * fit, items: items, fit: fit, minX: minX, minY: minY }
+                    }
+
+                    // Where a monitor dragged to (lx, ly) (layout px, its
+                    // top-left) ends up: flush against a side of another
+                    // monitor -- Hyprland would take a gap or an overlap, but
+                    // the cursor can't cross a gap and an overlap shows the
+                    // same pixels twice -- sliding along that side, with its
+                    // edges caught by the other monitor's edges within a few
+                    // box px. The nearest such spot that overlaps no third
+                    // monitor wins, a caught edge counting as that much
+                    // nearer (else a slot along the neighbouring monitor,
+                    // a few px closer, beat lining up with this one); null
+                    // if there's none.
+                    function snap(name, lx, ly) {
+                        const L = layoutBox.layout
+                        const me = L.items.find(i => i.name === name)
+                        const others = L.items.filter(i => i.name !== name && i.movable)
+                        if (!me || others.length === 0) return null
+                        const w = me.w, h = me.h
+                        const catchDist = 8 / L.fit
+                        // Slide along a side from lo to hi, catching on the
+                        // other monitor's start/end edges.
+                        const along = (v, start, len, size) => {
+                            const lo = start - size + 1, hi = start + len - 1
+                            for (const e of [start, start + len - size]) if (Math.abs(v - e) < catchDist) return [e, true]
+                            return [Math.max(lo, Math.min(hi, v)), false]
+                        }
+                        const cands = []
+                        for (const o of others) {
+                            const ay = along(ly, o.y, o.h, h), ax = along(lx, o.x, o.w, w)
+                            cands.push([o.x + o.w, ...ay], [o.x - w, ...ay], [ax[0], o.y + o.h, ax[1]], [ax[0], o.y - h, ax[1]])
+                        }
+                        const overlaps = (x, y) => others.some(o =>
+                            x < o.x + o.w && x + w > o.x && y < o.y + o.h && y + h > o.y)
+                        let best = null, bestD = Infinity
+                        for (const [x, y, caught] of cands) {
+                            if (overlaps(x, y)) continue
+                            const d = Math.hypot(x - lx, y - ly) - (caught ? catchDist : 0)
+                            if (d < bestD) { bestD = d; best = { x: Math.round(x), y: Math.round(y) } }
+                        }
+                        return best
+                    }
+                    // Box px (the dragged rect's top-left) -> layout px.
+                    function toLayout(rx, ry) {
+                        const L = layoutBox.layout
+                        return { x: rx / L.fit + L.minX, y: ry / L.fit + L.minY }
+                    }
+                    function drop(name, rx, ry) {
+                        const p = layoutBox.toLayout(rx, ry)
+                        const s = layoutBox.snap(name, p.x, p.y)
+                        const me = layoutBox.layout.items.find(i => i.name === name)
+                        if (!s || !me || (s.x === me.x && s.y === me.y)) return
+                        popup.applyPosition(name, s.x, s.y)
+                    }
+
+                    // The snapped spot while dragging (set by the dragged
+                    // box), drawn as an outline.
+                    property var ghost: null
+                    Rectangle {
+                        visible: layoutBox.ghost !== null
+                        x: layoutBox.ghost ? (layoutBox.ghost.x - layoutBox.layout.minX) * layoutBox.layout.fit : 0
+                        y: layoutBox.ghost ? (layoutBox.ghost.y - layoutBox.layout.minY) * layoutBox.layout.fit : 0
+                        width: layoutBox.ghost ? layoutBox.ghost.w * layoutBox.layout.fit : 0
+                        height: layoutBox.ghost ? layoutBox.ghost.h * layoutBox.layout.fit : 0
+                        radius: Theme.controlRadius
+                        color: "transparent"
+                        border.width: 1
+                        border.color: Theme.accent
+                        opacity: 0.8
                     }
 
                     Repeater {
@@ -510,22 +653,73 @@ Pill {
                         delegate: Rectangle {
                             id: monRect
                             required property var modelData
-                            x: modelData.rx
-                            y: modelData.ry
+                            // Offset while being dragged (box px).
+                            property real dragDX: 0
+                            property real dragDY: 0
+                            readonly property bool draggable: monRect.modelData.movable
+                                && layoutBox.rects.filter(r => r.movable).length > 1
+                            x: modelData.rx + dragDX
+                            y: modelData.ry + dragDY
+                            z: dragArea.dragging ? 1 : 0
+                            opacity: dragArea.dragging ? 0.85 : monRect.modelData.disabled ? 0.55 : 1
                             width: modelData.rw
                             height: modelData.rh
                             radius: Theme.controlRadius
                             readonly property bool selected: popup.selectedMonitor === modelData.name
                             color: monRect.selected
                                 ? Theme.selectedFill
-                                : Theme.controlFill
+                                : monRect.modelData.disabled ? "transparent" : Theme.controlFill
                             border.width: 1
                             border.color: monRect.selected ? Theme.accent : Theme.surfaceBorder
 
+                            // Click selects; past a few px it's a drag instead
+                            // (and selects too). Positions are taken in
+                            // layoutBox's coordinates, since this box moves
+                            // under the pointer while dragged.
                             MouseArea {
+                                id: dragArea
                                 anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: popup.selectedMonitor = monRect.modelData.name
+                                // Nothing to set on an output that's off.
+                                enabled: !monRect.modelData.disabled
+                                cursorShape: dragArea.dragging ? Qt.ClosedHandCursor : Qt.PointingHandCursor
+                                property bool dragging: false
+                                property point start
+                                onPressed: (mouse) => {
+                                    dragArea.start = mapToItem(layoutBox, mouse.x, mouse.y)
+                                    dragArea.dragging = false
+                                }
+                                onPositionChanged: (mouse) => {
+                                    if (!pressed || !monRect.draggable) return
+                                    const p = mapToItem(layoutBox, mouse.x, mouse.y)
+                                    const dx = p.x - dragArea.start.x, dy = p.y - dragArea.start.y
+                                    if (!dragArea.dragging && Math.hypot(dx, dy) < 4) return
+                                    dragArea.dragging = true
+                                    popup.selectedMonitor = monRect.modelData.name
+                                    monRect.dragDX = dx
+                                    monRect.dragDY = dy
+                                    const l = layoutBox.toLayout(monRect.modelData.rx + dx, monRect.modelData.ry + dy)
+                                    const s = layoutBox.snap(monRect.modelData.name, l.x, l.y)
+                                    const me = layoutBox.layout.items.find(i => i.name === monRect.modelData.name)
+                                    layoutBox.ghost = s && me ? { x: s.x, y: s.y, w: me.w, h: me.h } : null
+                                }
+                                onReleased: {
+                                    if (dragArea.dragging) {
+                                        layoutBox.drop(monRect.modelData.name,
+                                            monRect.modelData.rx + monRect.dragDX, monRect.modelData.ry + monRect.dragDY)
+                                    } else {
+                                        popup.selectedMonitor = monRect.modelData.name
+                                    }
+                                    dragArea.dragging = false
+                                    monRect.dragDX = 0
+                                    monRect.dragDY = 0
+                                    layoutBox.ghost = null
+                                }
+                                onCanceled: {
+                                    dragArea.dragging = false
+                                    monRect.dragDX = 0
+                                    monRect.dragDY = 0
+                                    layoutBox.ghost = null
+                                }
                             }
 
                             // Four corners rather than a centered label so a
@@ -602,9 +796,12 @@ Pill {
                             // any monitor) since the two can diverge once
                             // another box is clicked.
                             Text {
-                                visible: monRect.modelData.isCurrent
+                                visible: monRect.modelData.isCurrent || monRect.modelData.disabled
                                 anchors.centerIn: parent
-                                text: "This"
+                                width: parent.width - 8
+                                horizontalAlignment: Text.AlignHCenter
+                                elide: Text.ElideRight
+                                text: monRect.modelData.disabled ? monRect.modelData.offText : "This"
                                 color: Theme.textDim
                                 font.family: Theme.uiFontFamily
                                 font.pixelSize: Theme.fontSize - 4

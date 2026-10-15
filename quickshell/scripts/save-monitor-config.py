@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Persists a live hl.monitor() change (mode, scale and/or vrr) into
+Persists a live hl.monitor() change (mode, scale, position and/or vrr) into
 ~/.config/hypr/monitors.lua so it survives the next Hyprland restart --
 DisplaySettings.qml's own hl.monitor() calls (resolution/refresh-rate/scale
 pickers, VRR checkbox) only ever apply live.
 
-Usage: save-monitor-config.py <output> [--mode WxH@Hz] [--scale N] [--vrr 0-3]
+Usage: save-monitor-config.py <output> [--mode WxH@Hz] [--scale N] [--position XxY] [--vrr 0-3]
        save-monitor-config.py --list-vrr
 
 --list-vrr prints {"<output>": <vrr int>, ...} for every block in the file
@@ -16,13 +16,19 @@ only way to read the *configured* VRR mode back: `hyprctl monitors -j`'s
 here instead.
 
 Finds the hl.monitor({ ... output = "<output>" ... }) block for that output
-and updates its mode/scale fields in place (adding a field that isn't
+and updates its mode/scale/position fields in place (adding a field that isn't
 already there), leaving every other monitor's block, and the rest of the
-file, untouched. Refuses to touch the file if <output> isn't found rather
-than guessing where to insert a new block -- monitors.lua's layout/ordering
-is genuinely per-machine (see CLAUDE.md's own note on this file), not
-something a script should invent an entry for.
+file, untouched. An output with no block of its own (one only the catch-all
+`output = ""` rule covers, e.g. a monitor plugged in after monitors.lua was
+written) used to be refused, so every Display page change to it was lost on
+the next Hyprland start; it now gets a block of its own, seeded from its live
+`hyprctl monitors` state (so the fields not being changed keep their current
+values) and placed before the catch-all. Virtual outputs (sichlink's
+SICHLINK-1, other HEADLESS-*) are still refused: they're created on demand
+and a fixed rule for them would only apply to whatever reuses the name.
 """
+import fcntl
+import subprocess
 import argparse
 import json
 import re
@@ -71,17 +77,50 @@ def main():
     parser.add_argument("output", nargs="?")
     parser.add_argument("--mode")
     parser.add_argument("--scale")
+    parser.add_argument("--position")
     parser.add_argument("--vrr", type=int, choices=range(4))
     parser.add_argument("--list-vrr", action="store_true")
     args = parser.parse_args()
 
-    text = MONITORS_LUA.read_text()
-
     if args.list_vrr:
-        print(json.dumps(list_vrr(text)))
+        print(json.dumps(list_vrr(MONITORS_LUA.read_text())))
         return
     if not args.output:
         parser.error("output is required unless --list-vrr is given")
+
+    # DisplaySettings.qml fires one of these per change, detached -- a
+    # resolution pick right after a scale pick (or a drag that moves two
+    # monitors) runs two at once, and the later read-modify-write would
+    # drop the earlier one's change.
+    with open(MONITORS_LUA, "r+") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        update(args)
+
+
+def live_block(output):
+    """A new hl.monitor block for `output` from its current live state, or None."""
+    if re.match(r"(HEADLESS|SICHLINK)-", output):
+        return None
+    try:
+        mons = json.loads(subprocess.run(["hyprctl", "monitors", "all", "-j"],
+                                         capture_output=True, text=True, timeout=5).stdout)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+    m = next((m for m in mons if m.get("name") == output), None)
+    if not m:
+        return None
+    rate = f"{m['refreshRate']:.2f}".rstrip("0").rstrip(".")
+    scale = f"{m['scale']:.2f}".rstrip("0").rstrip(".")
+    return ("hl.monitor({\n"
+            f'    output   = "{output}",\n'
+            f'    mode     = "{m["width"]}x{m["height"]}@{rate}",\n'
+            f'    position = "{m["x"]}x{m["y"]}",\n'
+            f'    scale    = "{scale}",\n'
+            "})")
+
+
+def update(args):
+    text = MONITORS_LUA.read_text()
 
     # Non-greedy up to the first "})" after this output's own field --
     # these blocks don't nest, so that's always the block's real close.
@@ -91,14 +130,25 @@ def main():
     )
     match = block_re.search(text)
     if not match:
-        print(f"no hl.monitor block found for output {args.output!r} in {MONITORS_LUA}", file=sys.stderr)
-        sys.exit(1)
+        block = live_block(args.output)
+        if not block:
+            print(f"no hl.monitor block found for output {args.output!r} in {MONITORS_LUA}", file=sys.stderr)
+            sys.exit(1)
+        # Before the catch-all (and the comment line right above it, if
+        # any), else at the end.
+        fallback = re.search(r'(?:^--[^\n]*\n)?hl\.monitor\(\{(?:(?!\}\)).)*?output\s*=\s*""', text,
+                             re.DOTALL | re.MULTILINE)
+        at = fallback.start() if fallback else len(text.rstrip("\n")) + 1
+        text = text[:at] + block + "\n\n" + text[at:]
+        match = block_re.search(text)
 
     block = match.group(0)
     if args.mode:
         block = set_field(block, "mode", args.mode)
     if args.scale:
         block = set_field(block, "scale", args.scale)
+    if args.position:
+        block = set_field(block, "position", args.position)
     if args.vrr is not None:
         block = set_vrr(block, args.vrr)
 
