@@ -24,6 +24,10 @@
 #   ./update.sh mark [rev]     record <rev> (default HEAD) as deployed without
 #                              copying anything
 #   ./update.sh system mark [rev]   same for the system files
+#   ./update.sh info [--fetch] one JSON line describing the deployed version
+#                              (the Control Center's Version tile); --fetch
+#                              refreshes origin first if the last fetch is
+#                              over 10 minutes old
 #
 # How it decides what to touch: it remembers the deployed commit
 # (~/.local/state/sichos/deployed-rev; system files separately in
@@ -462,7 +466,7 @@ apply() {
     fi
 
     if [ ${#ERRORS[@]} -eq 0 ] && [ "$(deployed_rev 2>/dev/null)" != "$TO" ]; then
-        set_stamp "$TO" || ERRORS+=("couldn't record the deployed version")
+        set_stamp "$TO" && poke_shell || ERRORS+=("couldn't record the deployed version")
         # System files in step with FROM and none changed: still in step at TO
         if [ "$n_sys" -eq 0 ] && [ "$(read_stamp "$SYS_STAMP" 2>/dev/null)" = "$FROM" ]; then
             write_stamp "$SYS_STAMP" "$TO"
@@ -543,6 +547,7 @@ cmd_mark() {
     rev="$(resolve "${1:-HEAD}")" || die "unknown revision: ${1:-HEAD}"
     set_stamp "$rev" || die "couldn't write $STAMP"
     rm -f "$PIN"
+    poke_shell
     echo "recorded $(short "$rev") as the deployed version"
 }
 
@@ -715,7 +720,7 @@ cmd_system() {
     sys_followups
 
     if [ ${#ERRORS[@]} -eq 0 ]; then
-        write_stamp "$SYS_STAMP" "$TO" || ERRORS+=("couldn't record the system version")
+        write_stamp "$SYS_STAMP" "$TO" && poke_shell || ERRORS+=("couldn't record the system version")
     fi
     [ ${#ERRORS[@]} -gt 0 ] && NOTES+=("system version left at $(short "$FROM"); re-run ./update.sh system to retry")
     report "sichos system $(date '+%F %T'): $(short "$FROM") -> $(short "$TO")" | tee -a "$LOG"
@@ -723,6 +728,55 @@ cmd_system() {
 }
 
 # ------------------------------------------------------------- read-only
+
+# Tells a running Control Center to re-read `info` (SichosVersion.qml): its
+# FileViews can't see the stamps change, they're replaced by rename.
+poke_shell() {
+    [ "$REAL_HOME" -eq 1 ] && command -v quickshell >/dev/null || return 0
+    (LANG=C.UTF-8 timeout 3 quickshell ipc --any-display call sichosversion refresh >/dev/null 2>&1 &)
+    return 0
+}
+
+cmd_info() {
+    local head dep sys branch upstream ab="" ahead="" behind="" fetched=0 n_conf=0 sys_pending="" hooks=1 deployed_at="" tag=""
+    local fh
+    fh="$(git rev-parse --git-path FETCH_HEAD)"; [[ "$fh" = /* ]] || fh="$HERE/$fh"
+    if [ "${1:-}" = --fetch ] && git rev-parse -q --verify '@{u}' >/dev/null; then
+        if [ ! -f "$fh" ] || [ $(( $(date +%s) - $(stat -c %Y "$fh") )) -gt 600 ]; then
+            # Background-safe: no hooks run on fetch, and a dead network just times out
+            GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=5" \
+                timeout 20 command git -C "$HERE" fetch -q 2>/dev/null
+        fi
+    fi
+    head="$(resolve HEAD)"
+    dep="$(deployed_rev 2>/dev/null)"
+    sys="$(read_stamp "$SYS_STAMP" 2>/dev/null)"
+    branch="$(git symbolic-ref --short -q HEAD)"
+    upstream="$(git rev-parse --abbrev-ref -q '@{u}' 2>/dev/null)"
+    if [ -n "$upstream" ]; then
+        ab="$(git rev-list --left-right --count "HEAD...@{u}" 2>/dev/null)"
+        ahead="${ab%%[[:space:]]*}"; behind="${ab##*[[:space:]]}"
+    fi
+    [ -f "$fh" ] && fetched="$(stat -c %Y "$fh")"
+    [ -d "$CONFLICTS" ] && n_conf="$(find "$CONFLICTS" -type f | wc -l)"
+    [ -n "$sys" ] && [ -n "$dep" ] && sys_pending="$(sys_changes "$sys" "$dep" | wc -l)"
+    { [ "$(git config core.hooksPath)" = githooks ] && [ "$(git config --bool sichos.autodeploy)" != false ]; } || hooks=0
+    [ -n "$dep" ] && deployed_at="$(awk -v r="$dep" '$2 == r { t = $1 } END { print t }' "$HISTORY" 2>/dev/null)"
+    [ -n "$dep" ] && tag="$(git describe --tags --exact-match "$dep" 2>/dev/null)"
+    python3 -c 'import json, sys; a = sys.argv[1:]; print(json.dumps(dict(zip(a[0::2], a[1::2]))))' \
+        repo "$HERE" host "$(hostname)" branch "$branch" \
+        head "$(short "$head")" head_subject "$(git log -1 --format=%s "$head")" \
+        deployed "${dep:+$(short "$dep")}" \
+        deployed_subject "${dep:+$(git log -1 --format=%s "$dep")}" \
+        deployed_date "${dep:+$(git log -1 --format=%cI "$dep")}" \
+        deployed_at "$deployed_at" tag "$tag" \
+        deployed_branches "${dep:+$(git branch --format='%(refname:short)' --contains "$dep" 2>/dev/null | paste -sd' ')}" \
+        pinned "$(cat "$PIN" 2>/dev/null)" \
+        behind_head "${dep:+$(git rev-list --count "$dep..$head" 2>/dev/null)}" \
+        upstream "$upstream" ahead "$ahead" behind "$behind" fetched "$fetched" \
+        dirty "$(git status --porcelain 2>/dev/null | wc -l)" \
+        conflicts "$n_conf" system "${sys:+$(short "$sys")}" system_pending "$sys_pending" hooks "$hooks"
+}
 
 cmd_list() {
     local n="${1:-15}" dep head full rest m h
@@ -789,6 +843,13 @@ cmd_status() {
     return 0
 }
 
+# Lets the Version tile find this checkout (the deployed config doesn't
+# know where its repo lives). Main checkout only, never a worktree's copy.
+if [ "$(git rev-parse --git-dir 2>/dev/null)" = "$(git rev-parse --git-common-dir 2>/dev/null)" ] \
+    && [ "$(cat "$STATE/repo" 2>/dev/null)" != "$HERE" ]; then
+    printf '%s\n' "$HERE" > "$STATE/repo"
+fi
+
 case "${1:-latest}" in
     latest) cmd_latest ;;
     switch) cmd_switch "${2:-}" ;;
@@ -797,6 +858,7 @@ case "${1:-latest}" in
     status) cmd_status ;;
     system) cmd_system "${2:-}" "${3:-}" ;;
     install) cmd_install ;;
+    info) cmd_info "${2:-}" ;;
     mark) cmd_mark "${2:-}" ;;
     --hook) cmd_hook ;;
     -h|--help|help) sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//' ;;

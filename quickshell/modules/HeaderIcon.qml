@@ -62,6 +62,7 @@ Item {
         0xf00af: [1, -83, 59, 94],  // bluetooth (md)
         0xf00b2: [0, -74, 60, 76],  // bluetooth off
         0xf035b: [-1, -67, 62, 62], // memory (system stats)
+        0xf062c: [0, -74, 60, 76],  // source-branch (SichOS version)
         0xf0322: [-1, -57, 62, 42], // laptop (lid close)
         0xf042: [0, -66, 60, 60],   // adjust (Transparency)
         0xf009a: [0, -71, 61, 70],  // bell (NotificationMute)

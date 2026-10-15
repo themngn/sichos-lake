@@ -384,6 +384,19 @@ Pill {
                 extraSub: "", detail: "With another monitor",
                 sub: LidSettings.sleep ? "Sleep" : "Screen off, keep working",
                 active: LidSettings.sleep, more: "" }
+            // The deployed SichOS commit (update.sh info via SichosVersion):
+            // lit when it isn't the checkout's HEAD -- pinned by
+            // `update.sh switch`, or a deploy that didn't happen.
+            case "version": {
+                const sv = SichosVersion
+                return {
+                    glyph: "\u{f062c}", label: "SichOS",
+                    sub: !sv.known ? (sv.repo === "" ? "No version recorded" : "…")
+                        : [sv.name, sv.info.deployed].concat(sv.flags.slice(0, 1)).join(" · "),
+                    short: sv.known ? sv.info.deployed : "SichOS",
+                    detail: sv.known ? sv.info.deployed_subject : "",
+                    active: sv.pinned || sv.offHead, more: "" }
+            }
             case "stats": return {
                 glyph: "\u{f035b}", label: "System",
                 sub: "CPU " + Math.round(SystemStats.cpu * 100) + "% · RAM " + Math.round(SystemStats.ram * 100) + "%"
@@ -433,6 +446,8 @@ Pill {
             case "update": root.openPopup("qs-update"); break
             case "vpn": VpnStatus.toggle(); break
             case "lid": LidSettings.setSleep(!LidSettings.sleep); break
+            // update.sh status + recent commits in a terminal.
+            case "version": SichosVersion.openDetails(); break
             // btop, floated/centered like SUPER+B (window_rules.lua).
             case "stats": Quickshell.execDetached(["kitty", "--class", "btop", "-e", "btop"]); break
             }
@@ -689,6 +704,26 @@ Pill {
                 v.detail = !Displays.docked ? "Undocked it always sleeps"
                     : LidSettings.sleep ? "Suspends the laptop" : "Panel off, others keep running"
                 v.lines = [LidSettings.sleep ? "Sleep" : "Keep on", v.tag]
+                break
+            }
+            case "version": {
+                const sv = SichosVersion
+                if (!sv.known) break
+                const when = sv.ago(sv.info.deployed_at)
+                // The flags (pinned, to pull, parked edits...) go first:
+                // they're why anyone looks; when it was deployed otherwise.
+                const tail = sv.flags.length > 0 ? sv.flags : [when]
+                v.short = sv.info.deployed
+                if (!tall && w >= 2) v.titleTail = sv.name
+                v.sub = (w >= 2 && !tall ? [sv.info.deployed] : [sv.name, sv.info.deployed])
+                    .concat(w >= 3 ? tail.slice(0, 2) : tail.slice(0, 1))
+                    .concat(w >= 4 && !tall ? [sv.info.deployed_subject] : []).join(" · ")
+                v.lines = [sv.name, sv.info.deployed, tail[0]]
+                v.detail = sv.info.deployed_subject
+                if (tall) {
+                    v.sub = sv.name + " · " + sv.info.deployed
+                    v.body = bodyVersion
+                }
                 break
             }
             case "stats": {
@@ -1437,6 +1472,63 @@ Pill {
                     label: parent.cols >= 3 ? m.friendly : m.name, selected: HdrSettings.isSelected(m.name),
                     available: m.hdrCapable !== false || HdrSettings.isSelected(m.name),
                     action: () => HdrSettings.toggleMonitor(m.name) }))
+            }
+        }
+        // Version, 2 rows: what each part of "which version" says, as
+        // label/value rows (two columns at 4 wide), most telling first.
+        Component {
+            id: bodyVersion
+            Grid {
+                id: verGrid
+                readonly property var sv: SichosVersion
+                readonly property var i: sv.info
+                // The Loader's: `parent` inside the Repeater below is this Grid
+                readonly property int cols: parent.cols
+                width: parent.width
+                columns: cols >= 4 ? 2 : 1
+                columnSpacing: 14
+                rowSpacing: 3
+                clip: true
+                Repeater {
+                    model: !verGrid.i ? [] : [
+                        ["Commit", verGrid.i.deployed_subject],
+                        ["Deployed", [verGrid.sv.ago(verGrid.i.deployed_at),
+                            verGrid.sv.pinned ? "pinned to " + verGrid.i.pinned
+                            : verGrid.sv.offHead ? "HEAD is " + verGrid.i.head : ""].filter(t => t).join(" · ")],
+                        ["Origin", !verGrid.i.upstream ? "no upstream"
+                            : [verGrid.sv.behindOrigin > 0 ? verGrid.sv.behindOrigin + " to pull" : "",
+                               verGrid.sv.aheadOrigin > 0 ? verGrid.sv.aheadOrigin + " to push" : "",
+                               verGrid.sv.behindOrigin + verGrid.sv.aheadOrigin === 0 ? "up to date" : ""]
+                                .filter(t => t).join(" · ") + (verGrid.cols >= 3 ? " · " + verGrid.i.upstream : "")],
+                        ["Local", [verGrid.sv.conflicts > 0 ? verGrid.sv.conflicts + " parked" : "",
+                            verGrid.sv.systemPending > 0 ? verGrid.sv.systemPending + " system to apply" : "",
+                            verGrid.sv.dirty > 0 ? verGrid.sv.dirty + " uncommitted" : "",
+                            !verGrid.sv.hooks ? "auto-update off" : ""].filter(t => t).join(" · ") || "in step, auto-update on"],
+                        ["Branch", verGrid.i.branch || "detached"],
+                        ["Host", verGrid.i.host]
+                    ].slice(0, verGrid.cols >= 4 ? 6 : verGrid.cols >= 3 ? 4 : 3)
+                    delegate: Row {
+                        required property var modelData
+                        spacing: 6
+                        width: (verGrid.width - (verGrid.columns - 1) * verGrid.columnSpacing) / verGrid.columns
+                        Text {
+                            id: verKey
+                            width: 54
+                            text: modelData[0]
+                            color: Theme.textMuted
+                            font.family: Theme.uiFontFamily
+                            font.pixelSize: Theme.fontSize - 3
+                        }
+                        Text {
+                            width: parent.width - verKey.width - parent.spacing
+                            elide: Text.ElideRight
+                            text: modelData[1]
+                            color: Theme.text
+                            font.family: Theme.uiFontFamily
+                            font.pixelSize: Theme.fontSize - 3
+                        }
+                    }
+                }
             }
         }
         Component {

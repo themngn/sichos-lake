@@ -42,7 +42,10 @@ places — the repo file (what `install.sh` ships to every future machine) and t
   being selected). A new config file under an already-mapped directory needs nothing; a new location
   needs a `dest_for` (or `sys_dest_for`, plus the matching `install.sh` system step) case, and a new
   deploy-time patch or UI-written setting needs a `patch_like_deployed` case, or every update after it
-  shows up as a "local edit". Test changes to it with `SICHOS_SYSROOT`/`SICHOS_SUDO` and a sandbox
+  shows up as a "local edit". The Control Center's Version tile (`SichosVersion.qml`) shows the deployed
+  commit from `update.sh info` (one JSON line; the checkout's path is recorded in
+  `~/.local/state/sichos/repo`), re-read when update.sh pokes its `sichosversion` IPC target after a
+  deploy and every 30s while the Control Center is open. Test changes to it with `SICHOS_SYSROOT`/`SICHOS_SUDO` and a sandbox
   `HOME` *and* `XDG_STATE_HOME` (set on this machine, so overriding `HOME` alone writes the real state).
 - `install.sh` only ever copies forward — it never deletes a deployed file whose repo source was removed
   or renamed (`update.sh` does, for removals after the install). Don't treat a file's presence under
