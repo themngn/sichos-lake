@@ -364,17 +364,21 @@ sweep_conflicts() {
 # the last "Reloading configuration..."). Touching shell.qml does NOT
 # reload (no content change), hence the IPC retry (ShellState's "shell"
 # target) if the final reload failed.
-QS_LOG="" QS_MARK=0 QS_RESULT=""
-qs_log_lines() { quickshell log "$QS_LOG" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g'; }
+QS_LOG="" QS_ID="" QS_MARK=0 QS_RESULT=""
+qs_log_lines() { LANG=C.UTF-8 quickshell log "$QS_LOG" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g'; }
 qs_watch_start() {
     QS_LOG=""
     [ "$REAL_HOME" -eq 1 ] && command -v quickshell >/dev/null && pgrep -x quickshell >/dev/null 2>&1 || return 0
-    # The default config's instance (`quickshell list`), not the newest log:
-    # a throwaway `quickshell -p test.qml` has one too
-    local id
-    id="$(quickshell list 2>/dev/null | sed -n 's/^Instance \([^:]*\):.*/\1/p' | head -n1)"
-    [ -n "$id" ] && [ -f "/run/user/$(id -u)/quickshell/by-id/$id/log.qslog" ] || return 0
-    QS_LOG="/run/user/$(id -u)/quickshell/by-id/$id/log.qslog"
+    # The instance running the deployed config, not the newest log: a
+    # throwaway `quickshell -p test.qml` has one too. --all because plain
+    # `list` only shows instances on the caller's own Wayland display, and a
+    # hook run over SSH (or from an editor's terminal) has none.
+    local cfg="$HOME/.config/quickshell/shell.qml"
+    QS_ID="$(LANG=C.UTF-8 quickshell list --all 2>/dev/null | awk -v cfg="$cfg" '
+        /^Instance / { id = $2; sub(/:$/, "", id) }
+        /^ *Config path: / { sub(/^ *Config path: /, ""); if ($0 == cfg) { print id; exit } }')"
+    [ -n "$QS_ID" ] && [ -f "/run/user/$(id -u)/quickshell/by-id/$QS_ID/log.qslog" ] || return 0
+    QS_LOG="/run/user/$(id -u)/quickshell/by-id/$QS_ID/log.qslog"
     QS_MARK="$(qs_log_lines | wc -l)"
 }
 # Waits (up to ~$1 s) for the reloads since QS_MARK to settle; echoes ok,
@@ -402,7 +406,9 @@ qs_check_reload() {
     r="$(qs_watch_result 8)"
     if [[ "$r" == failed:* ]]; then
         QS_MARK="$(qs_log_lines | wc -l)"
-        quickshell ipc call shell reload >/dev/null 2>&1 && r="$(qs_watch_result 8)"
+        # --any-display (selects the default config; --id excludes it): the
+        # instance-on-my-display filter applies to ipc too
+        LANG=C.UTF-8 quickshell ipc --any-display call shell reload >/dev/null 2>&1 && r="$(qs_watch_result 8)"
     fi
     case "$r" in
         ok|"") QS_RESULT=ok ;;
