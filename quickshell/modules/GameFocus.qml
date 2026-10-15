@@ -8,12 +8,12 @@ import Quickshell.Hyprland
 // *except* the game's own is dimmed (IdleDimOverlay.qml renders it). Toggled
 // from the bar's GameFocusToggle. A singleton rather than state on the
 // overlay since one overlay exists per screen and they all need the same
-// answer, same reasoning as ShellState.idleDimActive. Doesn't persist across
-// a quickshell restart, same as the other center-row toggles.
+// answer, same reasoning as ShellState.idleDimActive. Both the switch and the
+// dim amount persist (game-focus.json).
 QtObject {
     id: root
 
-    property bool enabled: false
+    property alias enabled: _adapter.enabled
 
     // Name of the monitor the focused game is on, or "" when no game has
     // focus (or the mode is off). Screens whose name differs get dimmed.
@@ -22,8 +22,7 @@ QtObject {
     readonly property bool dimming: root.enabled && root.gameMonitor !== ""
 
     // Overlay opacity for the dimmed screens (0..1), set from the pill's
-    // popup slider. Unlike `enabled` this does persist (game-focus.json) --
-    // it's a preference you tune once, not a per-session switch.
+    // popup slider.
     readonly property real dimAmount: _adapter.dimAmount
     readonly property real minDim: 0.2
     readonly property real maxDim: 1.0
@@ -42,6 +41,7 @@ QtObject {
         adapter: JsonAdapter {
             id: _adapter
             property real dimAmount: 0.85
+            property bool enabled: false
         }
     }
 

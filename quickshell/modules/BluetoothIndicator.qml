@@ -261,7 +261,7 @@ Pill {
                         anchors.right: parent.right
                         visible: !!root.adapter
                         checked: root.btEnabled
-                        onToggled: root.adapter.enabled = !root.adapter.enabled
+                        onToggled: ShellState.setBluetooth(!root.adapter.enabled)
                     }
                 }
 

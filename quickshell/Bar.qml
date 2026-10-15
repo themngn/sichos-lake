@@ -287,22 +287,9 @@ PanelWindow {
             // setScheduleFollow owns the dedup-guard and, when re-enabling,
             // the immediate resync to whatever the schedule currently says.
             onSetScheduleFollow: (follow) => ShellState.setScheduleFollow(follow)
-            onScheduleSaved: {
-                // hyprsunset only reads its config at startup — no live-reload
-                // IPC exists — so the edited profile times only take effect
-                // after a restart. hyprsunset now runs as its packaged
-                // systemd --user service (see autostart.lua's comment on the
-                // uwsm/graphical-session.target migration) rather than a
-                // plain background process — systemctl handles the
-                // stop-then-start sequencing itself (clean SIGTERM wait
-                // before restart), so no manual sleep/stale-socket cleanup
-                // is needed anymore the way the old `pkill; hyprsunset &`
-                // dance required. Only actually restarts anything under the
-                // uwsm-managed session — see that same autostart.lua comment
-                // for why a non-uwsm session leaves this a silent no-op.
-                ShellState.setScheduleFollow(true)
-                Quickshell.execDetached(["systemctl", "--user", "restart", "hyprsunset.service"])
-            }
+            // New profile times: ShellState restarts hyprsunset (it only
+            // reads its config at startup) and resyncs the toggle to it.
+            onScheduleSaved: ShellState.restartSunsetSchedule()
         }
         HdrToggle {
             id: hdrToggle

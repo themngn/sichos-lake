@@ -196,6 +196,35 @@ QtObject {
 
     readonly property var entries: adapter.entries
 
+    // How many notifications arrived during the current Do-not-disturb
+    // stretch (ShellState.notificationsMutedSince), 0 when not muted. Counts
+    // messages, not rows: a folded entry's `bodies` each carry their own
+    // time, so a burst that started before the mute only counts its newer
+    // messages. A mute restored from a shell-state.json older than
+    // notificationsMutedSince has no start time -- counted as nothing missed
+    // rather than the whole history.
+    readonly property int missedCount: {
+        const since = ShellState.notificationsMutedSince
+        if (!ShellState.notificationsMuted || !(since > 0)) return 0
+        let n = 0
+        for (const e of adapter.entries) {
+            if (e.bodies) {
+                for (const b of e.bodies) if (b.time >= since) n++
+            } else if (e.time >= since) {
+                n++
+            }
+        }
+        return n
+    }
+
+    // The n newest entries (entries are kept newest first), as plain
+    // objects -- adapter.entries' items are JS values from the JsonAdapter,
+    // copying just these fields keeps callers from depending on the rest
+    // of the stored shape.
+    function recent(n) {
+        return adapter.entries.slice(0, Math.max(0, n)).map(e => ({ appName: e.appName, summary: e.summary, time: e.time }))
+    }
+
     property FileView view: FileView {
         path: Quickshell.env("HOME") + "/.config/quickshell/notification-history.json"
         watchChanges: true

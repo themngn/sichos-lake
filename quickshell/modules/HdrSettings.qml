@@ -9,14 +9,13 @@ import Quickshell.Hyprland
 // Some displays tone-map HDR badly (crushed blacks, washed colors) so this is
 // opt-in per monitor rather than the pill being a single switch that hits
 // every screen — toggling it on only drives whichever monitors are checked
-// here. `monitors` persists (JsonAdapter, same pattern as BarSettings);
-// `active` doesn't, same as ShellState.idleActive/sunsetWarm — resets to off
-// on every quickshell restart rather than risking HDR silently staying on
-// for a monitor the user meant to leave off.
+// here. Both `monitors` and `active` persist (JsonAdapter, same pattern as
+// BarSettings) -- HDR only ever lands on monitors explicitly checked here, so
+// keeping it on across a restart can't surprise an unchecked one.
 QtObject {
     id: root
 
-    property bool active: false
+    property alias active: adapter.active
 
     function isSelected(name) {
         return adapter.monitors.indexOf(name) !== -1
@@ -73,20 +72,33 @@ QtObject {
         function toggle() { root.toggleActive() }
     }
 
+    // Any Hyprland config reload (a save of any hypr/*.lua, including
+    // save-monitor-config.py's monitors.lua writes from the Display page)
+    // re-applies monitors.lua's rules, which have no cm/bitdepth -- HDR went
+    // off while the toggle still said on. hl.monitor() via eval doesn't
+    // itself emit configreloaded (checked on socket2), so this can't loop.
+    property Connections _reloads: Connections {
+        target: Hyprland
+        function onRawEvent(event) {
+            if (event.name === "configreloaded" && root.active) root.apply()
+        }
+    }
+
     property FileView _view: FileView {
         path: Quickshell.env("HOME") + "/.config/quickshell/hdr-monitors.json"
         watchChanges: true
         printErrors: false
         onAdapterUpdated: writeAdapter()
-        // Re-applies on load (and active starts false) so a quickshell
-        // restart always leaves every monitor in a known "HDR off" state
-        // rather than trusting whatever hl.monitor() calls happened to be
-        // live from before the restart.
+        // Re-applies the saved state on load: after a login monitors.lua
+        // starts every output in SDR, and after a quickshell restart this
+        // pins every monitor to a known state rather than trusting whatever
+        // hl.monitor() calls happened to be live from before it.
         onLoaded: root.apply()
 
         adapter: JsonAdapter {
             id: adapter
             property var monitors: []
+            property bool active: false
         }
     }
 }

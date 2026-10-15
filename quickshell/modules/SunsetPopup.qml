@@ -43,6 +43,12 @@ MorphContent {
         id: confFile
         path: Quickshell.env("HOME") + "/.config/hypr/hyprsunset.conf"
         printErrors: false
+        // There's one of these popups per bar plus one per Control Center,
+        // each with its own copy of the file: without picking up the
+        // others' saves, opening this one showed (and its Save wrote back
+        // on top of) whatever was in the file when quickshell started.
+        watchChanges: true
+        onFileChanged: reload()
     }
 
     property int dayHour: 7
