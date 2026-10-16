@@ -337,7 +337,7 @@ Pill {
                 sub: GameFocus.enabled ? (GameFocus.dimming ? "Dimming" : "Armed") : "Off",
                 detail: "Dims the other screens", active: GameFocus.enabled, more: "qs-gamefocus" }
             case "hdr": return {
-                glyph: "\u{f0d7d}", label: "HDR", sub: panel.onOff(HdrSettings.active),
+                glyph: "\u{f02f5}", label: "HDR", sub: panel.onOff(HdrSettings.active),
                 detail: "On these monitors", active: HdrSettings.active, more: "qs-hdr" }
             case "opaque": return {
                 glyph: "", label: "Opaque",
@@ -371,11 +371,6 @@ Pill {
             case "sound": return {
                 glyph: vol.icon(), label: "Sound", sub: root.nodeName(root.sink),
                 active: !!(root.sink && root.sink.audio && !root.sink.audio.muted), more: "qs-audio" }
-            case "display": return {
-                glyph: "\u{f0e51}", label: "Display",
-                sub: Quickshell.screens.length + (Quickshell.screens.length === 1 ? " display" : " displays"),
-                detail: Quickshell.screens.map(s => s.name).join(" · "),
-                active: false, more: "qs-display", opens: true }
             case "update": return {
                 glyph: "\u{f06b0}", label: "Updates",
                 sub: upd.updating ? "Updating…" : upd.checking && upd.count === null ? "Checking…"
@@ -427,7 +422,6 @@ Pill {
             case "micmute":
                 if (root.source && root.source.audio) root.source.audio.volume = Math.max(0, Math.min(1, root.source.audio.volume + step))
                 return
-            case "display": if (panel.hasBacklight) panel.setBacklight((panel.pendingBacklight >= 0 ? panel.pendingBacklight / 100 : panel.backlight) + step); return
             }
             wheel.accepted = false
         }
@@ -455,7 +449,6 @@ Pill {
                 break
             }
             case "sound": if (root.sink && root.sink.audio) root.sink.audio.muted = !root.sink.audio.muted; break
-            case "display": root.openPopup("qs-display"); break
             case "update": root.openPopup("qs-update"); break
             case "vpn": VpnStatus.toggle(); break
             case "lid": LidSettings.setSleep(!LidSettings.sleep); break
@@ -612,14 +605,18 @@ Pill {
                 v.detail = GameFocus.dimming && Hyprland.activeToplevel ? Hyprland.activeToplevel.title : "Dims the screens without the game"
                 v.lines = [v.sub, GameFocus.enabled ? "Dim " + panel.pct(GameFocus.dimAmount) : ""].filter(t => t)
                 break
+            // HDR: every size but 1x1 shows which monitors it's on (buttons
+            // or the 2-row list), so the status line only adds what they
+            // can't -- a selected monitor that stayed SDR.
             case "hdr": {
                 const on = Displays.monitors.filter(m => HdrSettings.isSelected(m.name))
+                const sdr = HdrSettings.active ? on.filter(m => !m.disabled && !m.hdrApplied) : []
+                v.short = HdrSettings.active ? "HDR on" : "HDR off"
                 v.control = extraHdrMonitors
                 v.tag = panel.onOff(HdrSettings.active)
-                v.sub = HdrSettings.active ? "On" + (on.length ? " · " + on.map(m => m.name).join(", ") : "") : "Off"
+                v.sub = sdr.length ? "On · " + sdr.map(m => m.name).join(", ") + " SDR" : panel.onOff(HdrSettings.active)
                 v.detail = on.length === 0 ? "Pick the monitors it applies to"
-                    : HdrSettings.active ? on.map(m => m.name + (m.hdrApplied ? " HDR" : " SDR")).join(" · ")
-                    : "Applies to " + on.map(m => m.name).join(", ")
+                    : sdr.length ? sdr.map(m => m.friendly).join(", ") + " stayed SDR" : "On these monitors"
                 if (tall && w >= 3) v.body = bodyHdr
                 v.lines = [panel.onOff(HdrSettings.active), on.map(m => m.name).join(", ")].filter(t => t)
                 break
@@ -670,16 +667,6 @@ Pill {
                 if (w >= 3) v.under = true
                 v.lines = [root.sink && root.sink.audio ? panel.pct(root.sink.audio.volume) : "", AudioInfo.shortName(root.sink)].filter(t => t)
                 break
-            case "display": {
-                const n = Displays.monitors.filter(m => !m.disabled).length || Quickshell.screens.length
-                v.sub = n + (n === 1 ? " display" : " displays")
-                v.control = panel.hasBacklight ? extraBrightness : null
-                v.tag = v.sub
-                v.detail = Displays.monitors.filter(m => !m.disabled).map(m => m.friendly).join(" · ")
-                if (tall && w >= 3) v.body = bodyDisplays
-                v.lines = [v.sub, panel.hasBacklight ? "Panel " + panel.pct(panel.backlight) : ""].filter(t => t)
-                break
-            }
             case "update":
                 v.short = upd.count ? upd.count + (upd.count === 1 ? " update" : " updates") : upd.count === 0 ? "Up to date" : "Updates"
                 v.control = extraUpdate
@@ -974,72 +961,6 @@ Pill {
             TileSlider {
                 value: root.source && root.source.audio ? root.source.audio.volume : 0
                 onMoved: (v) => { if (root.source && root.source.audio) root.source.audio.volume = v }
-            }
-        }
-        Component {
-            id: extraBrightness
-            TileSlider {
-                value: panel.pendingBacklight >= 0 ? panel.pendingBacklight / 100 : panel.backlight
-                onMoved: (v) => panel.setBacklight(v)
-            }
-        }
-        // 2-row Display, 3+ wide: a row per monitor -- mode at 3 wide, its
-        // own brightness slider at 4 (laptop backlight or DDC).
-        Component {
-            id: bodyDisplays
-            Column {
-                id: dispList
-                spacing: 2
-                readonly property bool sliders: parent.cols >= 4
-                Repeater {
-                    model: Displays.monitors.slice(0, 3)
-                    delegate: Item {
-                        required property var modelData
-                        width: dispList.width
-                        height: 22
-                        Text {
-                            id: monName
-                            width: dispList.sliders ? 64 : dispList.width / 2
-                            anchors.verticalCenter: parent.verticalCenter
-                            elide: Text.ElideRight
-                            text: modelData.friendly || modelData.name
-                            color: modelData.disabled ? Theme.textDim : Theme.text
-                            font.family: Theme.uiFontFamily
-                            font.pixelSize: Theme.fontSize - 2
-                        }
-                        Text {
-                            id: monMode
-                            anchors.left: monName.right
-                            anchors.leftMargin: 6
-                            anchors.right: dispList.sliders ? undefined : parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            horizontalAlignment: dispList.sliders ? Text.AlignLeft : Text.AlignRight
-                            text: modelData.disabled ? "Off" : modelData.refreshRate + " Hz"
-                                + (dispList.sliders ? "" : " · " + modelData.width + "×" + modelData.height)
-                            color: Theme.textDim
-                            font.family: Theme.uiFontFamily
-                            font.pixelSize: Theme.fontSize - 3
-                        }
-                        TileSlider {
-                            visible: dispList.sliders && modelData.brightness >= 0
-                            anchors.left: monMode.right
-                            anchors.leftMargin: 8
-                            anchors.right: parent.right
-                            height: 22
-                            value: modelData.brightness
-                            onMoved: (v) => Displays.setBrightness(modelData.name, v)
-                        }
-                        Text {
-                            visible: dispList.sliders && modelData.brightness < 0
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: modelData.disabled ? "" : "No brightness control"
-                            color: Theme.textDim
-                            font.family: Theme.uiFontFamily
-                            font.pixelSize: Theme.fontSize - 3
-                        }
-                    }
-                }
             }
         }
         // Hotspot, 2 rows: stop / copy the password while it runs; else
@@ -1377,7 +1298,9 @@ Pill {
             id: extraHdrMonitors
             ButtonRow {
                 buttons: Displays.monitors.filter(m => !m.disabled).map(m => ({
-                    label: parent.cols >= 3 ? m.friendly : m.name, selected: HdrSettings.isSelected(m.name),
+                    // Model names only under the title at 3 wide: beside
+                    // it at 4 they got cut to "Dell U2…".
+                    label: parent.cols === 3 ? m.friendly : m.name, selected: HdrSettings.isSelected(m.name),
                     available: m.hdrCapable !== false || HdrSettings.isSelected(m.name),
                     action: () => HdrSettings.toggleMonitor(m.name) }))
             }
@@ -1754,9 +1677,10 @@ Pill {
                                         // Width capped at ~1.3x the height so
                                         // wide-and-short glyphs (gamepad)
                                         // don't read bigger than the rest --
-                                        // except HDR, which is lettering and
-                                        // would shrink to a sliver.
-                                        inkWidth: tile.info.glyph === "\u{f0d7d}" ? 30 : 22
+                                        // a little more for HDR's mountains,
+                                        // flatter still, or they'd shrink to
+                                        // a sliver.
+                                        inkWidth: tile.info.glyph === "\u{f02f5}" ? 26 : 22
                                         color: tile.info.active ? Theme.text : Theme.textMuted
                                         opacity: tile.info.busy ? 0.5 : 1
                                         SequentialAnimation on opacity {
@@ -2171,7 +2095,7 @@ Pill {
                                     anchors.verticalCenterOffset: -9
                                     glyph: spare.info.glyph
                                     inkHeight: 17
-                                    inkWidth: spare.info.glyph === "\u{f0d7d}" ? 30 : 22
+                                    inkWidth: spare.info.glyph === "\u{f02f5}" ? 26 : 22
                                     color: Theme.textMuted
                                 }
                                 Text {

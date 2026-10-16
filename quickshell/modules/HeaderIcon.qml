@@ -45,7 +45,7 @@ Item {
         0xf0e17: [-1, -70, 62, 68], // calendar
         0xf0e51: [-1, -64, 62, 56], // monitor (DisplaySettings)
         0xf1542: [-1, -63, 61, 54], // tune-variant (QuickSettings)
-        0xf0d7d: [-1, -47, 61, 22], // hdr (QuickSettings)
+        0xf02f5: [0, -53, 60, 34],  // image-filter-hdr, mountains (QuickSettings HDR)
         0xf011c: [0, -83, 60, 94],  // cellphone (QuickSettings, PhonePage)
         // Control Center tiles
         0xf001d: [0, -66, 60, 60],  // airplane
