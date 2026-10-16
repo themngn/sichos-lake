@@ -1,11 +1,16 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Quickshell.Networking
 
 // Wi-Fi page of the Control Center (QuickSettings.qml, popupId "qs-wifi"):
 // power switch, the scanned network list (connected, then saved, then by
-// signal), connect/disconnect/forget, and a password row for a secured
-// network that isn't saved yet. Scans only while shown.
+// signal), connect/disconnect/forget, a password row for a secured
+// network that isn't saved yet, and -- a saved network's chevron, or a tap on
+// the connected one -- a details view in the same card: a "join this
+// network" QR code and the password (both hidden until asked for), security,
+// signal, address, connect/forget (scripts/wifi-share.py reads the secret).
+// Scans only while shown.
 //
 // The password field isn't a TextInput: a popup surface never gets keyboard
 // focus, so while it's open this item is ShellState.keySink and the bar
@@ -17,7 +22,7 @@ MorphContent {
     signal back()
 
     implicitWidth: menu.contentWidth + 2 * Theme.surfacePadding
-    implicitHeight: column.implicitHeight + 2 * Theme.surfacePadding
+    implicitHeight: (menu.detail ? detailColumn : column).implicitHeight + 2 * Theme.surfacePadding
 
     readonly property var device: {
         for (const d of Networking.devices.values) if (d.type === DeviceType.Wifi) return d
@@ -92,7 +97,93 @@ MorphContent {
             ShellState.keySink = null
         }
     }
-    onShownChanged: if (!menu.shown) menu.cancelPassword()
+    onShownChanged: if (!menu.shown) { menu.cancelPassword(); menu.closeDetail() }
+
+    // Details view: one network. Its password is fetched when the view opens
+    // and dropped when it closes; shown as dots until asked for.
+    property var detail: null
+    property string detailPassword: ""
+    property string detailError: ""
+    property bool detailReveal: false
+    property bool detailQr: false
+    property int detailQrRev: 0
+    property bool copied: false
+    readonly property string _shareScript: Quickshell.env("HOME") + "/.config/quickshell/scripts/wifi-share.py"
+    // $XDG_RUNTIME_DIR: tmpfs, gone at logout -- the code holds the password.
+    readonly property string detailQrPath: Quickshell.env("XDG_RUNTIME_DIR") + "/sichos-wifi-qr.png"
+    function openDetail(n) {
+        menu.cancelPassword()
+        menu.closeDetail()
+        menu.detail = n
+        if (!n.known) return
+        detailPw.command = [menu._shareScript, "password", n.name]
+        detailPw.running = true
+    }
+    // Made the first time it's shown.
+    function toggleQr() {
+        menu.detailQr = !menu.detailQr
+        if (!menu.detailQr || menu.detailQrRev > 0 || detailQrProc.running) return
+        detailQrProc.command = [menu._shareScript, "qr", menu.detail.name, menu.detailQrPath]
+        detailQrProc.running = true
+    }
+    function closeDetail() {
+        menu.detail = null
+        menu.detailPassword = ""
+        menu.detailError = ""
+        menu.detailReveal = false
+        menu.detailQr = false
+        menu.detailQrRev = 0
+        menu.copied = false
+    }
+    // A forgotten (or out of range) network drops out of the list: back to it.
+    onNetworksChanged: if (menu.detail && !menu.networks.includes(menu.detail)) menu.closeDetail()
+    function securityText(n) {
+        switch (n.security) {
+        case WifiSecurityType.Open: return "Open"
+        case WifiSecurityType.Owe: return "Open, encrypted"
+        case WifiSecurityType.Sae: return "WPA3"
+        case WifiSecurityType.Wpa3SuiteB192: return "WPA3 Enterprise"
+        case WifiSecurityType.Wpa2Psk: return "WPA2"
+        case WifiSecurityType.WpaPsk: return "WPA"
+        case WifiSecurityType.Wpa2Eap: case WifiSecurityType.WpaEap: return "Enterprise"
+        case WifiSecurityType.StaticWep: case WifiSecurityType.DynamicWep: return "WEP"
+        }
+        return "Unknown"
+    }
+    Process {
+        id: detailPw
+        stdout: StdioCollector { id: detailPwOut }
+        stderr: StdioCollector { id: detailPwErr }
+        onExited: (code) => {
+            if (!menu.detail) return
+            if (code === 0) menu.detailPassword = detailPwOut.text.replace(/\n$/, "")
+            else menu.detailError = detailPwErr.text.trim() || "Couldn't read the password"
+        }
+    }
+    Process {
+        id: detailQrProc
+        stderr: StdioCollector { id: detailQrErr }
+        onExited: (code) => {
+            if (!menu.detail) return
+            if (code === 0) menu.detailQrRev++
+            else if (menu.detailError === "") menu.detailError = detailQrErr.text.trim() || "Couldn't make the QR code"
+        }
+    }
+    Timer { id: copiedTimer; interval: 1500; onTriggered: menu.copied = false }
+    // Through wl-copy's stdin, not its argv (visible in the process list).
+    Process {
+        id: copyProc
+        command: ["wl-copy"]
+        stdinEnabled: true
+        onStarted: { copyProc.write(menu.detailPassword); copyProc.stdinEnabled = false }
+    }
+    function copyPassword() {
+        if (menu.detailPassword === "") return
+        copyProc.stdinEnabled = true
+        copyProc.running = true
+        menu.copied = true
+        copiedTimer.restart()
+    }
 
     // signalStrength is 0..1 (logged live: 0.84 for a full-bars network).
     function signalGlyph(n) {
@@ -114,6 +205,7 @@ MorphContent {
 
     Column {
         id: column
+        visible: !menu.detail
         anchors.centerIn: parent
         width: menu.contentWidth
         spacing: Theme.sectionSpacing
@@ -209,8 +301,10 @@ MorphContent {
                                 id: rowArea
                                 anchors.fill: parent
                                 hoverEnabled: true
-                                cursorShape: entry.modelData.connected ? Qt.ArrowCursor : Qt.PointingHandCursor
-                                onClicked: entry.asking ? menu.cancelPassword() : menu.activate(entry.modelData)
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: entry.asking ? menu.cancelPassword()
+                                    : entry.modelData.connected ? menu.openDetail(entry.modelData)
+                                    : menu.activate(entry.modelData)
                             }
 
                             Text {
@@ -254,10 +348,6 @@ MorphContent {
                                 anchors.rightMargin: 6
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 4
-                                // Only on hover (or while connected), so the
-                                // list reads as names first.
-                                visible: rowArea.containsMouse || forgetArea.containsMouse || discArea.containsMouse
-                                    || entry.modelData.connected
 
                                 Rectangle {
                                     visible: entry.modelData.connected
@@ -281,25 +371,27 @@ MorphContent {
                                         onClicked: entry.modelData.disconnect()
                                     }
                                 }
+                                // Saved networks: their details (share,
+                                // forget) -- the Control Center tiles' chevron.
                                 Rectangle {
                                     visible: entry.modelData.known
-                                    width: Theme.controlHeight - 4
+                                    width: 26
                                     height: Theme.controlHeight - 4
                                     radius: Theme.controlRadius
-                                    color: forgetArea.containsMouse ? Theme.hoverFill : Theme.controlFill
+                                    color: moreArea.containsMouse ? Theme.hoverFill : "transparent"
                                     Text {
                                         anchors.centerIn: parent
-                                        text: "\u{f0a7a}" // nf-md-trash_can_outline
-                                        color: forgetArea.containsMouse ? Theme.text : Theme.textMuted
+                                        text: "\u{f054}" // nf-fa-chevron_right
+                                        color: moreArea.containsMouse ? Theme.text : Theme.textMuted
                                         font.family: Theme.fontFamily
-                                        font.pixelSize: Theme.fontSize
+                                        font.pixelSize: Theme.fontSize - 3
                                     }
                                     MouseArea {
-                                        id: forgetArea
+                                        id: moreArea
                                         anchors.fill: parent
                                         hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
-                                        onClicked: entry.modelData.forget()
+                                        onClicked: menu.openDetail(entry.modelData)
                                     }
                                 }
                             }
@@ -441,6 +533,228 @@ MorphContent {
                     Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/quickshell/scripts/wlctl-toggle.sh"])
                 }
             }
+        }
+    }
+
+    // --- Details: one saved network ---
+    Column {
+        id: detailColumn
+        visible: !!menu.detail
+        anchors.centerIn: parent
+        width: menu.contentWidth
+        spacing: Theme.sectionSpacing
+        readonly property var n: menu.detail
+        readonly property bool secured: !!n && n.security !== WifiSecurityType.Open && n.security !== WifiSecurityType.Owe
+
+        Item {
+            width: parent.width
+            height: 20
+            Row {
+                spacing: 6
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                BackButton { id: detailBack; onClicked: menu.closeDetail() }
+                Text {
+                    width: parent.width - detailBack.width - 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    elide: Text.ElideRight
+                    text: detailColumn.n ? detailColumn.n.name : ""
+                    font.family: Theme.uiFontFamily
+                    font.pixelSize: Theme.fontSize
+                    font.bold: true
+                    color: Theme.text
+                }
+            }
+        }
+
+        Rectangle { width: parent.width; height: 1; color: Theme.separator }
+
+        Column {
+            width: parent.width
+            spacing: 2
+            DetailRow {
+                visible: detailColumn.secured
+                label: "Password"
+                // Dots, not the length: a fixed count.
+                value: menu.detailPassword === "" ? (menu.detailError || "…")
+                    : menu.detailReveal ? menu.detailPassword : "••••••••••••"
+                IconButton {
+                    glyph: menu.detailReveal ? "\u{f0209}" : "\u{f0208}" // nf-md-eye_off / eye
+                    onClicked: menu.detailReveal = !menu.detailReveal
+                }
+                IconButton {
+                    glyph: menu.copied ? "\u{f012c}" : "\u{f018f}" // nf-md-check / content_copy
+                    onClicked: menu.copyPassword()
+                }
+            }
+            DetailRow { label: "Security"; value: detailColumn.n ? menu.securityText(detailColumn.n) : "" }
+            DetailRow {
+                label: "Signal"
+                value: !detailColumn.n ? "" : Math.round(detailColumn.n.signalStrength * 100) + "%"
+                    + (detailColumn.n.connected && NetInfo.wifiBand ? " · " + NetInfo.wifiBand : "")
+            }
+            DetailRow {
+                visible: !!detailColumn.n && detailColumn.n.connected && NetInfo.ipv4 !== ""
+                label: "IP address"
+                value: NetInfo.ipv4
+            }
+        }
+
+        // QR code to join, on request: black on white with a quiet zone,
+        // whatever the theme -- what phone cameras read reliably.
+        Column {
+            width: parent.width
+            spacing: 8
+            DetailButton {
+                width: parent.width
+                label: menu.detailQr ? "Hide QR code" : "Show QR code"
+                onClicked: menu.toggleQr()
+            }
+            Rectangle {
+                visible: menu.detailQr
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: 196
+                height: 196
+                radius: Theme.controlRadius
+                color: "white"
+                Image {
+                    anchors.centerIn: parent
+                    width: 180
+                    height: 180
+                    visible: menu.detailQrRev > 0
+                    source: menu.detailQrRev > 0 ? "file://" + menu.detailQrPath + "?" + menu.detailQrRev : ""
+                    cache: false
+                    smooth: false
+                    fillMode: Image.PreserveAspectFit
+                }
+                Text {
+                    visible: menu.detailQrRev === 0
+                    anchors.centerIn: parent
+                    width: parent.width - 24
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    text: menu.detailError || "…"
+                    color: Theme.textOnLight
+                    font.family: Theme.uiFontFamily
+                    font.pixelSize: Theme.fontSize - 2
+                }
+            }
+            Text {
+                visible: menu.detailQr
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                text: "Scan with a phone's camera to join"
+                color: Theme.textDim
+                font.family: Theme.uiFontFamily
+                font.pixelSize: Theme.fontSize - 3
+            }
+        }
+
+        Rectangle { width: parent.width; height: 1; color: Theme.separator }
+
+        Row {
+            width: parent.width
+            spacing: 6
+            DetailButton {
+                width: (parent.width - 6) / 2
+                label: !detailColumn.n ? "" : detailColumn.n.connected ? "Disconnect" : "Connect"
+                onClicked: {
+                    const n = detailColumn.n
+                    if (n.connected) n.disconnect()
+                    else n.connect()
+                }
+            }
+            DetailButton {
+                width: (parent.width - 6) / 2
+                label: "Forget network"
+                danger: true
+                onClicked: { const n = detailColumn.n; menu.closeDetail(); n.forget() }
+            }
+        }
+    }
+
+    // "Label        value [buttons]"
+    component DetailRow: Item {
+        id: dr
+        property string label: ""
+        property string value: ""
+        default property alias buttons: drButtons.data
+        width: parent ? parent.width : 0
+        height: 28
+        Text {
+            id: drLabel
+            width: 96
+            anchors.left: parent.left
+            anchors.leftMargin: 4
+            anchors.verticalCenter: parent.verticalCenter
+            text: dr.label
+            color: Theme.textMuted
+            font.family: Theme.uiFontFamily
+            font.pixelSize: Theme.fontSize - 1
+        }
+        Text {
+            anchors.left: drLabel.right
+            anchors.right: drButtons.left
+            anchors.rightMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            elide: Text.ElideRight
+            text: dr.value
+            color: Theme.text
+            font.family: Theme.uiFontFamily
+            font.pixelSize: Theme.fontSize - 1
+        }
+        Row {
+            id: drButtons
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 2
+        }
+    }
+    component IconButton: Rectangle {
+        id: ib
+        property string glyph: ""
+        signal clicked()
+        width: 28
+        height: 24
+        radius: Theme.controlRadius
+        color: ibArea.containsMouse ? Theme.hoverFill : "transparent"
+        Text {
+            anchors.centerIn: parent
+            text: ib.glyph
+            color: ibArea.containsMouse ? Theme.text : Theme.textMuted
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontSize + 1
+        }
+        MouseArea {
+            id: ibArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: ib.clicked()
+        }
+    }
+    component DetailButton: Rectangle {
+        id: db
+        property string label: ""
+        property bool danger: false
+        signal clicked()
+        height: Theme.controlHeight
+        radius: Theme.controlRadius
+        color: dbArea.containsMouse ? Theme.hoverFill : Theme.controlFill
+        Text {
+            anchors.centerIn: parent
+            text: db.label
+            color: db.danger && dbArea.containsMouse ? Theme.danger : Theme.text
+            font.family: Theme.uiFontFamily
+            font.pixelSize: Theme.fontSize - 1
+        }
+        MouseArea {
+            id: dbArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: db.clicked()
         }
     }
 }

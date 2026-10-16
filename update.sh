@@ -18,7 +18,9 @@
 #                              parked conflicts, drift of deployed files
 #   ./update.sh system         apply system-level changes (sudo): SDDM,
 #                              Plymouth, polkit, kernel-install, firewalld,
-#                              root's zsh files, new packages.txt entries
+#                              the hotspot's udev rule and NetworkManager
+#                              drop-in, root's zsh files, new packages.txt
+#                              entries
 #   ./update.sh try [--force] [paths...]
 #                              deploy the repo's UNCOMMITTED changes to user
 #                              config files now, to see them live (new files,
@@ -195,6 +197,8 @@ sys_dest_for() {
         sddm/sysconfig-sddm) d="/etc/sysconfig/sddm" ;;
         kernel-install.d/*) d="/etc/kernel/install.d/${1#kernel-install.d/}" ;;
         firewalld/*) d="/etc/firewalld/services/${1#firewalld/}" ;;
+        udev/*) d="/etc/udev/rules.d/${1#udev/}" ;;
+        NetworkManager/*) d="/etc/NetworkManager/conf.d/${1#NetworkManager/}" ;;
         wallpaper/wallpaper.jpg) d="/usr/share/sddm/themes/sichos/background.jpg" ;;
         zsh/.zshrc) d="/root/.zshrc" ;;
         zsh/.zsh_plugins.txt) d="/root/.zsh_plugins.txt" ;;
@@ -888,6 +892,8 @@ sys_deploy_file() {
             plymouth/*) SYS_ACTIONS[plymouth]=1 ;;
             kernel-install.d/*) SYS_ACTIONS[bootentries]=1 ;;
             firewalld/*) SYS_ACTIONS[firewalld]=1 ;;
+            udev/*) SYS_ACTIONS[udev]=1 ;;
+            NetworkManager/*) SYS_ACTIONS[nmconf]=1 ;;
             sddm/*|wallpaper/*) SYS_ACTIONS[sddm]=1 ;;
         esac
     else
@@ -950,6 +956,19 @@ sys_followups() {
     fi
     if [ -n "${SYS_ACTIONS[firewalld]:-}" ] && [ "$real" -eq 1 ] && systemctl is-active --quiet firewalld; then
         as_root firewall-cmd --reload >/dev/null && CHANGED+=("firewalld reloaded") || ERRORS+=("firewall-cmd --reload failed")
+    fi
+    # Same as install.sh's "==> Hotspot" step: NM re-reads conf.d first, so
+    # the hotspot interface the udev rule then adds starts out unmanaged.
+    if [ -n "${SYS_ACTIONS[nmconf]:-}" ]; then
+        if [ "$real" -eq 0 ]; then NOTES+=("would reload NetworkManager's configuration")
+        elif as_root nmcli general reload conf; then CHANGED+=("NetworkManager configuration reloaded")
+        else ERRORS+=("nmcli general reload conf failed"); fi
+    fi
+    if [ -n "${SYS_ACTIONS[udev]:-}" ]; then
+        if [ "$real" -eq 0 ]; then NOTES+=("would reload udev rules and re-run them for the Wi-Fi cards")
+        elif as_root udevadm control --reload-rules && as_root udevadm trigger --action=add --subsystem-match=ieee80211; then
+            CHANGED+=("udev rules reloaded")
+        else ERRORS+=("reloading udev rules failed"); fi
     fi
     [ -n "${SYS_ACTIONS[sddm]:-}" ] && NOTES+=("the login screen picks this up at the next login (or sudo systemctl restart sddm)")
     return 0

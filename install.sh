@@ -234,6 +234,34 @@ else
     echo "    rule already up to date"
 fi
 
+echo "==> Hotspot: a second Wi-Fi interface, so the hotspot can share Wi-Fi"
+
+# The Control Center's Hotspot tile (quickshell/scripts/hotspot.py) runs the
+# hotspot on its own interface, sichos-ap0, while the normal one stays
+# connected -- on cards that can be a client and an access point at once
+# (see udev/70-sichos-hotspot.rules; others get no interface and the tile
+# falls back to a hotspot that replaces Wi-Fi). NetworkManager leaves that
+# interface alone until the tile hands it over
+# (NetworkManager/90-sichos-hotspot.conf), so its config is reloaded first;
+# then the rule is re-run for the cards already present, no reboot needed.
+# dnsmasq (packages.txt) does the hotspot's DHCP/DNS.
+sudo mkdir -p /etc/NetworkManager/conf.d /etc/udev/rules.d
+for pair in "NetworkManager/90-sichos-hotspot.conf:/etc/NetworkManager/conf.d/90-sichos-hotspot.conf" \
+            "udev/70-sichos-hotspot.rules:/etc/udev/rules.d/70-sichos-hotspot.rules"; do
+    src="$HERE/${pair%%:*}" dest="${pair#*:}"
+    if ! cmp -s "$src" "$dest" 2>/dev/null; then
+        [ -f "$dest" ] && sudo cp "$dest" "$dest.bak" && echo "    backed up existing $dest to $dest.bak"
+        sudo cp "$src" "$dest"
+        echo "    installed $dest"
+    else
+        echo "    $dest already up to date"
+    fi
+done
+sudo nmcli general reload conf
+sudo udevadm control --reload-rules
+sudo udevadm trigger --action=add --subsystem-match=ieee80211
+echo "    reloaded NetworkManager's configuration and the udev rules"
+
 echo "==> Bluetooth: fix HID controllers that pair then instantly disconnect"
 
 # A well-known BlueZ/kernel L2CAP quirk: many wireless game controllers

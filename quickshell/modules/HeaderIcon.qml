@@ -49,6 +49,8 @@ Item {
         0xf011c: [0, -83, 60, 94],  // cellphone (QuickSettings, PhonePage)
         // Control Center tiles
         0xf001d: [0, -66, 60, 60],  // airplane
+        0xf0003: [0, -58, 60, 44],  // access point (Hotspot)
+        0xf1511: [0, -66, 60, 60],  // access point off
         0xf1e6: [0, -76, 60, 80],   // plug (power profile: performance)
         0xf032a: [0, -64, 60, 57],  // leaf (power profile: saver)
         0xf24e: [0, -60, 60, 49],   // balance scale (power profile: balanced)

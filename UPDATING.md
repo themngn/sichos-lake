@@ -46,8 +46,8 @@ commit them (or deploy them by hand, see below).
   (`--alt`, `--vm`, the default browser).
 - **`monitors.lua` is per-machine** and never replaced once it exists.
 - **Files removed from the repo** are removed from `~/.config` too — but only if you never edited them.
-- **System files** (SDDM, Plymouth, polkit, kernel-install, firewalld, root's zsh, new `packages.txt`
-  entries) need `sudo`, which a hook can't ask for. The hook only tells you (and shows a notification);
+- **System files** (SDDM, Plymouth, polkit, kernel-install, firewalld, the hotspot's udev rule and
+  NetworkManager drop-in, root's zsh, new `packages.txt` entries) need `sudo`, which a hook can't ask for. The hook only tells you (and shows a notification);
   apply them with `./update.sh system` — see below.
 - Each file is replaced atomically, so a hot reload never sees a half-written file. If a file can't be
   written, the deployed version stays where it was and the next run retries.
@@ -154,6 +154,8 @@ hand is kept and its new version parked. It also runs what `install.sh` would ru
 - Plymouth theme → `plymouth-set-default-theme -R unlock` (rebuilds the initramfs)
 - kernel-install drop-in → retitles the existing boot entries
 - firewalld service → `firewall-cmd --reload`
+- hotspot udev rule / NetworkManager drop-in → reloads udev and NetworkManager's configuration, so the
+  hotspot's own Wi-Fi interface appears without a reboot
 - new `packages.txt` entries → `dnf install` (packages dropped from the list are left installed)
 - SDDM theme/config → takes effect at the next login (or `sudo systemctl restart sddm`)
 - `cage/` (the patched SDDM compositor) → comes from the `mdukhota/test1` COPR; rebuild it there

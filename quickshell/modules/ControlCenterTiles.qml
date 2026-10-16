@@ -16,11 +16,17 @@ QtObject {
     id: root
 
     // Every tile that exists, in the order "Add tiles" lists them.
-    readonly property var allIds: ["wifi", "bluetooth", "airplane", "nightlight", "silence", "micmute",
+    readonly property var allIds: ["wifi", "bluetooth", "airplane", "hotspot", "nightlight", "silence", "micmute",
         "awake", "gamefocus", "hdr", "opaque", "phone", "powerprofile", "sound", "display",
         "update", "vpn", "stats", "lid", "version"]
     readonly property int columns: 4
     readonly property int maxRows: 2
+    // Tiles that only come in 1x1: Airplane has nothing worth a bigger
+    // tile (its old per-radio buttons just repeated Wi-Fi/Bluetooth's).
+    readonly property var fixedSize: ["airplane"]
+    function resizable(id) { return root.fixedSize.indexOf(id) === -1 }
+    function clampW(id, w) { return root.resizable(id) ? Math.max(1, Math.min(root.columns, w)) : 1 }
+    function clampH(id, h) { return root.resizable(id) ? Math.max(1, Math.min(root.maxRows, h)) : 1 }
     readonly property var defaults: [
         { id: "wifi", w: 2, h: 1 }, { id: "bluetooth", w: 2, h: 1 },
         { id: "hdr", w: 1, h: 1 }, { id: "gamefocus", w: 2, h: 1 }, { id: "micmute", w: 1, h: 1 },
@@ -46,7 +52,7 @@ QtObject {
         const pos = {}
         let rows = 0
         for (const t of list) {
-            const w = Math.max(1, Math.min(root.columns, t.w)), h = Math.max(1, Math.min(root.maxRows, t.h))
+            const w = root.clampW(t.id, t.w), h = root.clampH(t.id, t.h)
             let placed = false
             for (let r = 0; !placed; r++) {
                 for (let c = 0; c + w <= root.columns && !placed; c++) {
@@ -108,8 +114,7 @@ QtObject {
     // dragging its edge; refilling a hole when it shrinks does the same.
     function resizeAt(id, w, h, r, c) {
         root.setSize(id, w, h)
-        root.move(id, root.nearestIndex(id, Math.max(1, Math.min(root.columns, w)),
-            Math.max(1, Math.min(root.maxRows, h)), r, c, 1, 0))
+        root.move(id, root.nearestIndex(id, root.clampW(id, w), root.clampH(id, h), r, c, 1, 0))
     }
 
     readonly property var unused: {
@@ -135,8 +140,8 @@ QtObject {
     function setSize(id, w, h) {
         const i = root.indexOf(id)
         if (i === -1) return
-        w = Math.max(1, Math.min(root.columns, w))
-        h = Math.max(1, Math.min(root.maxRows, h))
+        w = root.clampW(id, w)
+        h = root.clampH(id, h)
         const t = root.model.get(i)
         if (t.w === w && t.h === h) return
         root.model.setProperty(i, "w", w)
@@ -167,7 +172,7 @@ QtObject {
         for (const t of list) {
             const id = t.id === "link" && ids.indexOf("phone") === -1 ? "phone" : t.id
             if (root.allIds.indexOf(id) !== -1 && root.indexOf(id) === -1)
-                root.model.append({ tileId: id, w: t.w || (t.wide ? 2 : 1), h: t.h || 1 })
+                root.model.append({ tileId: id, w: root.clampW(id, t.w || (t.wide ? 2 : 1)), h: root.clampH(id, t.h || 1) })
         }
         root._revision++
     }

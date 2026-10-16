@@ -52,6 +52,13 @@ pipewire-codec-aptx      # from rpmfusion-free-updates (enabled unconditionally 
 NetworkManager
 NetworkManager-wifi      # wifi device plugin — without it NM treats wlan devices as
                           # generic (unmanaged) instead of wifi; needed by wlctl
+dnsmasq                   # NetworkManager's ipv4.method=shared runs it for DHCP/DNS on
+                          # the Control Center's hotspot (quickshell/scripts/hotspot.py);
+                          # without it the hotspot fails to start
+iw                        # udev/70-sichos-hotspot.rules (adds the hotspot interface)
+                          # and hotspot.py (channel, connected devices)
+qrencode                  # "join this network" QR codes on the Wi-Fi and Hotspot pages
+                          # (quickshell/scripts/wifi-share.py)
 power-profiles-daemon    # quickshell/modules/PowerProfile.qml
 pavucontrol               # quickshell/modules/Volume.qml on-click
 gnome-keyring             # secrets/SSH-agent service — pam_gnome_keyring.so's auto_start

@@ -160,7 +160,7 @@ Pill {
     property bool grabbing: false
     readonly property bool typing: ShellState.keySink !== null && ShellState.keySinkScreen === root.screenName
     readonly property var pageIds: ["quicksettings", "qs-audio", "qs-wifi", "qs-bluetooth", "qs-display",
-        "qs-update", "qs-hdr", "qs-sunset", "qs-idle", "qs-gamefocus", "qs-phone", "qs-vpn"]
+        "qs-update", "qs-hdr", "qs-sunset", "qs-idle", "qs-gamefocus", "qs-phone", "qs-vpn", "qs-hotspot"]
     onAnyOpenChanged: {
         root.grabbing = false
         if (root.anyOpen) grabTimer.restart()
@@ -296,7 +296,20 @@ Pill {
                 active: !!(root.adapter && root.adapter.enabled), more: root.adapter ? "qs-bluetooth" : "" }
             case "airplane": return {
                 glyph: "\u{f001d}", label: "Airplane", sub: panel.onOff(panel.airplane),
-                detail: "Or one radio at a time", active: panel.airplane, more: "" }
+                active: panel.airplane, more: "" }
+            case "hotspot": return {
+                glyph: Hotspot.active ? "\u{f0003}" : "\u{f1511}", label: "Hotspot",
+                sub: Hotspot.pending === "off" ? "Stopping…" : Hotspot.busy ? "Starting…"
+                    : Hotspot.active ? (Hotspot.clients > 0 ? Hotspot.clients + (Hotspot.clients === 1 ? " device" : " devices") : Hotspot.ssid)
+                    : Hotspot.armed ? "Tap again: Wi-Fi off"
+                    : Hotspot.error || "Off",
+                // Never the password itself: the tile is on screen for anyone
+                // to read (Copy password puts it on the clipboard).
+                detail: Hotspot.active ? (Hotspot.mode === "shared" ? "Shares " + Hotspot.wifiName : "Wi-Fi off, no internet shared")
+                    : Hotspot.canShare ? "Shares " + Hotspot.wifiName
+                    : !Hotspot.wifiConnected ? "Not sharing: Wi-Fi isn't connected"
+                    : Hotspot.shareProblem + ", turns Wi-Fi off",
+                active: Hotspot.active, busy: Hotspot.busy, more: "qs-hotspot" }
             case "nightlight": return {
                 glyph: "\u{f0594}", label: "Night Light",
                 sub: ShellState.sunsetWarm ? ShellState.sunsetKelvin + "K" : "Off", extraSub: panel.onOff(ShellState.sunsetWarm),
@@ -425,6 +438,7 @@ Pill {
             case "bluetooth": if (root.adapter) ShellState.setBluetooth(!root.adapter.enabled); break
             // Turning it off puts the radios back as they were.
             case "airplane": ShellState.setAirplane(!panel.airplane); break
+            case "hotspot": Hotspot.toggle(); break
             case "nightlight": ShellState.forceSunsetWarm(!ShellState.sunsetWarm); break
             case "silence": ShellState.setNotificationsMuted(!ShellState.notificationsMuted, 0); break
             case "micmute": if (root.source && root.source.audio) root.source.audio.muted = !root.source.audio.muted; break
@@ -470,23 +484,13 @@ Pill {
         // adapt -- three buttons at 3 wide, presets at 2 rows.
         // 1-row controls that go under the title at 3 wide too: beside it
         // they'd get ~110px (buttons elided, the stats ran out of the tile).
-        readonly property var underAt3: ["powerprofile", "update", "lid", "silence", "airplane", "hdr", "phone", "awake"]
+        readonly property var underAt3: ["powerprofile", "update", "lid", "silence", "hdr", "phone", "awake"]
         // ...and at 4 wide: rows of four buttons.
         readonly property var underAt4: ["phone", "silence"]
         function clock(ms) {
             return Qt.formatTime(new Date(ms), TimeRegion.use24Hour ? "HH:mm" : "h:mm AP")
         }
         function pct(v) { return Math.round(v * 100) + "%" }
-        // Apps recording, one name each: OBS opens a stream per capture
-        // ("OBS", "OBS: Application Audio Capture (PipeWire)", ...).
-        function micUsers() {
-            const out = []
-            for (const st of AudioInfo.inputStreams) {
-                const name = st.name.split(":")[0].trim()
-                if (name && !out.includes(name)) out.push(name)
-            }
-            return out
-        }
         function tileView(id, w, h) {
             const v = Object.assign({ title: "", tag: "", titleTail: "", lines: null, control: null, body: null, detail: "", under: undefined, besideWidth: 0, subTail: "" },
                 panel.tileInfo(id))
@@ -535,12 +539,23 @@ Pill {
                 break
             }
             case "airplane":
-                v.control = extraRadios
                 v.sub = panel.airplane ? "On" : [Networking.wifiEnabled ? "Wi-Fi on" : "Wi-Fi off",
                     root.adapter && root.adapter.enabled ? "BT on" : "BT off"].join(" · ")
                 v.lines = panel.airplane ? ["On"] : [Networking.wifiEnabled ? "Wi-Fi on" : "Wi-Fi off",
                     root.adapter && root.adapter.enabled ? "BT on" : "BT off"]
-                v.detail = "Or one radio at a time"
+                break
+            // Hotspot (Hotspot.qml): 1 row 4 wide, while it runs: the
+            // network on the status line, devices beside it (at 3 wide the
+            // name got cut off -- the count alone); 2 rows, buttons.
+            case "hotspot":
+                v.short = Hotspot.active ? (Hotspot.clients > 0 ? Hotspot.clients + (Hotspot.clients === 1 ? " device" : " devices") : "Hotspot")
+                    : Hotspot.armed ? "Tap again" : Hotspot.busy ? v.sub : "Hotspot"
+                // Narrower, room for the count only (sub's default).
+                if (Hotspot.active && Hotspot.clients > 0 && w >= (tall ? 3 : 5)) v.sub = Hotspot.ssid + " · " + v.sub
+                if (tall) v.control = extraHotspot
+                else if (w >= 4 && Hotspot.active) { v.sub = Hotspot.ssid; v.control = extraHotspotInfo; v.under = false }
+                v.lines = Hotspot.active ? [Hotspot.ssid, Hotspot.clients > 0 ? v.short : ""].filter(t => t)
+                    : Hotspot.armed ? ["Tap again", "Wi-Fi off"] : [v.sub]
                 break
             case "nightlight": {
                 v.control = tall ? bodyNight : extraWarmth
@@ -563,7 +578,7 @@ Pill {
                 const missed = NotificationHistory.missedCount > 0 ? NotificationHistory.missedCount + " missed" : ""
                 v.tag = [ShellState.notificationsMuted && until > 0 ? "Until " + panel.clock(until) : "", missed].filter(t => t).join(" · ")
                 if (ShellState.notificationsMuted) v.sub = [until > 0 ? "Until " + panel.clock(until) : "Until turned off", missed].filter(t => t).join(" · ")
-                if (tall && w >= 3) v.body = bodySilence
+                if (tall && w >= 2) v.body = bodySilence
                 v.detail = ShellState.notificationsMuted ? "" : "Mute notifications for"
                 v.lines = !ShellState.notificationsMuted ? ["Off"]
                     : (until > 0 ? ["Until", panel.clock(until)] : ["Until you", "turn it off"]).concat(missed ? [missed] : [])
@@ -571,15 +586,13 @@ Pill {
             }
             case "micmute": {
                 const level = root.source && root.source.audio ? panel.pct(root.source.audio.volume) : ""
-                const users = panel.micUsers()
                 v.short = panel.micMuted ? "Muted" : "Mic " + level
                 v.control = extraMic
                 v.tag = panel.micMuted ? "Muted" : AudioInfo.shortName(root.source)
-                // 2 rows: the body says who's recording.
-                v.sub = (panel.micMuted ? "Muted" : AudioInfo.shortName(root.source)) + (users.length > 0 && !tall ? " · " + users[0] : "")
-                if (w === 3) v.under = true
-                if (tall) v.body = bodyMic
-                v.lines = [panel.micMuted ? "Muted" : level, AudioInfo.shortName(root.source), users[0] || ""].filter(t => t)
+                // Just the level, like Sound: inputs are on the Sound page.
+                v.sub = panel.micMuted ? "Muted" : AudioInfo.shortName(root.source)
+                if (w >= 3) v.under = true
+                v.lines = [panel.micMuted ? "Muted" : level, AudioInfo.shortName(root.source)].filter(t => t)
                 break
             }
             case "awake":
@@ -650,13 +663,12 @@ Pill {
             }
             case "sound":
                 v.short = root.sink && root.sink.audio && root.sink.audio.muted ? "Muted" : "Sound " + (root.sink && root.sink.audio ? panel.pct(root.sink.audio.volume) : "")
-                v.control = tall ? bodySound : extraVolume
+                // Just the volume: outputs and apps are on the Sound page.
+                v.control = extraVolume
                 v.tag = AudioInfo.shortName(root.sink)
-                v.sub = AudioInfo.shortName(root.sink) + (AudioInfo.outputStreams.length > 0 ? " · " + AudioInfo.outputStreams[0].name : "")
-                if (w === 3) v.under = true
-                if (tall) v.body = bodySound
-                v.lines = [root.sink && root.sink.audio ? panel.pct(root.sink.audio.volume) : "", AudioInfo.shortName(root.sink),
-                    AudioInfo.outputStreams.length > 0 ? AudioInfo.outputStreams[0].name : ""].filter(t => t)
+                v.sub = AudioInfo.shortName(root.sink)
+                if (w >= 3) v.under = true
+                v.lines = [root.sink && root.sink.audio ? panel.pct(root.sink.audio.volume) : "", AudioInfo.shortName(root.sink)].filter(t => t)
                 break
             case "display": {
                 const n = Displays.monitors.filter(m => !m.disabled).length || Quickshell.screens.length
@@ -683,12 +695,17 @@ Pill {
             case "vpn": {
                 const where = [VpnStatus.countryFlag, VpnStatus.city].filter(t => t).join(" ")
                 v.short = VpnStatus.connected ? (VpnStatus.countryFlag + " " + VpnStatus.server).trim() : VpnStatus.connecting ? "Connecting…" : "VPN off"
+                // Below 4 wide "flag city · server" cut the server off: the
+                // server keeps the status line, the city moves to the detail.
+                const roomy = w >= 4
                 v.sub = VpnStatus.connecting && !VpnStatus.connected ? "Connecting…"
-                    : VpnStatus.connected ? [where, VpnStatus.server].filter(t => t).join(" · ") : "Off"
+                    : !VpnStatus.connected ? "Off"
+                    : roomy ? [where, VpnStatus.server].filter(t => t).join(" · ")
+                    : [VpnStatus.countryFlag, VpnStatus.server].filter(t => t).join(" ")
                 if (w >= 3 || tall) v.control = extraVpn
                 if (w >= 3 && !tall) v.under = false
-                v.detail = VpnStatus.connected ? [VpnStatus.protocol, VpnStatus.load >= 0 ? "load " + VpnStatus.load + "%" : "",
-                    VpnStatus.secureCore ? "Secure Core" : "", VpnStatus.killSwitch ? "kill switch on" : ""].filter(t => t).join(" · ")
+                v.detail = VpnStatus.connected ? [roomy ? "" : VpnStatus.city, VpnStatus.load >= 0 ? "Load " + VpnStatus.load + "%" : "",
+                    VpnStatus.secureCore ? "Secure Core" : ""].filter(t => t).join(" · ")
                     : VpnStatus.error || (VpnStatus.lastServer ? "Tap to reconnect to " + VpnStatus.lastServer : "Tap for the fastest server")
                 v.lines = VpnStatus.connected ? [VpnStatus.server, VpnStatus.city].filter(t => t) : ["Off"]
                 break
@@ -834,11 +851,10 @@ Pill {
                 Readout2 {
                     visible: !parent.parent.tall
                     width: parent.width
-                    line1: VpnStatus.connected ? [VpnStatus.protocol, VpnStatus.connectedSince > 0
-                        ? SystemStats.durationText((Date.now() - VpnStatus.connectedSince) / 1000) : ""].filter(t => t).join(" · ")
+                    line1: VpnStatus.connected ? (VpnStatus.connectedSince > 0
+                        ? SystemStats.durationText((Date.now() - VpnStatus.connectedSince) / 1000) : "")
                         : VpnStatus.connecting ? "Connecting…" : ""
-                    line2: VpnStatus.connected ? [VpnStatus.load >= 0 ? "Load " + VpnStatus.load + "%" : "",
-                        VpnStatus.killSwitch ? "Kill switch" : ""].filter(t => t).join(" · ") : ""
+                    line2: VpnStatus.connected && VpnStatus.load >= 0 ? "Load " + VpnStatus.load + "%" : ""
                 }
                 ButtonRow {
                     visible: !!parent.parent.tall
@@ -960,106 +976,6 @@ Pill {
                 onMoved: (v) => { if (root.source && root.source.audio) root.source.audio.volume = v }
             }
         }
-        // 2-row Sound: volume, then the outputs to switch to (rows at 2
-        // wide, buttons wider); 4 wide adds what's playing.
-        Component {
-            id: bodySound
-            Row {
-                id: soundBody
-                spacing: 12
-                readonly property bool split: parent.cols >= 4 && AudioInfo.outputStreams.length > 0
-                Column {
-                    width: soundBody.split ? (soundBody.width - 12) / 2 : soundBody.width
-                    spacing: 6
-                    TileSlider {
-                        width: parent.width
-                        height: 24
-                        value: root.sink && root.sink.audio ? root.sink.audio.volume : 0
-                        onMoved: (v) => { if (root.sink && root.sink.audio) root.sink.audio.volume = v }
-                    }
-                    ButtonRow {
-                        visible: root.sinks.length > 1
-                        width: parent.width
-                        height: Theme.controlHeight
-                        buttons: root.sinks.slice(0, soundBody.parent.cols >= 3 ? 3 : 2).map(n => ({
-                            label: AudioInfo.shortName(n), selected: n === root.sink,
-                            action: () => AudioInfo.setDefaultSink(n) }))
-                    }
-                    Text {
-                        visible: root.sinks.length <= 1
-                        width: parent.width
-                        elide: Text.ElideRight
-                        text: AudioInfo.outputStreams.length > 0 ? "Playing: " + AudioInfo.outputStreams.map(s => s.name).join(", ") : root.nodeName(root.sink)
-                        color: Theme.textMuted
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 2
-                    }
-                }
-                Column {
-                    visible: soundBody.split
-                    width: (soundBody.width - 12) / 2
-                    spacing: 2
-                    Repeater {
-                        model: soundBody.split ? AudioInfo.outputStreams.slice(0, 3) : []
-                        delegate: Item {
-                            required property var modelData
-                            width: parent.width
-                            height: 20
-                            Text {
-                                id: appName
-                                width: 62
-                                anchors.verticalCenter: parent.verticalCenter
-                                elide: Text.ElideRight
-                                text: modelData.name
-                                color: Theme.textMuted
-                                font.family: Theme.uiFontFamily
-                                font.pixelSize: Theme.fontSize - 3
-                            }
-                            TileSlider {
-                                anchors.left: appName.right
-                                anchors.leftMargin: 6
-                                anchors.right: parent.right
-                                height: 20
-                                value: modelData.node && modelData.node.audio ? modelData.node.audio.volume : 0
-                                onMoved: (v) => { if (modelData.node && modelData.node.audio) modelData.node.audio.volume = v }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        // 2-row Mic, like Sound's: level, then the inputs to switch to, or
-        // (one input) who's recording / the device's full name.
-        Component {
-            id: bodyMic
-            Column {
-                id: micBody
-                spacing: 6
-                TileSlider {
-                    width: parent.width
-                    height: 24
-                    value: root.source && root.source.audio ? root.source.audio.volume : 0
-                    onMoved: (v) => { if (root.source && root.source.audio) root.source.audio.volume = v }
-                }
-                ButtonRow {
-                    visible: root.sources.length > 1
-                    width: parent.width
-                    height: Theme.controlHeight
-                    buttons: root.sources.slice(0, micBody.parent.cols >= 3 ? 3 : 2).map(n => ({
-                        label: AudioInfo.shortName(n), selected: n === root.source,
-                        action: () => AudioInfo.setDefaultSource(n) }))
-                }
-                Text {
-                    visible: root.sources.length <= 1
-                    width: parent.width
-                    elide: Text.ElideRight
-                    text: panel.micUsers().length > 0 ? "Used by " + panel.micUsers().join(", ") : root.nodeName(root.source)
-                    color: Theme.textMuted
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 2
-                }
-            }
-        }
         Component {
             id: extraBrightness
             TileSlider {
@@ -1124,6 +1040,25 @@ Pill {
                         }
                     }
                 }
+            }
+        }
+        // Hotspot, 2 rows: stop / copy the password while it runs; else
+        // start -- labelled with what it costs when it can't share.
+        Component {
+            id: extraHotspot
+            ButtonRow {
+                buttons: Hotspot.active || Hotspot.starting
+                    ? [{ label: "Copy password", available: Hotspot.password !== "", action: () => Hotspot.copyPassword() },
+                       { label: "Stop", selected: true, available: Hotspot.pending === "", action: () => Hotspot.stop() }]
+                    : [{ label: Hotspot.canShare || !Hotspot.wifiConnected ? "Start" : parent.cols >= 3 ? "Start, Wi-Fi off" : "Wi-Fi off",
+                         available: Hotspot.pending === "",
+                         action: () => Hotspot.start(Hotspot.canShare ? "shared" : "standalone") }]
+            }
+        }
+        Component {
+            id: extraHotspotInfo
+            Readout2 {
+                line1: Hotspot.clients > 0 ? Hotspot.clients + (Hotspot.clients === 1 ? " device" : " devices") : "No devices"
             }
         }
         // SunsetPopup's range.
@@ -1386,8 +1321,7 @@ Pill {
                 ].concat(extras.slice(0, Math.max(0, parent.cols - 2)))
             }
         }
-        // Silence for a while (NotificationMutePopup's choices); while on,
-        // extend it instead.
+        // Silence for a while; while on, extend it instead.
         function nextMorning() {
             const d = new Date()
             if (d.getHours() >= 8) d.setDate(d.getDate() + 1)
@@ -1398,65 +1332,43 @@ Pill {
             const from = Math.max(Date.now(), ShellState.notificationsMutedUntil)
             ShellState.muteNotificationsUntil(from + minutes * 60000)
         }
+        // One preset: minutes, or -1 for the next 08:00. While a timed mute
+        // runs, the durations extend it instead.
+        function silenceButton(m) {
+            const timed = ShellState.notificationsMuted && ShellState.notificationsMutedUntil > 0
+            if (m < 0) return { label: "Until 08:00", selected: timed && ShellState.notificationsMutedUntil === panel.nextMorning(),
+                                action: () => ShellState.muteNotificationsUntil(panel.nextMorning()) }
+            return { label: (timed ? "+" : "") + (m < 60 ? m + " min" : m === 60 ? "1 hour" : m / 60 + " hours"),
+                     action: () => timed ? panel.extendMute(m) : ShellState.setNotificationsMuted(true, m) }
+        }
         Component {
             id: extraSilence
             ButtonRow {
-                readonly property bool on: ShellState.notificationsMuted
-                readonly property bool timed: on && ShellState.notificationsMutedUntil > 0
-                buttons: (parent.cols >= 4 ? [30, 60, 120] : parent.cols === 3 ? [60, 120] : [60]).map(m => ({
-                    label: (timed ? "+" : "") + (m < 60 ? m + " min" : m === 60 ? "1 hour" : m / 60 + " hours"),
-                    action: () => timed ? panel.extendMute(m) : ShellState.setNotificationsMuted(true, m) }))
-                    .concat([{ label: "Until 08:00", selected: timed && ShellState.notificationsMutedUntil === panel.nextMorning(),
-                               action: () => ShellState.muteNotificationsUntil(panel.nextMorning()) }])
+                buttons: (parent.cols >= 4 ? [30, 60, 120, -1] : parent.cols === 3 ? [60, 120, -1] : [60, -1])
+                    .map(m => panel.silenceButton(m))
             }
         }
-        // 2-row Silence, 3+ wide: what came in (missed while silenced,
-        // else the latest), then the presets.
+        // 2-row Silence, 2+ wide: two rows of presets, as many per row as
+        // the tile has columns.
         Component {
             id: bodySilence
             Column {
+                id: silenceRows
                 spacing: 6
                 anchors.verticalCenter: parent ? parent.verticalCenter : undefined
-                Column {
-                    width: parent.width
-                    spacing: 2
-                    Repeater {
-                        model: NotificationHistory.recent(2)
-                        delegate: TileListRow {
-                            required property var modelData
-                            name: modelData.appName + (modelData.summary ? ": " + modelData.summary : "")
-                            status: panel.clock(modelData.time)
-                            onClicked: ShellState.notificationCenterScreen = root.screenName
-                        }
-                    }
-                    Text {
-                        visible: NotificationHistory.recent(1).length === 0
-                        leftPadding: 4
-                        text: "No notifications"
-                        color: Theme.textDim
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 2
+                readonly property var presets: parent.cols >= 4 ? [15, 30, 60, 120, 180, 240, 480, -1]
+                    : parent.cols === 3 ? [30, 60, 120, 240, 480, -1] : [30, 60, 120, -1]
+                Repeater {
+                    model: 2
+                    delegate: ButtonRow {
+                        required property int index
+                        width: silenceRows.width
+                        height: Theme.controlHeight
+                        equal: true
+                        buttons: silenceRows.presets.slice(index * silenceRows.presets.length / 2, (index + 1) * silenceRows.presets.length / 2)
+                            .map(m => panel.silenceButton(m))
                     }
                 }
-                Loader {
-                    width: parent.width
-                    height: Theme.controlHeight
-                    sourceComponent: extraSilence
-                    property int cols: parent.parent.cols
-                    property bool tall: true
-                }
-            }
-        }
-        // Airplane: the two radios it switches, one at a time.
-        Component {
-            id: extraRadios
-            ButtonRow {
-                buttons: [
-                    { label: "Wi-Fi", selected: Networking.wifiEnabled, available: !!net.wifiDevice,
-                      action: () => Networking.wifiEnabled = !Networking.wifiEnabled },
-                    { label: "Bluetooth", selected: !!(root.adapter && root.adapter.enabled), available: !!root.adapter,
-                      action: () => ShellState.setBluetooth(!root.adapter.enabled) }
-                ]
             }
         }
         // HDR: which monitors it applies to (HdrSettings); ones that can't
@@ -1656,6 +1568,7 @@ Pill {
                             readonly property Component body: tile.tall ? tile.info.body : null
                             // 1 row: the control under a title line (with
                             // `tag` on its right), or beside the header.
+                            readonly property bool lowered: !tile.small && (tile.tileId === "sound" || tile.tileId === "micmute")
                             readonly property bool inlineNarrow: !tile.tall && !!tile.control && tile.info.under
                             readonly property bool inlineWide: !tile.tall && !!tile.control && !tile.info.under
                             readonly property bool partsShown: tile.tall ? !!(tile.body || tile.control) : !!tile.control
@@ -1815,10 +1728,14 @@ Pill {
                                     // down to center the pair. 2 rows with
                                     // nothing under it: centered, as is the
                                     // 1-wide icon/label/status stack; with
-                                    // something, a shorter header.
-                                    y: tile.inlineNarrow ? 3
+                                    // something, a shorter header (the body
+                                    // below starts at 54 either way).
+                                    // Sound/Mic (a lone slider under the
+                                    // label) sit lower still: `lowered`.
+                                    y: tile.inlineNarrow ? (tile.lowered ? 8 : 3)
                                         : tile.small && tile.tall ? Math.max(0, (tile.height - 74 - smallSub.height) / 2)
-                                        : tile.tall && !tile.partsShown && tile.detail === "" ? (tile.height - panel.tileHeight) / 2 : 0
+                                        : tile.tall && !tile.partsShown && tile.detail === "" ? (tile.height - panel.tileHeight) / 2
+                                        : tile.tall && !tile.small && tile.lowered ? 7 : 0
                                     width: parent.width
                                     height: tile.inlineNarrow ? 30 : tile.tall && !tile.small && (tile.partsShown || tile.detail !== "") ? 54 : panel.tileHeight
 
@@ -2013,7 +1930,7 @@ Pill {
                                     x: tile.inlineWide ? tile.inlineX : 14
                                     // Clear of edit mode's resize grip.
                                     width: (tile.inlineWide && moreStrip.visible ? moreStrip.x - 8 : parent.width - (panel.editing ? 24 : 14)) - x
-                                    y: tile.inlineWide ? (parent.height - height) / 2 : head.y + head.height
+                                    y: tile.inlineWide ? (parent.height - height) / 2 : tile.lowered ? 35 : 33
                                     height: tile.inlineWide ? 28 : 24
                                 }
 
@@ -2022,7 +1939,8 @@ Pill {
                                 // under the header.
                                 Item {
                                     visible: tile.tall && !tile.small
-                                    anchors.top: head.bottom
+                                    anchors.top: parent.top
+                                    anchors.topMargin: 54
                                     anchors.left: parent.left
                                     anchors.right: parent.right
                                     anchors.bottom: parent.bottom
@@ -2084,7 +2002,7 @@ Pill {
                                 }
                                 MouseArea {
                                     id: rightEdge
-                                    enabled: panel.editing
+                                    enabled: panel.editing && ControlCenterTiles.resizable(tile.tileId)
                                     anchors.right: parent.right
                                     anchors.top: parent.top
                                     anchors.bottom: parent.bottom
@@ -2097,7 +2015,7 @@ Pill {
                                 }
                                 MouseArea {
                                     id: bottomEdge
-                                    enabled: panel.editing
+                                    enabled: panel.editing && ControlCenterTiles.resizable(tile.tileId)
                                     anchors.left: parent.left
                                     anchors.right: parent.right
                                     anchors.bottom: parent.bottom
@@ -2110,7 +2028,7 @@ Pill {
                                 }
                                 MouseArea {
                                     id: corner
-                                    enabled: panel.editing
+                                    enabled: panel.editing && ControlCenterTiles.resizable(tile.tileId)
                                     anchors.right: parent.right
                                     anchors.bottom: parent.bottom
                                     anchors.rightMargin: -4
@@ -2126,7 +2044,7 @@ Pill {
                                 // Tucked into the corner, under the baseline of
                                 // a 1-wide tile's label.
                                 Rectangle {
-                                    visible: panel.editing
+                                    visible: corner.enabled
                                     anchors.right: parent.right
                                     anchors.bottom: parent.bottom
                                     anchors.margins: 3
@@ -2587,6 +2505,15 @@ Pill {
         shown: ShellState.activePopup === "qs-vpn" && ShellState.activePopupScreen === root.screenName
         contentWidth: root.cardWidth
         screenName: root.screenName
+        onBack: root.openPopup(root.popupId)
+    }
+
+    // --- Hotspot page ---
+    readonly property Item _hotspotContent: HotspotPage {
+        parent: root.popupHost
+        anchorItem: root
+        shown: ShellState.activePopup === "qs-hotspot" && ShellState.activePopupScreen === root.screenName
+        contentWidth: root.cardWidth
         onBack: root.openPopup(root.popupId)
     }
 
@@ -3132,9 +3059,12 @@ Pill {
         id: br
         // [{label, selected, available, action}]
         property var buttons: []
+        // Same width for every button, so stacked rows line up as a grid
+        // (else each is as wide as its label).
+        property bool equal: false
         spacing: 4
         FontMetrics { id: brMetrics; font.family: Theme.uiFontFamily; font.pixelSize: Theme.fontSize - 2 }
-        readonly property var weights: br.buttons.map(b => brMetrics.advanceWidth(b.label) + 18)
+        readonly property var weights: br.buttons.map(b => br.equal ? 1 : brMetrics.advanceWidth(b.label) + 18)
         readonly property real total: br.weights.reduce((a, b) => a + b, 0)
         Repeater {
             model: br.buttons

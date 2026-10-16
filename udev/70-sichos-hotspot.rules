@@ -1,0 +1,13 @@
+# A second wireless interface, sichos-ap<N>, beside the normal one, so the
+# Control Center's Hotspot tile can share the Wi-Fi connection instead of
+# replacing it (quickshell/scripts/hotspot.sh). One card can be a client
+# and an access point at once only where the driver lists AP in the same
+# interface combination as managed -- e.g. the MT7922's
+# "#{ managed, P2P-client } <= 2, #{ AP } <= 1, ..., #channels <= 1" --
+# so cards without that get no extra interface (and the tile falls back
+# to a hotspot that replaces Wi-Fi). "#{ managed, AP }" in one group means
+# either/or, which the second grep doesn't match.
+# NetworkManager leaves the interface alone until the tile asks for it
+# (NetworkManager/90-sichos-hotspot.conf): managed, it would happily join
+# saved networks on it as a second client.
+ACTION=="add", SUBSYSTEM=="ieee80211", RUN+="/usr/bin/sh -c '/usr/bin/iw phy %k info | grep managed | grep -q \"#{ AP\" && /usr/bin/iw phy %k interface add sichos-ap%n type __ap'"

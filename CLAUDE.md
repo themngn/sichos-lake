@@ -91,6 +91,9 @@ places — the repo file (what `install.sh` ships to every future machine) and t
   `/etc/kernel/install.d/` (GRUB boot-menu branding — see its own header comment for why this
   retitles existing BLS entries in `/boot/loader/entries` instead of renaming `/etc/os-release`).
   `firewalld/localsend.xml` → `/etc/firewalld/services/localsend.xml` (only if firewalld is active).
+  `udev/70-sichos-hotspot.rules` → `/etc/udev/rules.d/` and `NetworkManager/90-sichos-hotspot.conf` →
+  `/etc/NetworkManager/conf.d/` (the Hotspot tile's second Wi-Fi interface, `sichos-ap0`, unmanaged by NM
+  until `quickshell/scripts/hotspot.py` hands it over — see that script's header).
 
 `TODO.md` tracks known workarounds that aren't real fixes (e.g. the bar going opaque under HDR) — check
 it before "fixing" something that looks odd but is deliberately worked around.
