@@ -239,6 +239,75 @@ Pill {
                     wrapMode: Text.Wrap
                 }
 
+                // What's pending, dnf then Flatpak (the order `packages`
+                // comes in); scrolls past ~10 rows rather than growing the
+                // card off the screen, cut mid-row so it reads as scrollable.
+                ListView {
+                    id: pkgList
+                    visible: root.packages.length > 0
+                    width: parent.width
+                    height: Math.min(contentHeight, 22 + 10.5 * 20)
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    model: root.packages
+                    // A heading over each kind's first row, inline: ListView
+                    // sections need a role, which a JS array model lacks.
+                    delegate: Item {
+                        required property var modelData
+                        required property int index
+                        readonly property bool first: index === 0 || root.packages[index - 1].kind !== modelData.kind
+                        width: pkgList.width
+                        height: 20 + (first ? 22 : 0)
+                        Text {
+                            visible: parent.first
+                            height: 22
+                            verticalAlignment: Text.AlignBottom
+                            bottomPadding: 3
+                            text: modelData.kind === "flatpak" ? "Flatpak" : "System (dnf)"
+                            color: Theme.textMuted
+                            font.family: Theme.uiFontFamily
+                            font.pixelSize: Theme.fontSize - 2
+                        }
+                        Item {
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.bottom: parent.bottom
+                            height: 20
+                            Text {
+                                anchors.left: parent.left
+                                anchors.right: pkgVersion.left
+                                anchors.rightMargin: 8
+                                anchors.verticalCenter: parent.verticalCenter
+                                elide: Text.ElideRight
+                                text: modelData.name.replace(/\.(x86_64|noarch|i686|aarch64)$/, "")
+                                color: Theme.text
+                                font.family: Theme.uiFontFamily
+                                font.pixelSize: Theme.fontSize - 2
+                            }
+                            Text {
+                                id: pkgVersion
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: Math.min(implicitWidth, parent.width * 0.45)
+                                elide: Text.ElideRight
+                                text: modelData.version || ""
+                                color: Theme.textDim
+                                font.family: Theme.uiFontFamily
+                                font.pixelSize: Theme.fontSize - 3
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    // system-update-check.py caps the list at 200 rows.
+                    visible: root.count !== null && root.packages.length > 0 && root.count > root.packages.length
+                    text: "+" + (root.count - root.packages.length) + " more not listed"
+                    color: Theme.textDim
+                    font.family: Theme.uiFontFamily
+                    font.pixelSize: Theme.fontSize - 3
+                }
+
                 Text {
                     text: "Last updated: " + root._dateText(root.lastUpdateEpoch)
                     color: Theme.textMuted

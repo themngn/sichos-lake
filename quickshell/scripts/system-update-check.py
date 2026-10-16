@@ -41,7 +41,41 @@ def dnf_pending_updates():
         # shape.
         if len(parts) == 3 and "." in parts[0]:
             updates.append((parts[0], parts[1]))
-    return updates
+
+    # check-update lists every newer build in the repos, including ones the
+    # upgrade can't install -- seen live: an RPM Fusion
+    # mesa-va-drivers-freeworld built against a mesa Fedora hadn't shipped
+    # yet, a testing-repo telegram-desktop needing a library nothing
+    # provided. `dnf upgrade` skips those ("Skipping packages with broken
+    # dependencies"), so the widget showed "2 updates" that Update All
+    # never applied. A dry run (no root needed) names exactly what it would
+    # skip.
+    skipped = dnf_skipped_upgrades() if updates else set()
+    return [u for u in updates if u[0].rsplit(".", 1)[0] not in skipped]
+
+
+def dnf_skipped_upgrades():
+    try:
+        result = subprocess.run(
+            ["dnf", "upgrade", "--assumeno"],
+            capture_output=True, text=True, timeout=180,
+            env={**os.environ, "LC_ALL": "C"},
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return set()
+    # dnf5's transaction table: a section header ("Skipping packages with
+    # broken dependencies:", "... with conflicts:", "Upgrading:", ...), then
+    # one " name arch version repo size" row per package.
+    skipped = set()
+    in_skip = False
+    for line in (result.stdout + result.stderr).splitlines():
+        if line.rstrip().endswith(":") and not line.startswith(" "):
+            in_skip = line.startswith("Skipping packages")
+        elif in_skip and line.startswith(" ") and line.split():
+            skipped.add(line.split()[0])
+        elif not line.strip():
+            in_skip = False
+    return skipped
 
 
 def flatpak_pending_updates():
