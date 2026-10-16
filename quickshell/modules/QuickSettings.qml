@@ -488,7 +488,7 @@ Pill {
             return out
         }
         function tileView(id, w, h) {
-            const v = Object.assign({ title: "", tag: "", titleTail: "", lines: null, control: null, body: null, detail: "", under: undefined, besideWidth: 0 },
+            const v = Object.assign({ title: "", tag: "", titleTail: "", lines: null, control: null, body: null, detail: "", under: undefined, besideWidth: 0, subTail: "" },
                 panel.tileInfo(id))
             v.title = v.label
             const tall = h === 2
@@ -518,18 +518,16 @@ Pill {
                 v.lines = devs.length === 0 ? [v.sub]
                     : devs.length > 1 ? [devs.length + " connected"]
                     : [devs[0].name || devs[0].deviceName, batt(devs[0])].filter(t => t)
-                // A bare percentage can't say whose it is once the status
-                // line is just a count, so at 3 wide (no names in the
-                // readout) it shows only for a single device.
-                if (w >= 3 && !tall && devs.some(d => batt(d)) && (w >= 4 || devs.length === 1)) {
+                // 4 wide: a readout with names. 3 wide, one device: its level
+                // right after its name on the status line (the name elides,
+                // not the level) -- as a separate readout centred on the tile
+                // it read as Bluetooth's own level. Several devices at 3 wide:
+                // bare percentages can't say whose they are, so none.
+                if (w >= 4 && !tall && devs.some(d => batt(d))) {
                     v.control = meterBt
                     v.under = false
-                    if (w >= 4) v.sub = devs.length + " connected"
-                    // 3 wide shows bare percentages: at the right edge, so the
-                    // device name keeps the status line (from the shared
-                    // inline column it got ~90px, "GuliKit Controll…").
-                    else v.besideWidth = 34
-                }
+                    v.sub = devs.length + " connected"
+                } else if (w === 3 && !tall && devs.length === 1) v.subTail = batt(devs[0])
                 if (tall) {
                     v.body = bodyBt
                     v.sub = devs.length > 0 ? devs.length + " connected" : v.sub
@@ -1906,14 +1904,28 @@ Pill {
                                                 font.pixelSize: Theme.fontSize - 2
                                             }
                                         }
-                                        Text {
+                                        // subTail: kept whole after the
+                                        // status (a device's battery level).
+                                        Row {
                                             visible: !tile.inlineNarrow && tile.subText !== ""
                                             width: parent.width
-                                            text: tile.subText
-                                            elide: Text.ElideRight
-                                            color: Theme.textMuted
-                                            font.family: Theme.uiFontFamily
-                                            font.pixelSize: Theme.fontSize - 2
+                                            spacing: 6
+                                            Text {
+                                                width: Math.min(implicitWidth, parent.width - (subTailText.visible ? subTailText.implicitWidth + parent.spacing : 0))
+                                                text: tile.subText
+                                                elide: Text.ElideRight
+                                                color: Theme.textMuted
+                                                font.family: Theme.uiFontFamily
+                                                font.pixelSize: Theme.fontSize - 2
+                                            }
+                                            Text {
+                                                id: subTailText
+                                                visible: text !== ""
+                                                text: tile.info.subTail || ""
+                                                color: Theme.textMuted
+                                                font.family: Theme.uiFontFamily
+                                                font.pixelSize: Theme.fontSize - 2
+                                            }
                                         }
                                     }
                                     // A short status on the title line when the
