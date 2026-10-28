@@ -37,7 +37,7 @@ places — the repo file (what `install.sh` ships to every future machine) and t
   so: `./update.sh system` applies them, same rules, tracked in `system-rev`, with install.sh's
   follow-ups (initramfs rebuild, boot-entry retitle, firewalld reload). `./update.sh switch <rev>`
   deploys any commit/tag/branch without a checkout and pins it (hooks stop following HEAD), `back` /
-  `latest` / `list` / `status` — see its header. Not run from `git worktree`s, so working in one
+  `latest` / `list` / `status` — see its header. Not run from `git worktree`s or mid-`git bisect` (it catches up after `bisect reset`), so working in one
   doesn't touch the live config; `git config sichos.autodeploy false` turns the hooks off.
   **`update.sh` is the only place that maps repo paths to deployed paths** — `install.sh` deploys
   every user config through `update.sh install` (desktop-overrides excepted: each depends on its app
@@ -60,7 +60,8 @@ places — the repo file (what `install.sh` ships to every future machine) and t
   Conversely, if a fix gets hand-tested by editing the deployed file directly first, port it back into the
   repo before considering the task done — a fix that only exists under `$HOME` is invisible to
   `install.sh` and will be lost/overwritten on the next deploy or reinstall.
-- Repo path → deployed path (implemented in `update.sh`'s `dest_for`/`sys_dest_for`) is a flat mapping unless noted otherwise: `hypr/` → `~/.config/hypr/`,
+- Repo path → deployed path (implemented in `update.sh`'s `dest_for`/`sys_dest_for`) is a flat mapping unless noted otherwise: `hypr/` → `~/.config/hypr/` (top level only — files in a
+  `hypr/` subdirectory are never deployed),
   `quickshell/` → `~/.config/quickshell/`, `kitty/kitty.conf` → `~/.config/kitty/kitty.conf`,
   `qt6ct/qt6ct.conf` → `~/.config/qt6ct/qt6ct.conf`, `hyprquickframe/theme.toml` →
   `~/.config/hyprquickframe/theme.toml`, `fastfetch/` → `~/.config/fastfetch/`, `fontconfig/` → `~/.config/fontconfig/`,
@@ -145,7 +146,9 @@ it before "fixing" something that looks odd but is deliberately worked around.
   on save — no restart needed for most changes. Uses the Lua-config build of Hyprland from the
   `lionheartp/Hyprland` COPR (not the standard `hyprland.conf` format), split into per-concern files
   required from `hyprland.lua` (`monitors`, `autostart`, `env`, `permissions`, `look_and_feel`, `layouts`,
-  `misc`, `input`, `keybindings`, `workspaces`, `window_rules`). `workspaces.lua` implements a dynamic
+  `misc`, `input`, `keybindings`, `workspaces`, `window_rules`), plus `programs.lua` (terminal/browser/
+  file manager, required by `keybindings.lua`; install.sh's browser choice patches its deployed copy and
+  `update.sh`'s `patch_like_deployed` carries that over). `workspaces.lua` implements a dynamic
   workspace pool (SUPER+N binds, monitor hotplug, persisted state under `~/.local/state/sichos/`) —
   read its header comment before touching workspace behavior.
 - **quickshell config** (`quickshell/`): once deployed to `~/.config/quickshell`, hot-reloads
@@ -203,7 +206,7 @@ own files.
 
 `shell.qml` is the entry point (`ShellRoot`). It uses `Variants` to create one `Bar`, `NowPlaying` and
 `IdleDimOverlay` per screen, plus single top-level windows (`Launcher`, the `*OSD`s, `Notifications`).
-Everything else lives in `quickshell/modules/`:
+`Bar.qml` sits beside it at the top level; everything else lives in `quickshell/modules/`:
 
 - **Singletons** (`pragma Singleton`): `Theme.qml` (palette plus the shared surface/type tokens — see
   "UI style" below),
@@ -213,8 +216,9 @@ Everything else lives in `quickshell/modules/`:
   `quickshell ipc call ...` from keybindings), `BarSettings.qml` (which right-side widgets are enabled
   and in what order, edited from the launcher's Settings > Bar Widgets folder), `AppIndex.qml`.
 - **`Bar.qml`**: left section is workspaces/submap. The center is the clock, which sits at true screen
-  center. To its left is a toggle row (`*Toggle.qml`, all built on `Pill.qml`: Sunset, HDR, Idle,
-  GameFocus, Transparency, BarSolo, MicMute, NotificationMute). The row collapses to zero width and is
+  center. To its left is a toggle row (`*Toggle.qml`, all built on `Pill.qml`: Idle (Stay Awake), MicMute,
+  NotificationMute (Do Not Disturb); Night Light/HDR/Game Focus/Transparency/Bar Solo were dropped
+  from it -- they're Control Center tiles only; their `*Toggle.qml` files are currently unused). The row collapses to zero width and is
   revealed on hover. A new toggle must be added to `anyToggleHovered`, and to `toggleRowPopupOpen` if it
   has a popup, or the row will collapse out from under it. The right section is data-driven —
   `BarSettings.orderedIds()` picks which widgets render and in what order via a `Loader`/`Component`
@@ -262,7 +266,9 @@ Everything else lives in `quickshell/modules/`:
   timed mute's deadline), Night Light on/off + Follow schedule, and Bluetooth on/off (BlueZ's AutoEnable
   re-powers it every boot otherwise) in `~/.config/quickshell/shell-state.json` (`ShellState`), Game Focus in
   `game-focus.json`, Lid Close (sleep / screen off when another monitor is connected; `LidSettings`, read by
-  `hypr/keybindings.lua`'s lid binds on every close) in `lid-close.json`, HDR in `hdr-monitors.json` (re-applied after every Hyprland `configreloaded`, which
+  `hypr/keybindings.lua`'s lid binds on every close) in `lid-close.json`, DNS (Default / Mullvad Base over DNS over TLS;
+  `DnsSettings` + `scripts/dns.sh`, set per connection and re-applied as networks connect -- NM's global DNS
+  silently drops `dns+tls://` over D-Bus) in `dns.json`, HDR in `hdr-monitors.json` (re-applied after every Hyprland `configreloaded`, which
   resets monitor rules); everything else is kept by its own owner (NetworkManager, WirePlumber,
   power-profiles-daemon, systemd-backlight, `hyprsunset.conf`/`hypridle.conf`, `monitors.lua`). A new
   setting needs the same. Night Light never re-sends hyprsunset's own schedule switch (that showed as a
