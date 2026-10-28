@@ -26,6 +26,9 @@
 #     bound to Print/SHIFT+Print/CTRL+Print in keybindings.lua, plus satty
 #     (mineiro/satty COPR) for its "Edit" annotation action — best-effort,
 #     SKIP_SATTY=1 skips it; a failed install only warns
+#   - preload (kylegospo/preload COPR), adaptive readahead daemon that keeps
+#     frequently used apps cached — SKIP_PRELOAD=1 skips it; a failed
+#     install only warns
 #   - sichos-gamepad (mdukhota/test1 COPR), native controller overlay daemon
 #   - the kitty config (~/.config/kitty)
 #   - qt6ct with a dark color scheme, so Qt6 apps (Telegram) pick up dark
@@ -1023,6 +1026,29 @@ elif sudo dnf copr enable -y mineiro/satty && sudo dnf install -y satty; then
 else
     sudo dnf copr disable -y mineiro/satty >/dev/null 2>&1 || true
     echo "    WARNING: satty unavailable for Fedora $(rpm -E %fedora) — skipped (screenshot Edit action won't work)"
+fi
+
+echo "==> preload (adaptive app readahead)"
+
+# preload watches which programs get run and keeps their binaries/libraries
+# in the page cache, so first launches after boot don't wait on disk.
+# Measured with Firefox here: 1.27s to a window with its files evicted vs.
+# 1.05s cached -- the gap this closes; no Firefox pref/env tweak beat it.
+# Not in Fedora; kylegospo/preload (Universal Blue's maintainer) builds
+# upstream git, unlike the 2019-era elxreno/atim COPRs. Its F45 chroot
+# serves an fc42 build (plain C + glib, resolves fine). Same non-fatal COPR
+# pattern as satty above.
+if [ "${SKIP_PRELOAD:-0}" = "1" ]; then
+    echo "    skipped (SKIP_PRELOAD=1)"
+elif rpm -q preload >/dev/null 2>&1; then
+    sudo systemctl enable --now preload.service >/dev/null 2>&1 || true
+    echo "    already installed"
+elif sudo dnf copr enable -y kylegospo/preload && sudo dnf install -y preload; then
+    sudo systemctl enable --now preload.service
+    echo "    installed, learning which apps you use"
+else
+    sudo dnf copr disable -y kylegospo/preload >/dev/null 2>&1 || true
+    echo "    WARNING: preload unavailable for Fedora $(rpm -E %fedora) — skipped"
 fi
 
 echo "==> zsh (shell + prompt)"
