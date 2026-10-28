@@ -383,6 +383,12 @@ Pill {
                 glyph: "\u{f0565}", label: "Proton VPN",
                 sub: VpnStatus.busy ? "Disconnecting…" : VpnStatus.connected ? VpnStatus.server : VpnStatus.connecting ? "Connecting…" : "Off",
                 active: VpnStatus.connected, busy: VpnStatus.busy || VpnStatus.connecting, more: "qs-vpn" }
+            // System-wide DNS (DnsSettings.qml): lit on a Mullvad resolver.
+            case "dns": return {
+                glyph: "\u{f0b8c}", label: "DNS",
+                sub: DnsSettings.busy ? "Switching…" : DnsSettings.error || DnsSettings.name,
+                detail: DnsSettings.desc,
+                active: DnsSettings.active, busy: DnsSettings.busy, more: "" }
             // What closing the lid does with another monitor connected
             // (LidSettings.qml, hypr/keybindings.lua). `short`: the 1x1
             // tile's label, which has to carry the state on its own.
@@ -451,6 +457,8 @@ Pill {
             case "sound": if (root.sink && root.sink.audio) root.sink.audio.muted = !root.sink.audio.muted; break
             case "update": root.openPopup("qs-update"); break
             case "vpn": VpnStatus.toggle(); break
+            // Network's own <-> the last Mullvad resolver used.
+            case "dns": DnsSettings.toggle(); break
             case "lid": LidSettings.setSleep(!LidSettings.sleep); break
             // update.sh status + recent commits in a terminal.
             case "version": SichosVersion.openDetails(); break
@@ -477,9 +485,9 @@ Pill {
         // adapt -- three buttons at 3 wide, presets at 2 rows.
         // 1-row controls that go under the title at 3 wide too: beside it
         // they'd get ~110px (buttons elided, the stats ran out of the tile).
-        readonly property var underAt3: ["powerprofile", "update", "lid", "silence", "hdr", "phone", "awake"]
+        readonly property var underAt3: ["powerprofile", "update", "lid", "silence", "hdr", "phone", "awake", "dns"]
         // ...and at 4 wide: rows of four buttons.
-        readonly property var underAt4: ["phone", "silence"]
+        readonly property var underAt4: ["phone", "silence", "dns"]
         function clock(ms) {
             return Qt.formatTime(new Date(ms), TimeRegion.use24Hour ? "HH:mm" : "h:mm AP")
         }
@@ -695,6 +703,14 @@ Pill {
                     VpnStatus.secureCore ? "Secure Core" : ""].filter(t => t).join(" · ")
                     : VpnStatus.error || (VpnStatus.lastServer ? "Tap to reconnect to " + VpnStatus.lastServer : "Tap for the fastest server")
                 v.lines = VpnStatus.connected ? [VpnStatus.server, VpnStatus.city].filter(t => t) : ["Off"]
+                break
+            }
+            case "dns": {
+                // "Mullvad Base" -> "Base" where it's cramped.
+                const word = DnsSettings.name.replace("Mullvad ", "")
+                v.short = DnsSettings.active ? word : "DNS"
+                v.control = extraDns
+                v.lines = DnsSettings.active ? ["Mullvad", word] : ["Default"]
                 break
             }
             case "lid": {
@@ -1082,6 +1098,17 @@ Pill {
                     { label: "Sleep", selected: LidSettings.sleep, action: () => LidSettings.setSleep(true) },
                     { label: parent.cols >= 3 ? "Keep working" : "Keep on", selected: !LidSettings.sleep, action: () => LidSettings.setSleep(false) }
                 ]
+            }
+        }
+        // DNS: one button per resolver.
+        Component {
+            id: extraDns
+            ButtonRow {
+                buttons: DnsSettings.presets.map(p => ({
+                    label: p.label,
+                    selected: DnsSettings.current === p.id,
+                    available: !DnsSettings.busy,
+                    action: () => DnsSettings.set(p.id) }))
             }
         }
         // Wi-Fi body: the connected network, then saved, then the strongest

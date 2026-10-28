@@ -18,7 +18,7 @@ QtObject {
     // Every tile that exists, in the order "Add tiles" lists them.
     readonly property var allIds: ["wifi", "bluetooth", "airplane", "hotspot", "nightlight", "silence", "micmute",
         "awake", "gamefocus", "hdr", "opaque", "phone", "powerprofile", "sound",
-        "update", "vpn", "stats", "lid", "version"]
+        "update", "vpn", "dns", "stats", "lid", "version"]
     readonly property int columns: 4
     readonly property int maxRows: 2
     // Tiles that only come in 1x1: Airplane has nothing worth a bigger
