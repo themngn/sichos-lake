@@ -966,7 +966,7 @@ sys_followups() {
     fi
     if [ -n "${SYS_ACTIONS[udev]:-}" ]; then
         if [ "$real" -eq 0 ]; then NOTES+=("would reload udev rules and re-run them for the Wi-Fi cards")
-        elif as_root udevadm control --reload-rules && as_root udevadm trigger --action=add --subsystem-match=ieee80211; then
+        elif as_root udevadm control --reload-rules && as_root udevadm trigger --action=add --subsystem-match=net --property-match=DEVTYPE=wlan; then
             CHANGED+=("udev rules reloaded")
         else ERRORS+=("reloading udev rules failed"); fi
     fi

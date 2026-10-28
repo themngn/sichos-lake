@@ -10,4 +10,12 @@
 # NetworkManager leaves the interface alone until the tile asks for it
 # (NetworkManager/90-sichos-hotspot.conf): managed, it would happily join
 # saved networks on it as a second client.
-ACTION=="add", SUBSYSTEM=="ieee80211", RUN+="/usr/bin/sh -c '/usr/bin/iw phy %k info | grep managed | grep -q \"#{ AP\" && /usr/bin/iw phy %k interface add sichos-ap%n type __ap'"
+#
+# Runs on the card's own netdev "add", not the phy's: RUN comes after udev
+# has renamed the netdev (wlan0 -> wlp1s0), so the AP interface only exists
+# once the predictable name is taken. Hooked on the phy (the first version),
+# sichos-ap0 was processed first and systemd gave it wlp1s0 as an altname
+# (same PCI path), the card's rename then failed with "File exists", it
+# stayed wlan0, and saved networks pinned to wlp1s0
+# (connection.interface-name) never connected again after a reboot.
+ACTION=="add", SUBSYSTEM=="net", ENV{DEVTYPE}=="wlan", KERNEL!="sichos-ap*", RUN+="/usr/bin/sh -c '/usr/bin/iw phy $attr{phy80211/name} info | grep managed | grep -q \"#{ AP\" && /usr/bin/iw phy $attr{phy80211/name} interface add sichos-ap$attr{phy80211/index} type __ap'"

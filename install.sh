@@ -259,7 +259,7 @@ for pair in "NetworkManager/90-sichos-hotspot.conf:/etc/NetworkManager/conf.d/90
 done
 sudo nmcli general reload conf
 sudo udevadm control --reload-rules
-sudo udevadm trigger --action=add --subsystem-match=ieee80211
+sudo udevadm trigger --action=add --subsystem-match=net --property-match=DEVTYPE=wlan
 echo "    reloaded NetworkManager's configuration and the udev rules"
 
 echo "==> Bluetooth: fix HID controllers that pair then instantly disconnect"
