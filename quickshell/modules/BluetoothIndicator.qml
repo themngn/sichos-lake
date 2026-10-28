@@ -225,15 +225,39 @@ Pill {
         const t = root.typeName(d)
         return t === "Device" ? "" : t
     }
-    // connect() rather than pair() for a new device: pair() alone doesn't
-    // bring up a profile afterward, so BlueZ drops the link as unused within
-    // a couple of seconds (reproduced live); connect() pairs (through
-    // BluetoothAgent for anything that shows or asks for a code) and
-    // connects in one go, and the agent marks it trusted so it reconnects.
+    // pair() then connect() for a new device. connect() alone pairs too, but
+    // without bonding: the GuliKit came out Paired yet not Bonded or Trusted,
+    // so no link key was stored and it couldn't reconnect on its own. pair()
+    // alone doesn't bring up a profile (BlueZ drops the link as unused within
+    // a couple of seconds), so _pairThen connects once pairing lands, and
+    // marks it trusted itself: a "Just Works" device never reaches the agent,
+    // which is what trusts the ones that show or ask for a code.
+    property var _pairThen: null
     function activate(d) {
         if (d.pairing) d.cancelPair()
         else if (d.connected) d.disconnect()
-        else d.connect()
+        else if (!d.paired && !d.bonded) {
+            root._pairThen = d
+            d.pair()
+        } else d.connect()
+    }
+    Connections {
+        target: root._pairThen
+        function onPairedChanged() {
+            const d = root._pairThen
+            if (!d.paired) return
+            root._pairThen = null
+            d.trusted = true
+            d.connect()
+        }
+        // Failed or cancelled: nothing to connect. Checked a tick later since
+        // pairing can drop before paired is set on success.
+        function onPairingChanged() {
+            Qt.callLater(() => {
+                const d = root._pairThen
+                if (d && !d.pairing && !d.paired) root._pairThen = null
+            })
+        }
     }
 
     // Set by Bar.qml: the bar's MorphPopup card (see MorphContent.qml).
