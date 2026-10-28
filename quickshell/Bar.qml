@@ -196,7 +196,7 @@ PanelWindow {
     // own bounds for the popup below it (its own window, outside toggleRow's
     // geometry, so toggleRowHover alone would otherwise drop to unhovered
     // and fade the row out from under an still-open popup).
-    readonly property bool toggleRowPopupOpen: ["sunset", "hdr", "idle", "gamefocus", "transparency", "barsolo", "mic", "notifmute"]
+    readonly property bool toggleRowPopupOpen: ["idle", "mic", "notifmute"]
         .includes(ShellState.activePopup)
         && ShellState.activePopupScreen === bar.screen.name
 
@@ -231,9 +231,8 @@ PanelWindow {
     // Once any pill has grown enough to be hovered directly, its own
     // MouseArea (real, geometry-accurate, unlike the fixed bootstrap zone
     // above) keeps the whole row revealed -- see toggleHoverZone's comment.
-    readonly property bool anyToggleHovered: sunsetToggle.hovered || hdrToggle.hovered
-        || idleToggle.hovered || gameFocusToggle.hovered || transparencyToggle.hovered
-        || micMuteToggle.hovered || notificationMuteToggle.hovered || barSoloToggle.hovered
+    readonly property bool anyToggleHovered: idleToggle.hovered
+        || micMuteToggle.hovered || notificationMuteToggle.hovered
     readonly property bool toggleRowRevealed: toggleRowHover.hovered || bar.toggleRowPopupOpen || bar.anyToggleHovered
 
     // The one morphing card every hover popup on this bar renders into --
@@ -264,39 +263,6 @@ PanelWindow {
         // flicker that kept a pill's popup from ever settling open; removed
         // rather than tuned since it was redundant with the width Behavior.
 
-        SunsetToggle {
-            id: sunsetToggle
-            popupHost: barMorph.slot
-            screenName: bar.screen.name
-            revealed: bar.toggleRowRevealed
-            active: ShellState.sunsetWarm
-            scheduleFollow: ShellState.sunsetScheduleFollow
-            kelvin: ShellState.sunsetKelvin
-            // Pill click and the popup's On/Off buttons both land here —
-            // ShellState.forceSunsetWarm owns the dedup-guard, the state
-            // write, and the matching hyprctl push, and deliberately never
-            // touches sunsetScheduleFollow.
-            onSetWarm: (warm) => ShellState.forceSunsetWarm(warm)
-            // Dragging the warmth slider only presets the kelvin value —
-            // it deliberately does NOT force the light on or touch
-            // "Follow schedule". ShellState.setSunsetKelvin owns the
-            // debounced disk write + hyprctl push (see its own comment for
-            // why that's debounced rather than firing per pixel).
-            onSetTemperature: (k) => ShellState.setSunsetKelvin(k)
-            // The popup's "Follow schedule" checkbox — ShellState.
-            // setScheduleFollow owns the dedup-guard and, when re-enabling,
-            // the immediate resync to whatever the schedule currently says.
-            onSetScheduleFollow: (follow) => ShellState.setScheduleFollow(follow)
-            // New profile times: ShellState restarts hyprsunset (it only
-            // reads its config at startup) and resyncs the toggle to it.
-            onScheduleSaved: ShellState.restartSunsetSchedule()
-        }
-        HdrToggle {
-            id: hdrToggle
-            popupHost: barMorph.slot
-            screenName: bar.screen.name
-            revealed: bar.toggleRowRevealed
-        }
         IdleToggle {
             id: idleToggle
             popupHost: barMorph.slot
@@ -305,33 +271,10 @@ PanelWindow {
             active: ShellState.idleActive
             onToggle: ShellState.idleActive = !ShellState.idleActive
             onSettingsSaved: {
-                // hypridle only reads its config at startup, same as
-                // hyprsunset — now via its systemd --user service too, same
-                // reasoning as hyprsunset's onScheduleSaved above.
+                // hypridle only reads its config at startup — restart its
+                // systemd --user service to pick up the new listeners.
                 Quickshell.execDetached(["systemctl", "--user", "restart", "hypridle.service"])
             }
-        }
-        GameFocusToggle {
-            id: gameFocusToggle
-            popupHost: barMorph.slot
-            screenName: bar.screen.name
-            revealed: bar.toggleRowRevealed
-        }
-        TransparencyToggle {
-            id: transparencyToggle
-            popupHost: barMorph.slot
-            screenName: bar.screen.name
-            revealed: bar.toggleRowRevealed
-            opaque: ShellState.transparencyOpaque
-            onToggle: ShellState.setTransparencyOpaque(!ShellState.transparencyOpaque)
-        }
-        BarSoloToggle {
-            id: barSoloToggle
-            popupHost: barMorph.slot
-            screenName: bar.screen.name
-            revealed: bar.toggleRowRevealed
-            active: ShellState.barSoloScreen === bar.screen.name
-            onToggle: ShellState.toggleBarSolo(bar.screen.name)
         }
         MicMuteToggle {
             id: micMuteToggle
