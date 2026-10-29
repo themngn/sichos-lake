@@ -12,11 +12,13 @@ import Quickshell.Io
 // ordinary NetworkManager connection (WireGuard or OpenVPN, named
 // "ProtonVPN <server>"), so state is still read from nmcli -- that also
 // catches connections made from the app itself. Polled only while the
-// Control Center's main page or the VPN page is open.
+// Control Center's main page or the VPN page is open, or the launcher's
+// Controls (ShellState.launcherControlsShown).
 QtObject {
     id: root
 
     readonly property bool active: ShellState.activePopup === "quicksettings" || ShellState.activePopup === "qs-vpn"
+        || ShellState.launcherControlsShown
     property string connection: "" // active Proton connection's name, "" = off
     property bool busy: false
     readonly property bool connected: root.connection !== ""

@@ -292,8 +292,13 @@ QtObject {
     // Quickshell.screens[0] regardless of which bar it belongs to.
     property string notificationCenterScreen: ""
 
+    // The launcher is open on a list showing the Hotspot/VPN switches
+    // (Controls, or Suggested while searching) -- VpnStatus and Hotspot
+    // poll while it is, as they do for the Control Center.
+    property bool launcherControlsShown: false
+
     // Screen (Quickshell ScreenInfo.name) the bar is pinned to, or "" to
-    // show it on every screen. Set from the launcher's Toggles folder or
+    // show it on every screen. Set from the launcher's Controls or
     // `quickshell ipc call bar toggleSolo` (SUPER+SHIFT+B) -- both pin to
     // whichever monitor the toggle was used on. Deliberately doesn't persist
     // (not a Control Center setting): a pin to a monitor that's gone or

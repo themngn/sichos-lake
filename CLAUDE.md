@@ -284,9 +284,28 @@ own files.
   use `shown`), and coordinates map into the shared surface (`mapToItem(null, …)`). Click menus (tray,
   language, workspace) and the notification drawer still use their own windows. A new toggle-row popup
   also needs its popupId in `toggleRowPopupOpen`.
-- **`Launcher.qml`** (by far the largest file): the SUPER+SHIFT+Q app launcher/menu, including
-  its Settings and Autostart folders. While the paired phone is connected, the root menu has a folder
-  named after it right under Apps (not inside it, so SUPER+Q's Apps view stays PC-only): the phone's launcher apps with their icons (`PhoneApps` singleton ← `sichlink apps`,
+- **`Launcher.qml`** (by far the largest file): the SUPER+Q app launcher/menu (SUPER+SHIFT+Q opens it straight into Apps), including
+  its Settings and Autostart folders. One card with a fixed top edge that grows downward: a large
+  search field, then a category rail (Suggested = the root mode: recent apps from
+  `~/.config/quickshell/launcher-recent.json`, a few controls, every app; Apps; Games = Steam
+  titles, `folder:games`; the phone; Controls = every Control Center switch, same calls as
+  QuickSettings' `tileToggle`, plus the power profile; Session = power actions + the reloads;
+  Settings — Tab/Shift+Tab cycle it; Hotspot/VpnStatus poll while Controls show, via
+  `ShellState.launcherControlsShown`), the list, and a detail pane (open by default; the
+  header's info button or Ctrl+I hide/show it) whose action buttons (`actionsFor`/`runAction`;
+  Ctrl+H hide, Ctrl+F add to folder) replaced the old app/plugin submenus. ← moves the arrows to the
+  rail (`railFocus`: ↑/↓ open each category, →/Enter/Esc/typing return to the list); the text field
+  keeps the real focus, and folders are still Enter in, Backspace/Esc out. The
+  current mode is a chip in the search field, and typing inside a category searches only it
+  (`scopeItems`); only Suggested searches everything (`allItems`), with a calculator row on top when the query
+  is a sum (`calculate()`, a small parser, never eval; Enter copies) or `rand 1 30` (`randomFor()`,
+  inclusive, stable until the query changes), and a web search row last. Settings > Date, Time &
+  Language (`TimeRegion`) shows names and samples, never locale codes: time zones by city
+  (`scripts/timezones.py`), Language and Region from every Fedora langpack (`scripts/locale-catalog.py`,
+  dnf file lists + iso-codes names; a pack that isn't installed is installed via `pkexec dnf` when
+  picked), and Date Format / Number Format / Currency each on its own (LC_TIME / LC_NUMERIC /
+  LC_MONETARY); a new Region only moves the ones still following the old one. While the paired phone is
+  connected, the rail has an entry named after it right under Apps (not inside it, so SUPER+SHIFT+Q's Apps view stays PC-only): the phone's launcher apps with their icons (`PhoneApps` singleton ← `sichlink apps`,
   ~5s since the phone draws every icon, so the last list is cached in `$XDG_RUNTIME_DIR` and refreshed
   on each open; searched locally inside the folder; in a global search always after every PC result, whatever
   their rank, with a phone badge on the icon). Picking one
@@ -299,6 +318,24 @@ own files.
   `PickerWindow.qml` (the launcher's card + search field), deliberately not launcher folders. IPC
   targets `clipboard`/`emoji` (`toggle`, `close`). They replaced fuzzel pickers — fuzzel's fcft
   can't render Fedora's COLRv1 Noto Color Emoji at all.
+- **`WallpaperPicker.qml`** (SUPER+SHIFT+W, IPC target `wallpaper`): full-screen gallery of
+  `~/Pictures/Wallpapers` (plus the deployed `~/Pictures/wallpaper.jpg` unless the folder has a copy),
+  the highlighted one previewed full screen behind a carousel; Enter applies. `scripts/wallpaper.py`
+  (`list`/`set`/`restore`) makes cached thumbnails (`~/.cache/sichos/wallpaper-thumbs`), sets it
+  through hyprpaper's IPC and remembers it as the symlink `~/.local/state/sichos/wallpaper`, which
+  `hyprlock.conf` reads; `autostart.lua` and `dpms-restore-after-resume.sh` call `restore`. The
+  deployed `wallpaper.jpg` is never overwritten (it's update.sh's). The palette follows the wallpaper
+  ("Match colors", C; `wallpaper.py colors on|off`): `Theme.qml`'s colors are re-tinted in OKLCH (same
+  lightness, hue moved onto the wallpaper's accent, chroma scaled and capped) into
+  `~/.config/quickshell/theme-colors.json`, which `Theme.qml` watches with its literals as fallback,
+  and `~/.local/state/sichos/hyprlock-colors.conf`, which `hyprlock.conf` `source`s. The default
+  wallpaper gives the literals back exactly -- **a palette change in `Theme.qml` must also go into
+  `wallpaper.py`'s `BASE`**. Not followed: hyprtoolkit.conf, prompt.toml, SDDM, hyprquickframe.
+  `BarScrim.qml` (a click-through bottom-layer strip, 4 bar heights, shown by `Bar.qml` only while
+  the bar is transparent) shades the bar only where the wallpaper behind it is bright: `wallpaper.py`
+  renders one alpha mask per monitor (cover-cropped like hyprpaper, darkened per column just enough
+  for ~3.5:1 with white text, zero over dark areas, blurred, eased out downwards), listed under
+  `barScrim` in `theme-colors.json`; a monitor without one asks for `wallpaper.py scrim`.
 - **`PowerMenu.qml`**: Lock/Suspend/Log Out/Reboot/Shut Down, opened by the laptop power key
   (`XF86PowerOff` bind → `quickshell ipc call power toggle`, falling back to `hyprshutdown`). The key
   only reaches Hyprland because `autostart.lua` holds a logind `handle-power-key` inhibitor
@@ -442,7 +479,8 @@ cards are `Squircle.qml` (continuous corners via QtQuick.Shapes; `radius: Theme.
 `Theme.cornerSmoothing`, and `borderColor`/`borderWidth` instead of `border.*`), not `Rectangle` —
 controls inside them stay plain `controlRadius` Rectangles. Conventions
 the existing popups follow: header = `HeaderIcon { glyph: ... }` + bold title at `fontSize` in a `Row`;
-body text, buttons and checkboxes at `fontSize - 1`; section headings `fontSize - 2` in `textMuted`;
+body text, buttons and checkboxes at `fontSize - 1`; section headings are `SectionLabel.qml` (small bold
+caps in `textDim`, the same as the launcher's rail/list group headings -- use it, not a styled `Text`);
 captions `fontSize - 3`. Text uses `Theme.uiFontFamily` (Inter); anything that renders Nerd Font glyphs
 must keep `Theme.fontFamily` (Inter has none of them). The bar itself stays on the Nerd Font.
 

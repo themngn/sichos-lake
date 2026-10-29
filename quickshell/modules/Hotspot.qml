@@ -13,6 +13,7 @@ QtObject {
 
     readonly property string _script: Quickshell.env("HOME") + "/.config/quickshell/scripts/hotspot.py"
     readonly property bool watching: ShellState.activePopup === "quicksettings" || ShellState.activePopup === "qs-hotspot"
+        || ShellState.launcherControlsShown
     onWatchingChanged: if (root.watching) root.refresh()
 
     // From `hotspot.py status`.

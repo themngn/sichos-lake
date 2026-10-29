@@ -1407,22 +1407,26 @@ Pill {
                 spacing: Theme.sectionSpacing
 
                 // Header
+                // Taller than the other popups' headers, like the
+                // launcher's: this card is a page of its own, not a tooltip.
                 Item {
                     width: parent.width
-                    height: 20
+                    height: 32
 
                     Row {
-                        spacing: 6
+                        spacing: 8
                         anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
                         HeaderIcon {
                             glyph: "\u{f1542}" // nf-md-tune_variant
+                            inkHeight: Theme.headerIconSize + 3
+                            inkWidth: inkHeight * 1.1
                             color: Theme.accent
                         }
                         Text {
                             text: panel.editing ? "Edit tiles" : "Control Center"
                             font.family: Theme.uiFontFamily
-                            font.pixelSize: Theme.fontSize
+                            font.pixelSize: Theme.fontSize + 2
                             font.bold: true
                             color: Theme.text
                         }
@@ -1644,8 +1648,11 @@ Pill {
                                 Behavior on scale { NumberAnimation { duration: 120 } }
                                 color: tile.info.active ? Theme.selectedFill
                                     : (tapArea.containsMouse && !panel.editing) || tile.dragging ? Theme.hoverFill : Theme.controlFill
-                                border.color: tile.info.active || tile.info.busy || panel.editing ? Theme.accent : Theme.surfaceBorder
-                                border.width: 1
+                                // Fill only, like the launcher's rows; the
+                                // accent ring is kept for edit mode and a
+                                // switch that's still working.
+                                border.color: Theme.accent
+                                border.width: tile.info.busy || panel.editing ? 1 : 0
 
                                 MouseArea {
                                     id: tapArea
@@ -1700,14 +1707,14 @@ Pill {
                                         x: tile.small ? (parent.width - width) / 2 : 12 + (30 - width) / 2
                                         anchors.verticalCenterOffset: tile.small ? -9 : 0
                                         glyph: tile.info.glyph
-                                        inkHeight: 17
+                                        inkHeight: 19
                                         // Width capped at ~1.3x the height so
                                         // wide-and-short glyphs (gamepad)
                                         // don't read bigger than the rest --
                                         // a little more for HDR's mountains,
                                         // flatter still, or they'd shrink to
                                         // a sliver.
-                                        inkWidth: tile.info.glyph === "\u{f02f5}" ? 26 : 22
+                                        inkWidth: tile.info.glyph === "\u{f02f5}" ? 28 : 24
                                         color: tile.info.active ? Theme.text : Theme.textMuted
                                         opacity: tile.info.busy ? 0.5 : 1
                                         SequentialAnimation on opacity {
@@ -2349,8 +2356,6 @@ Pill {
                                 height: Theme.controlHeight + 8
                                 radius: Theme.controlRadius
                                 color: profileButton.active ? Theme.selectedFill : profileArea.containsMouse ? Theme.hoverFill : Theme.controlFill
-                                border.color: profileButton.active ? Theme.accent : Theme.surfaceBorder
-                                border.width: 1
 
                                 Text {
                                     anchors.centerIn: parent
@@ -2543,11 +2548,8 @@ Pill {
 
                 Rectangle { width: parent.width; height: 1; color: Theme.separator }
 
-                Text {
+                SectionLabel {
                     text: "Output"
-                    color: Theme.textMuted
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 2
                 }
                 SliderRow {
                     width: parent.width
@@ -2573,11 +2575,8 @@ Pill {
                     }
                 }
 
-                Text {
+                SectionLabel {
                     text: "Input"
-                    color: Theme.textMuted
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 2
                 }
                 SliderRow {
                     width: parent.width
