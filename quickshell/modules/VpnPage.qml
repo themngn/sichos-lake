@@ -759,12 +759,6 @@ MorphContent {
         }
     }
 
-    component SectionLabel: Text {
-        bottomPadding: 4
-        color: Theme.textMuted
-        font.family: Theme.uiFontFamily
-        font.pixelSize: Theme.fontSize - 2
-    }
 
     // Flag, title + subtitle; tap = connect, the chevron (if any) expands.
     component ListRow: Rectangle {

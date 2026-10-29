@@ -92,11 +92,8 @@ MorphContent {
         Column {
             width: parent.width
             spacing: 6
-            Text {
+            SectionLabel {
                 text: "Internet"
-                color: Theme.textMuted
-                font.family: Theme.uiFontFamily
-                font.pixelSize: Theme.fontSize - 2
             }
             Row {
                 width: parent.width
@@ -133,11 +130,8 @@ MorphContent {
         Column {
             width: parent.width
             spacing: 4
-            Text {
+            SectionLabel {
                 text: "Network"
-                color: Theme.textMuted
-                font.family: Theme.uiFontFamily
-                font.pixelSize: Theme.fontSize - 2
             }
             InfoRow { label: "Name"; value: Hotspot.ssid || "…" }
             InfoRow {

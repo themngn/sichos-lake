@@ -455,12 +455,9 @@ Pill {
                 Item {
                     width: popup.contentWidth
                     height: layoutLabel.implicitHeight
-                    Text {
+                    SectionLabel {
                         id: layoutLabel
                         text: "Layout"
-                        color: Theme.textMuted
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 2
                     }
                     Text {
                         visible: layoutBox.rects.filter(r => r.movable).length > 1
@@ -824,11 +821,8 @@ Pill {
                     color: Theme.separator
                 }
 
-                Text {
+                SectionLabel {
                     text: "Settings"
-                    color: Theme.textMuted
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 2
                 }
 
                 Column {

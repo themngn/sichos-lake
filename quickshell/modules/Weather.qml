@@ -414,11 +414,8 @@ Pill {
                     }
                 }
 
-                Text {
+                SectionLabel {
                     text: "Next hours"
-                    color: Theme.textMuted
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 2
                 }
 
                 Row {
@@ -476,11 +473,8 @@ Pill {
                     }
                 }
 
-                Text {
+                SectionLabel {
                     text: "This week"
-                    color: Theme.textMuted
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 2
                 }
 
                 // Day | icon | rain chance | low ━━━━ high. Fixed-width

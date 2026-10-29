@@ -174,12 +174,9 @@ MorphContent {
                 width: Theme.togglePopupWidth
                 spacing: 2
 
-                Text {
+                SectionLabel {
                     bottomPadding: 4
                     text: "Input device"
-                    color: Theme.textMuted
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 2
                 }
 
                 Repeater {

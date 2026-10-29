@@ -119,11 +119,8 @@ MorphContent {
                 width: Theme.togglePopupWidth
                 spacing: 6
 
-                Text {
+                SectionLabel {
                     text: "Mute for"
-                    color: Theme.textMuted
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 2
                 }
 
                 Flow {

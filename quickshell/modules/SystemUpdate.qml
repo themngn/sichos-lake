@@ -258,15 +258,12 @@ Pill {
                         readonly property bool first: index === 0 || root.packages[index - 1].kind !== modelData.kind
                         width: pkgList.width
                         height: 20 + (first ? 22 : 0)
-                        Text {
+                        SectionLabel {
                             visible: parent.first
                             height: 22
                             verticalAlignment: Text.AlignBottom
                             bottomPadding: 3
                             text: modelData.kind === "flatpak" ? "Flatpak" : "System (dnf)"
-                            color: Theme.textMuted
-                            font.family: Theme.uiFontFamily
-                            font.pixelSize: Theme.fontSize - 2
                         }
                         Item {
                             anchors.left: parent.left

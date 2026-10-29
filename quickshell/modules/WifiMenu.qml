@@ -245,12 +245,9 @@ MorphContent {
             font.pixelSize: Theme.fontSize - 1
         }
 
-        Text {
+        SectionLabel {
             visible: !!menu.device && menu.wifiOn
             text: menu.networks.length === 0 ? "Searching…" : "Networks"
-            color: Theme.textMuted
-            font.family: Theme.uiFontFamily
-            font.pixelSize: Theme.fontSize - 2
         }
 
         // Scrolls past ~8 rows so a busy neighbourhood doesn't make the card

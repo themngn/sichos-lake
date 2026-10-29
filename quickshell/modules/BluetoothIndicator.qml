@@ -556,12 +556,6 @@ Pill {
         }
     }
 
-    component SectionLabel: Text {
-        color: Theme.textMuted
-        font.family: Theme.uiFontFamily
-        font.pixelSize: Theme.fontSize - 2
-        bottomPadding: 2
-    }
 
     component PromptButton: Rectangle {
         id: pb

@@ -257,11 +257,8 @@ MorphContent {
                 color: Theme.separator
             }
 
-            Text {
+            SectionLabel {
                 text: "Schedule times"
-                color: Theme.textMuted
-                font.family: Theme.uiFontFamily
-                font.pixelSize: Theme.fontSize - 2
             }
 
             Row {

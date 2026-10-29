@@ -708,12 +708,6 @@ MorphContent {
         }
     }
 
-    component SectionLabel: Text {
-        bottomPadding: 4
-        color: Theme.textMuted
-        font.family: Theme.uiFontFamily
-        font.pixelSize: Theme.fontSize - 2
-    }
 
     // A label (and optional caption) on the left, controls on the right.
     component SettingRow: Item {
