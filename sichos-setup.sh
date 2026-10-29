@@ -1050,8 +1050,8 @@ declare -A LOCALE_DECIMAL LOCALE_THOUSANDS LOCALE_CURRENCY
 LOCALE_INFO_LOADED=0
 load_locale_info() {
     [ "$LOCALE_INFO_LOADED" = "1" ] && return
-    local loc dp ts cur
-    while IFS='|' read -r loc dp ts cur; do
+    local loc dp ts cur _rest
+    while IFS='|' read -r loc dp ts cur _rest; do
         [ -z "$loc" ] && continue
         LOCALE_DECIMAL["$loc"]="$dp"
         LOCALE_THOUSANDS["$loc"]="$ts"
