@@ -116,6 +116,17 @@ hl.window_rule({
     size   = "monitor_w*0.8 monitor_h*0.8",
 })
 
+-- The terminal (programs.terminal) only fades in and out, no pop-in scaling:
+-- "popin 100%" starts and ends at full size, leaving just fadeIn/fadeOut.
+-- Plain kitty only -- the btop/sichos-info kitty windows have their own
+-- classes and keep the default animation.
+hl.window_rule({
+    name  = "terminal-fade-only",
+    match = { class = "^kitty$" },
+
+    animation = "popin 100%",
+})
+
 -- Float and center the fastfetch "Info" kitty window (launcher root menu),
 -- same treatment as wlctl above.
 hl.window_rule({

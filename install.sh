@@ -1407,8 +1407,9 @@ if pgrep -x hyprpaper >/dev/null 2>&1 && [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}"
     # bilinear downscaling looks fine on it, so one shared file with
     # "cover" fit (this IPC call's optional third argument:
     # [mon],[path],[fit_mode]) applied to every monitor (empty mon field)
-    # is enough; no per-monitor render step needed.
-    hyprctl hyprpaper wallpaper ",$HOME/Pictures/wallpaper.jpg,cover" >/dev/null 2>&1
+    # is enough; no per-monitor render step needed. wallpaper.py makes that
+    # call (",<path>,cover") and links the pick for hyprlock.conf.
+    python3 "$HOME/.config/quickshell/scripts/wallpaper.py" restore >/dev/null 2>&1
     echo "    installed and reloaded live"
 else
     echo "    installed (hyprpaper not running under this session — will show on next login)"

@@ -30,6 +30,7 @@ ShellRoot {
     Launcher {}
     ClipboardPicker {}
     EmojiPicker {}
+    WallpaperPicker {}
     PowerMenu {}
     VolumeOSD {}
     BacklightOSD {}

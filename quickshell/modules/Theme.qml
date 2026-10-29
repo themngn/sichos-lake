@@ -1,27 +1,62 @@
 pragma Singleton
 import QtQuick
+import Quickshell
+import Quickshell.Io
 
 QtObject {
+    id: theme
+
+    // The palette follows the wallpaper: scripts/wallpaper.py re-tints the
+    // colors below (the sage/spruce theme, tuned on the default SoothingGreen
+    // wallpaper) toward the picked one and writes theme-colors.json; each
+    // color falls back to its literal here when the file or key is missing.
+    // Keep wallpaper.py's BASE in step with these literals.
+    property var wallpaperColors: ({})
+    property FileView _colorsFile: FileView {
+        path: Quickshell.env("HOME") + "/.config/quickshell/theme-colors.json"
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: {
+            try { theme.wallpaperColors = JSON.parse(text()) } catch (e) { theme.wallpaperColors = {} }
+        }
+        // A watch set while the file is missing never fires once it appears
+        // (seen at first login: quickshell starts before wallpaper.py
+        // restore writes it), so look again until it does.
+        onLoadFailed: {
+            theme.wallpaperColors = {}
+            theme._colorsRetry.start()
+        }
+    }
+    property Timer _colorsRetry: Timer {
+        interval: 3000
+        onTriggered: theme._colorsFile.reload()
+    }
+    // Per monitor name, the bar's shade mask for this wallpaper (BarScrim.qml).
+    readonly property var barScrim: wallpaperColors.barScrim ?? ({})
+    function _c(key, fallback) {
+        return theme.wallpaperColors[key] ?? fallback
+    }
+
     // Theme palette derived from colors.toml (sage/spruce theme)
-    readonly property color text: "#f0f9e3"
+    readonly property color text: _c("text", "#f0f9e3")
     // Brightened from #b4bbaa / #676f71: on the translucent glass cards
     // (glassAlpha) the old values washed out over light backgrounds.
-    readonly property color textMuted: "#cbd2c1"
-    readonly property color textDim: "#8f9796"
+    readonly property color textMuted: _c("textMuted", "#cbd2c1")
+    readonly property color textDim: _c("textDim", "#8f9796")
 
     readonly property color background: "#000000"
-    readonly property color cardBackground: "#141c1e"
-    readonly property color accent: "#698b85"
-    readonly property color accentHover: "#77a29b"
+    readonly property color cardBackground: _c("cardBackground", "#141c1e")
+    readonly property color accent: _c("accent", "#698b85")
+    readonly property color accentHover: _c("accentHover", "#77a29b")
 
-    readonly property color submap: "#e1ffdf"
-    readonly property color success: "#b2cfb8"
-    readonly property color critical: "#a9b495"
-    readonly property color urgent: "#a5ac97"
+    readonly property color submap: _c("submap", "#e1ffdf")
+    readonly property color success: _c("success", "#b2cfb8")
+    readonly property color critical: _c("critical", "#a9b495")
+    readonly property color urgent: _c("urgent", "#a5ac97")
 
-    readonly property color perfPerformance: "#a9b495"
-    readonly property color perfBalanced: "#698b85"
-    readonly property color perfPowerSaver: "#b2cfb8"
+    readonly property color perfPerformance: _c("perfPerformance", "#a9b495")
+    readonly property color perfBalanced: _c("perfBalanced", "#698b85")
+    readonly property color perfPowerSaver: _c("perfPowerSaver", "#b2cfb8")
 
     // Shared surface style for every popup, OSD, launcher and notification.
     // Each module reads these rather than its own literals, so the whole
@@ -32,10 +67,10 @@ QtObject {
     // Tuned toward a macOS popover look, solid for now (no compositor blur):
     // a dark panel a step above the bar's pure black, faintly tinted toward
     // the sage palette, with generous corners and a hairline highlight edge.
-    readonly property color surface: "#222726"
+    readonly property color surface: _c("surface", "#222726")
     // One step lighter than surface, for something floating on top of a
     // surface (e.g. an open dropdown list), so it doesn't blend in.
-    readonly property color surfaceRaised: "#2d3332"
+    readonly property color surfaceRaised: _c("surfaceRaised", "#2d3332")
     // Glass: the same two surface colors at glassAlpha, with Hyprland
     // blurring whatever is behind them (layer rules in hypr/window_rules.lua
     // -- only quickshell's menu-type surfaces are blurred, never the bar or

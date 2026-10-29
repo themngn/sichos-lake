@@ -77,8 +77,6 @@ PanelWindow {
         return Hyprland.toplevels.values.some(t => t.workspace && t.workspace.id === wsId)
     }
 
-    readonly property color opaqueBackground: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, BarSettings.terminalOpacity)
-    readonly property color fullyOpaqueBackground: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, 1.0)
     // Confirmed live: on a bitdepth=10 (HDR, see HdrSettings.apply) output,
     // any non-opaque bar surface bands/noises constantly — worse the closer
     // its alpha sits to (but short of) fully transparent (tried alpha 1/255
@@ -91,11 +89,45 @@ PanelWindow {
     // TransparencyToggle overrides the dynamic behavior above with a
     // constant solid backdrop, matching kitty's background_opacity going to
     // 1.0 at the same time (see ShellState.transparencyOpaque).
-    color: (ShellState.transparencyOpaque || bar.hdrActiveHere)
-        ? bar.fullyOpaqueBackground
-        : (bar.activeWorkspaceHasWindows ? bar.opaqueBackground : "transparent")
-    Behavior on color {
-        ColorAnimation { duration: 200; easing.type: Easing.OutQuad }
+    readonly property real backdropTarget: (ShellState.transparencyOpaque || bar.hdrActiveHere) ? 1.0
+        : (bar.activeWorkspaceHasWindows ? BarSettings.terminalOpacity : 0.0)
+    // One animated value drives both the backdrop and BarScrim's shade.
+    // They used to fade separately (200ms OutQuad each), and halfway through
+    // the shade was half gone while the backdrop was still half clear -- a
+    // bright wallpaper flashed lighter for a moment before the bar went
+    // dark. Tied together, the darkness only moves one way. Timed like
+    // Hyprland's window fades (hypr/look_and_feel.lua: fadeIn speed 1.73 =
+    // 173ms, fadeOut 1.46 = 146ms, both the "almostLinear" curve), so the
+    // bar darkens in step with a window fading in -- the terminal only
+    // fades (window_rules.lua) -- and clears with the last one fading out.
+    // Keep these in step with those animations.
+    property real backdropAlpha: backdropTarget
+    Behavior on backdropAlpha {
+        NumberAnimation {
+            duration: bar.backdropTarget > bar.backdropAlpha ? 173 : 146
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: [0.5, 0.5, 0.75, 1, 1, 1]
+        }
+    }
+    color: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, bar.backdropAlpha)
+
+    // Shade behind the transparent bar where the wallpaper is bright.
+    BarScrim {
+        screen: bar.screen
+        // Hands over to the backdrop as it fades in. Fading the shade out
+        // linearly (1 - f) cancelled the backdrop's first half -- filmed: a
+        // bright spot stayed flat (even lightened) while a window faded in,
+        // then darkened ~100ms late. With f the backdrop's progress and T
+        // its alpha, opacity (1-f)/(1-T*f) makes shade s + backdrop add up
+        // to exactly s + (T - s)*f at every pixel, whatever its s: the
+        // darkness follows the window's own fade curve.
+        level: {
+            if (!bar.visible) return 0
+            const t = Math.max(0.05, BarSettings.terminalOpacity)
+            const f = Math.min(1, bar.backdropAlpha / t)
+            const rest = 1 - Math.min(1, bar.backdropAlpha)
+            return rest < 0.001 ? 0 : (1 - f) / rest
+        }
     }
 
     IdleInhibitor {

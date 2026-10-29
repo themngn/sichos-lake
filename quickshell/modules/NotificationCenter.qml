@@ -51,11 +51,12 @@ Pill {
     BarIcon {
         // Presence-only indicator (no count) — a number badge kept
         // leaving an awkward fixed-width gap when empty; the glyph
-        // switch (plain bell -> bell-badge) plus accent color together
-        // say "there's something to see" instead.
+        // switch (plain bell -> bell-badge) alone says "there's something
+        // to see" -- no accent tint, so it stays the same color as every
+        // other bar icon (the accent follows the wallpaper now).
         glyph: root.count > 0 ? "󱅫" : ""
         pixelSize: Theme.barIconInkHeight * 1000 / root.iconInkUnits()
-        color: root.count > 0 ? Theme.accent : Theme.text
+        color: Theme.text
     }
 
     PanelWindow {
@@ -67,6 +68,12 @@ Pill {
         visible: root.panelOpen
         focusable: true
         color: Theme.backdrop
+        // Over the bar's reserved strip too, so the dim covers the bar like
+        // the rest of the screen instead of stopping under it (the card
+        // keeps its place below the bar via its top margin). Mapped after
+        // the bar on the same layer, so it stacks above it; a click on the
+        // dimmed bar closes the drawer like anywhere else outside the card.
+        exclusionMode: ExclusionMode.Ignore
 
         anchors {
             top: true
@@ -111,6 +118,7 @@ Pill {
                 // floating, like the bar popups, instead of having its
                 // corners clipped against the edge.
                 margins: 8
+                topMargin: Theme.barHeight + 8
             }
             color: Theme.surfaceFor(panel.screen)
             borderColor: Theme.surfaceBorder

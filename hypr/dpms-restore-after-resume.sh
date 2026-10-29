@@ -59,7 +59,7 @@
 # pid X" and never anything else for that invocation, so there was no way
 # to tell whether it even finished. hypridle.conf must stay pointed at this
 # single script path.
-hyprctl hyprpaper wallpaper ",$HOME/Pictures/wallpaper.jpg" >/dev/null 2>&1 &
+python3 "$HOME/.config/quickshell/scripts/wallpaper.py" restore >/dev/null 2>&1 &
 
 # Before falling back to the blind poll/retry loop below, give the kernel a
 # brief, bounded chance to say "the GPU's actually back" on its own: amdgpu's

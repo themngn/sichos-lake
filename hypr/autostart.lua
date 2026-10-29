@@ -114,14 +114,16 @@ hl.on("hyprland.start", function ()
   -- order — a no-op cost if it wasn't running yet (systemd just starts it).
   hl.exec_cmd("systemctl --user restart xdg-desktop-portal-gtk.service")
   -- hyprpaper (this build) does not read hyprpaper.conf; the wallpaper must
-  -- be set over its IPC socket after it starts up.
-  hl.exec_cmd("quickshell & (hyprpaper & sleep 1; hyprctl hyprpaper wallpaper \",$HOME/Pictures/wallpaper.jpg\") &")
+  -- be set over its IPC socket after it starts up. wallpaper.py restore sets
+  -- the one last picked in the wallpaper gallery (SUPER+SHIFT+W), else
+  -- ~/Pictures/wallpaper.jpg, retrying until hyprpaper answers.
+  hl.exec_cmd("quickshell & (hyprpaper & sleep 1; python3 $HOME/.config/quickshell/scripts/wallpaper.py restore) &")
   -- Blue-light filter (hyprsunset.conf) and the idle/lock daemon
   -- (hypridle.conf, lock/screen-off timeouts; the bar's Stay Awake toggle —
   -- Bar.qml's IdleInhibitor — suspends both while on) now run as their
   -- packaged systemd --user services instead of being launched here — see
   -- this function's opening comment for the migration.
-  -- Apps toggled on in the launcher's Autostart folder (SUPER+SHIFT+Q ->
+  -- Apps toggled on in the launcher's Autostart folder (SUPER+Q -> Settings ->
   -- Autostart) are launched with their own native "start minimized to
   -- tray" flag instead of appearing in front of you — see
   -- quickshell/scripts/autostart-launch.py.
