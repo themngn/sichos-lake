@@ -331,10 +331,10 @@ own files.
   and `~/.local/state/sichos/hyprlock-colors.conf`, which `hyprlock.conf` `source`s. The default
   wallpaper gives the literals back exactly -- **a palette change in `Theme.qml` must also go into
   `wallpaper.py`'s `BASE`**. Not followed: hyprtoolkit.conf, prompt.toml, SDDM, hyprquickframe.
-  `BarScrim.qml` (a click-through bottom-layer strip, 4 bar heights, shown by `Bar.qml` only while
+  `BarScrim.qml` (a click-through bottom-layer strip, 14 bar heights, shown by `Bar.qml` only while
   the bar is transparent) shades the bar only where the wallpaper behind it is bright: `wallpaper.py`
-  renders one alpha mask per monitor (cover-cropped like hyprpaper, darkened per column just enough
-  for ~3.5:1 with white text, zero over dark areas, blurred, eased out downwards), listed under
+  renders one shade per monitor (the wallpaper's own colour darkened; cover-cropped like hyprpaper, per column just strong enough
+  for ~5:1 with white text, zero over dark areas, blurred, eased out downwards), listed under
   `barScrim` in `theme-colors.json`; a monitor without one asks for `wallpaper.py scrim`.
 - **`PowerMenu.qml`**: Lock/Suspend/Log Out/Reboot/Shut Down, opened by the laptop power key
   (`XF86PowerOff` bind → `quickshell ipc call power toggle`, falling back to `hyprshutdown`). The key

@@ -22,7 +22,7 @@ PanelWindow {
         left: true
         right: true
     }
-    implicitHeight: Theme.barHeight * 4
+    implicitHeight: Theme.barHeight * 14  // SCRIM_HEIGHTS in scripts/wallpaper.py
 
     readonly property string maskPath: Theme.barScrim[scrim.screen.name] ?? ""
 

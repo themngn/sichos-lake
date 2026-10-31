@@ -30,13 +30,15 @@ Bar scrim: over an empty workspace the bar is transparent, and its light
 text vanishes wherever the wallpaper behind it is bright -- often only in
 part of it (sky on the left, dark trees on the right). A uniform tint would
 fix that and dull every dark wallpaper, so instead each monitor gets an
-alpha mask (black, ~/.cache/sichos/bar-scrim) that is only as dark as the
+shade (~/.cache/sichos/bar-scrim) that is only as strong as the
 wallpaper right there needs: per column, the brightest spot under the bar
 (as hyprpaper's cover fit crops it for that monitor) sets how much to
-darken for ~3.5:1 contrast with white text, zero over dark areas, then
-widened and blurred sideways and eased out downwards over three more bar
-heights (a 2-height fade still read as a band on a bright sky), so it reads
-as shade rather than a tint. BarScrim.qml stretches it
+darken for ~5:1 contrast with white text, zero over dark areas, then
+widened and blurred sideways and eased out downwards over thirteen more bar
+heights (a 2-height fade still read as a band on a bright sky, 3 as a
+dark lid). Its colour
+is the wallpaper's own there, darkened (black turned a blue sky grey), so it
+reads as shade rather than a tint. BarScrim.qml stretches it
 under the bar.
 
 Thumbnails: decoding the full images in QML took seconds per card (one is
@@ -64,9 +66,12 @@ COLORS_OFF = os.path.join(STATE, "wallpaper-colors-off")
 THEME_JSON = os.path.join(HOME, ".config", "quickshell", "theme-colors.json")
 HYPRLOCK_COLORS = os.path.join(STATE, "hyprlock-colors.conf")
 SCRIMS = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.join(HOME, ".cache"), "sichos", "bar-scrim")
-BAR_HEIGHT = 24      # Theme.barHeight; the scrim is 4 bar heights tall (BarScrim.qml)
-SCRIM_TARGET = 0.25  # max linear luminance left under the text: (1+.05)/(.25+.05) = 3.5:1
-SCRIM_MAX = 0.7      # never fully black, even on a white sky
+BAR_HEIGHT = 24      # Theme.barHeight
+SCRIM_HEIGHTS = 14   # the scrim is this many bar heights tall (BarScrim.qml)
+SCRIM_TARGET = 0.16  # max linear luminance left under the text: (1+.05)/(.16+.05) = 5:1
+SCRIM_MAX = 0.75     # never fully opaque, even on a white sky
+SCRIM_L = 0.3        # the shade: OKLCH lightness of the wallpaper's own colour, darkened
+SCRIM_C = 0.08       # ... and its chroma cap, so a vivid sky doesn't turn neon navy
 
 # Theme.qml's palette (keep in step with its literals) plus the two
 # hyprlock-only shades (its input field's fill and the now-playing line).
@@ -232,38 +237,66 @@ def _box(vals, r):
 
 def scrim_for(path, name, w, h, scale):
     st = os.stat(path)
-    key = hashlib.sha1(f"{path}\0{st.st_mtime_ns}\0{w}x{h}@{scale}\0v2".encode()).hexdigest()[:16]
+    key = hashlib.sha1(f"{path}\0{st.st_mtime_ns}\0{w}x{h}@{scale}\0{SCRIM_HEIGHTS},{SCRIM_TARGET},{SCRIM_MAX},{SCRIM_L},{SCRIM_C}v5".encode()).hexdigest()[:16]
     out = os.path.join(SCRIMS, f"{name}-{key}.png")
     if os.path.exists(out):
         return out
     cols = max(64, w // 4)
     band = max(1, round(BAR_HEIGHT * scale))       # the bar itself, in monitor pixels
-    rows = 3                                         # luminance samples down the bar
+    rows = 3                                         # samples down the bar
     # From the thumbnail (whole image, aspect kept): same crop, and the
     # full 9504x6336 one took 2s to decode for a mask this blurred.
-    lum = subprocess.run(["magick", thumb_for(path), "-resize", f"{w}x{h}^",
+    rgb = subprocess.run(["magick", thumb_for(path), "-resize", f"{w}x{h}^",
                           "-gravity", "center", "-extent", f"{w}x{h}", "+repage",
                           "-gravity", "northwest", "-crop", f"{w}x{band}+0+0", "+repage", "-resize", f"{cols}x{rows}!",
-                          "-colorspace", "LinearGray", "-depth", "8", "gray:-"],
+                          "-depth", "8", "rgb:-"],
                          capture_output=True).stdout
-    if len(lum) != cols * rows:
+    if len(rgb) != cols * rows * 3:
         return None
-    peak = [max(lum[r * cols + c] for r in range(rows)) / 255 for c in range(cols)]
-    need = [min(SCRIM_MAX, max(0.0, 1 - SCRIM_TARGET / l)) if l > 0 else 0.0 for l in peak]
+    px = [[_lin(v) for v in rgb[i:i + 3]] for i in range(0, len(rgb), 3)]
+    lum = [0.2126 * r + 0.7152 * g + 0.0722 * b for r, g, b in px]
+    peak = [max(lum[r * cols + c] for r in range(rows)) for c in range(cols)]
+    # The shade is the wallpaper's own colour there, darkened (OKLCH, hue
+    # kept), not black: black over a bright blue sky read as a grey smear,
+    # a deep blue reads as the sky getting darker towards the top.
+    # Each pixel weighted by its chroma, then blurred wide: a white cloud
+    # takes the blue of the sky around it instead of a grey shade of its own.
+    wt = [max(0.02, to_oklch("#" + "".join(f"{_gam(v):02x}" for v in p))[1]) for p in px]
+    blur = max(8, cols // 6)
+    den = _box([sum(wt[r * cols + c] for r in range(rows)) for c in range(cols)], blur)
+    chan = [[n / d for n, d in zip(_box([sum(px[r * cols + c][k] * wt[r * cols + c] for r in range(rows))
+                                         for c in range(cols)], blur), den)]
+            for k in range(3)]
+    shade, shade_lum = [], []
+    for c in range(cols):
+        hexs = "#" + "".join(f"{_gam(chan[k][c]):02x}" for k in range(3))
+        _, C, H = to_oklch(hexs)
+        sh = from_oklch(SCRIM_L, min(C * 0.8, SCRIM_C), H)
+        lin = [_lin(int(sh[i:i + 2], 16)) for i in (1, 3, 5)]
+        shade.append(bytes(int(sh[i:i + 2], 16) for i in (1, 3, 5)))
+        shade_lum.append(0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2])
+    # Alpha to bring the brightest spot down to SCRIM_TARGET when blended
+    # towards that shade.
+    need = [min(SCRIM_MAX, max(0.0, (l - SCRIM_TARGET) / (l - s))) if l > SCRIM_TARGET else 0.0
+            for l, s in zip(peak, shade_lum)]
     # Widen first (a bright spot's shade has to reach past the glyphs
     # beside it), then blur, so a small bright cloud still gets its full
     # strength in the middle instead of being averaged away.
     r = max(2, cols // 50)
     need = [max(need[max(0, i - r):i + r + 1]) for i in range(cols)]
     for _ in range(3):
-        need = _box(need, max(2, cols // 40))
-    height = 32
-    alpha = bytearray()
+        need = _box(need, max(3, cols // 25))
+    height = 8 * SCRIM_HEIGHTS
+    pixels = bytearray()
     for y in range(height):
-        t = (y + 0.5) / height * 4                   # in bar heights
-        f = min(1.0, max(0.0, (t - 0.8) / 3.2))
-        v = (1 - f) ** 2 * (1 + 2 * f)               # smoothstep down: full behind the text, soft tail
-        alpha.extend(round(255 * a * v) for a in need)
+        t = (y + 0.5) / height * SCRIM_HEIGHTS       # in bar heights
+        # Full behind the text, then a smoothstep down the whole strip: it
+        # stays dark a while under the bar and ends with no edge. Over 3 bar
+        # heights the same curve read as a slab; (1-f)^3 dropped off too soon.
+        f = min(1.0, max(0.0, (t - 0.8) / (SCRIM_HEIGHTS - 0.8)))
+        v = (1 - f) ** 2 * (1 + 2 * f)
+        for c in range(cols):
+            pixels += shade[c] + bytes((round(255 * need[c] * v),))
     os.makedirs(SCRIMS, exist_ok=True)
     for old in os.listdir(SCRIMS):
         if old.startswith(name + "-"):
@@ -271,10 +304,8 @@ def scrim_for(path, name, w, h, scale):
                 os.remove(os.path.join(SCRIMS, old))
             except OSError:
                 pass
-    r = subprocess.run(["magick", "-size", f"{cols}x{height}", "xc:black",
-                        "(", "-size", f"{cols}x{height}", "-depth", "8", "gray:-", ")",
-                        "-alpha", "off", "-compose", "CopyOpacity", "-composite", "png:" + out],
-                       input=bytes(alpha), capture_output=True)
+    r = subprocess.run(["magick", "-size", f"{cols}x{height}", "-depth", "8", "rgba:-", "png:" + out],
+                       input=bytes(pixels), capture_output=True)
     return out if r.returncode == 0 else None
 
 
