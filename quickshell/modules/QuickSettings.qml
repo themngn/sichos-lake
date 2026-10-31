@@ -20,15 +20,21 @@ import Quickshell.Services.UPower as UP
 // The bar icons are the standalone widgets themselves, `interactive: false`
 // so their own MouseAreas (tooltips, clicks) stay out of the way and this
 // pill's MouseArea gets all input -- no second copy of their icon/ink-size
-// logic. Submenus morph the same MorphPopup card: Bluetooth and Display are
-// hidden instances of BluetoothIndicator/DisplaySettings with their own
-// popupIds (their header's back arrow returns here); Sound (output/input
-// devices, mic level) is this file's own second page, `qs-audio`.
+// logic. Every page renders into popupHost, which Bar.qml sets to the hub's
+// Controls column (Hub.qml), so pages cross-fade inside that fixed column:
+// Bluetooth and Display are hidden instances of BluetoothIndicator/
+// DisplaySettings with their own popupIds (their header's back arrow
+// returns here); Sound (output/input devices, mic level) is this file's own
+// second page, `qs-audio`.
 Pill {
     id: root
     property string screenName: ""
     // Set by Bar.qml: the bar's MorphPopup card (see MorphContent.qml).
     property Item popupHost: null
+    // Where the Phone page renders, if not popupHost: the hub's
+    // notifications column (Bar.qml), so it opens there from the hub's phone
+    // card while this card's main page stays up beside it.
+    property Item phoneHost: null
 
     readonly property real cardWidth: 360
 
@@ -95,7 +101,9 @@ Pill {
         popupAnchor: root
         backPopupId: root.popupId
     }
-    // The Update tile's state and its "qs-update" page (same embedding as
+    // For the hub's system strip (its update cell; the tile is gone).
+    readonly property var updater: upd
+    // System Update's state (the hub strip's update cell) and its "qs-update" page (same embedding as
     // Bluetooth/Display above). Its own pending-update poll runs here too.
     SystemUpdate {
         id: upd
@@ -195,11 +203,16 @@ Pill {
         id: panel
         parent: root.popupHost
         anchorItem: root
-        shown: root.popupOpen
+        // Also while the Phone page is open in its own host (see phoneHost).
+        shown: root.popupOpen || (root.phoneHost !== null && root.pageShown("qs-phone"))
 
 
         implicitWidth: root.cardWidth + 2 * Theme.surfacePadding
-        implicitHeight: column.implicitHeight + 2 * Theme.surfacePadding
+        implicitHeight: column.implicitHeight + Theme.sectionSpacing + footerColumn.implicitHeight + 2 * Theme.surfacePadding
+        // At least its host's height (the hub's Controls column), so the
+        // footer sits at the bottom edge. Only `height`: the hub sizes
+        // itself from implicitHeight, so this doesn't feed back into it.
+        height: parent ? Math.max(implicitHeight, parent.height) : implicitHeight
 
         // The tiles' data sources poll only while the card is open.
         Binding { target: NetInfo; property: "active"; value: panel.shown }
@@ -240,6 +253,17 @@ Pill {
             if (!backlightTimer.running) backlightTimer.start()
         }
 
+        // Short battery text for the footer chip: "74% · 3h" (time left, or
+        // to full while charging -- the chip turns green then), "100%".
+        function batteryShort() {
+            const d = root.battery
+            if (!d || !d.isPresent) return ""
+            const pct = Math.round(d.percentage * 100) + "%"
+            if (d.state === UP.UPowerDeviceState.FullyCharged) return pct
+            const secs = d.state === UP.UPowerDeviceState.Charging ? d.timeToFull : d.timeToEmpty
+            if (!(secs > 0)) return pct
+            return pct + " · " + (secs >= 3600 ? Math.round(secs / 3600) + "h" : Math.max(1, Math.round(secs / 60)) + "m")
+        }
         function batteryText() {
             const d = root.battery
             if (!d || !d.isPresent) return ""
@@ -297,19 +321,6 @@ Pill {
             case "airplane": return {
                 glyph: "\u{f001d}", label: "Airplane", sub: panel.onOff(panel.airplane),
                 active: panel.airplane, more: "" }
-            case "hotspot": return {
-                glyph: Hotspot.active ? "\u{f0003}" : "\u{f1511}", label: "Hotspot",
-                sub: Hotspot.pending === "off" ? "Stopping…" : Hotspot.busy ? "Starting…"
-                    : Hotspot.active ? (Hotspot.clients > 0 ? Hotspot.clients + (Hotspot.clients === 1 ? " device" : " devices") : Hotspot.ssid)
-                    : Hotspot.armed ? "Tap again: Wi-Fi off"
-                    : Hotspot.error || "Off",
-                // Never the password itself: the tile is on screen for anyone
-                // to read (Copy password puts it on the clipboard).
-                detail: Hotspot.active ? (Hotspot.mode === "shared" ? "Shares " + Hotspot.wifiName : "Wi-Fi off, no internet shared")
-                    : Hotspot.canShare ? "Shares " + Hotspot.wifiName
-                    : !Hotspot.wifiConnected ? "Not sharing: Wi-Fi isn't connected"
-                    : Hotspot.shareProblem + ", turns Wi-Fi off",
-                active: Hotspot.active, busy: Hotspot.busy, more: "qs-hotspot" }
             case "nightlight": return {
                 glyph: "\u{f0594}", label: "Night Light",
                 sub: ShellState.sunsetWarm ? ShellState.sunsetKelvin + "K" : "Off", extraSub: panel.onOff(ShellState.sunsetWarm),
@@ -337,7 +348,11 @@ Pill {
                 sub: GameFocus.enabled ? (GameFocus.dimming ? "Dimming" : "Armed") : "Off",
                 detail: "Dims the other screens", active: GameFocus.enabled, more: "qs-gamefocus" }
             case "hdr": return {
-                glyph: "\u{f02f5}", label: "HDR", sub: panel.onOff(HdrSettings.active),
+                // nf-md-hdr / hdr_off: the letters "HDR" (was the mountains,
+                // nf-md-image_filter_hdr). Wide and short: `wideGlyph` gets it
+                // a bigger font in the footer switch.
+                glyph: HdrSettings.active ? "\u{f0d7d}" : "\u{f0d7e}", wideGlyph: true,
+                label: "HDR", sub: panel.onOff(HdrSettings.active),
                 detail: "On these monitors", active: HdrSettings.active, more: "qs-hdr" }
             case "opaque": return {
                 glyph: "", label: "Opaque",
@@ -345,21 +360,6 @@ Pill {
                 extraSub: ShellState.transparencyOpaque ? "Solid" : "Translucent",
                 detail: "Terminal background",
                 active: ShellState.transparencyOpaque, more: "" }
-            // The phone: mirror state while it's open, otherwise what the
-            // sichlink daemon knows, plus the battery (PhonePage.qml has the rest).
-            case "phone": return {
-                glyph: "\u{f011c}", label: Sichlink.phone ? Sichlink.phone.name : "Phone",
-                sub: [PhoneMirrorState.loading ? "Connecting…"
-                    : PhoneMirrorState.open ? (PhoneMirrorState.collapsed ? "Mirror hidden" : "Mirroring")
-                    : Sichlink.stateText,
-                    Sichlink.phone && Sichlink.phone.connected ? Sichlink.batteryText(Sichlink.phone) : ""
-                    ].filter(t => t !== "").join(" · "),
-                short: "Phone",
-                detail: !Sichlink.phone || !Sichlink.phone.connected ? ""
-                    : [Sichlink.lockText(Sichlink.phone), Sichlink.phone.adb_serial ? "Wireless adb" : "",
-                       Sichlink.phone.bt_link ? "Bluetooth" : ""].filter(t => t !== "").join(" · "),
-                active: PhoneMirrorState.open && !PhoneMirrorState.collapsed,
-                busy: PhoneMirrorState.loading || Sichlink.busy, more: "qs-phone", opens: true }
             case "powerprofile": {
                 const p = UP.PowerProfiles.profile
                 return {
@@ -371,24 +371,10 @@ Pill {
             case "sound": return {
                 glyph: vol.icon(), label: "Sound", sub: root.nodeName(root.sink),
                 active: !!(root.sink && root.sink.audio && !root.sink.audio.muted), more: "qs-audio" }
-            case "update": return {
-                glyph: "\u{f06b0}", label: "Updates",
-                sub: upd.updating ? "Updating…" : upd.checking && upd.count === null ? "Checking…"
-                    : upd.count === null ? "Unknown" : upd.count === 0 ? "Up to date"
-                    : upd.count + (upd.count === 1 ? " update" : " updates"),
-                detail: [upd.dnfCount ? upd.dnfCount + " dnf" : "", upd.flatpakCount ? upd.flatpakCount + " flatpak" : ""]
-                    .filter(t => t !== "").join(" · "),
-                active: !!upd.count, busy: upd.updating || upd.checking, more: "qs-update", opens: true }
             case "vpn": return {
                 glyph: "\u{f0565}", label: "Proton VPN",
                 sub: VpnStatus.busy ? "Disconnecting…" : VpnStatus.connected ? VpnStatus.server : VpnStatus.connecting ? "Connecting…" : "Off",
                 active: VpnStatus.connected, busy: VpnStatus.busy || VpnStatus.connecting, more: "qs-vpn" }
-            // System-wide DNS (DnsSettings.qml): lit on a Mullvad resolver.
-            case "dns": return {
-                glyph: "\u{f0b8c}", label: "DNS",
-                sub: DnsSettings.busy ? "Switching…" : DnsSettings.error || DnsSettings.name,
-                detail: DnsSettings.desc,
-                active: DnsSettings.active, busy: DnsSettings.busy, more: "" }
             // What closing the lid does with another monitor connected
             // (LidSettings.qml, hypr/keybindings.lua). `short`: the 1x1
             // tile's label, which has to carry the state on its own.
@@ -398,24 +384,6 @@ Pill {
                 extraSub: "", detail: "With another monitor",
                 sub: LidSettings.sleep ? "Sleep" : "Screen off, keep working",
                 active: LidSettings.sleep, more: "" }
-            // The deployed SichOS commit (update.sh info via SichosVersion):
-            // lit when it isn't the checkout's HEAD -- pinned by
-            // `update.sh switch`, or a deploy that didn't happen.
-            case "version": {
-                const sv = SichosVersion
-                return {
-                    glyph: "\u{f062c}", label: "Version",
-                    sub: !sv.known ? (sv.repo === "" ? "No version recorded" : "…")
-                        : sv.flags.length > 0 ? sv.flags.join(" · ") : sv.info.deployed_subject,
-                    short: sv.known ? sv.info.deployed : "Version",
-                    active: sv.pinned || sv.offHead, more: "" }
-            }
-            case "stats": return {
-                glyph: "\u{f035b}", label: "System",
-                sub: "CPU " + Math.round(SystemStats.cpu * 100) + "% · RAM " + Math.round(SystemStats.ram * 100) + "%"
-                    + (SystemStats.temp > 0 ? " · " + Math.round(SystemStats.temp) + "°C" : ""),
-                extraSub: SystemStats.temp > 0 ? Math.round(SystemStats.temp) + "°C" : "",
-                active: false, more: "" }
             }
             return { glyph: "", label: id, sub: "", active: false, more: "" }
         }
@@ -438,7 +406,6 @@ Pill {
             case "bluetooth": if (root.adapter) ShellState.setBluetooth(!root.adapter.enabled); break
             // Turning it off puts the radios back as they were.
             case "airplane": ShellState.setAirplane(!panel.airplane); break
-            case "hotspot": Hotspot.toggle(); break
             case "nightlight": ShellState.forceSunsetWarm(!ShellState.sunsetWarm); break
             case "silence": ShellState.setNotificationsMuted(!ShellState.notificationsMuted, 0); break
             case "micmute": if (root.source && root.source.audio) root.source.audio.muted = !root.source.audio.muted; break
@@ -446,8 +413,6 @@ Pill {
             case "gamefocus": GameFocus.enabled = !GameFocus.enabled; break
             case "hdr": HdrSettings.toggleActive(); break
             case "opaque": ShellState.setTransparencyOpaque(!ShellState.transparencyOpaque); break
-            // Opens the Phone page (connect, mirror and its settings, PIN).
-            case "phone": root.openPopup("qs-phone"); break
             case "powerprofile": {
                 const p = UP.PowerProfiles.profile
                 UP.PowerProfiles.profile = p === UP.PowerProfile.PowerSaver ? UP.PowerProfile.Balanced
@@ -455,22 +420,16 @@ Pill {
                 break
             }
             case "sound": if (root.sink && root.sink.audio) root.sink.audio.muted = !root.sink.audio.muted; break
-            case "update": root.openPopup("qs-update"); break
             case "vpn": VpnStatus.toggle(); break
             // Network's own <-> the last Mullvad resolver used.
-            case "dns": DnsSettings.toggle(); break
             case "lid": LidSettings.setSleep(!LidSettings.sleep); break
-            // update.sh status + recent commits in a terminal.
-            case "version": SichosVersion.openDetails(); break
-            // btop, floated/centered like SUPER+B (window_rules.lua).
-            case "stats": Quickshell.execDetached(["kitty", "--class", "btop", "-e", "btop"]); break
             }
         }
 
         // Grid: 4 columns of tileUnit x tileHeight cells.
         readonly property real tileSpacing: 10
         readonly property real tileUnit: (root.cardWidth - 3 * panel.tileSpacing) / 4
-        readonly property real tileHeight: 64
+        readonly property real tileHeight: 52
 
         // --- Per-size content. tileView(id, w, h): tileInfo plus what the
         // tile shows at that size:
@@ -485,9 +444,9 @@ Pill {
         // adapt -- three buttons at 3 wide, presets at 2 rows.
         // 1-row controls that go under the title at 3 wide too: beside it
         // they'd get ~110px (buttons elided, the stats ran out of the tile).
-        readonly property var underAt3: ["powerprofile", "update", "lid", "silence", "hdr", "phone", "awake", "dns"]
+        readonly property var underAt3: ["powerprofile", "lid", "silence", "hdr", "awake"]
         // ...and at 4 wide: rows of four buttons.
-        readonly property var underAt4: ["phone", "silence", "dns"]
+        readonly property var underAt4: ["silence"]
         function clock(ms) {
             return Qt.formatTime(new Date(ms), TimeRegion.use24Hour ? "HH:mm" : "h:mm AP")
         }
@@ -544,19 +503,6 @@ Pill {
                     root.adapter && root.adapter.enabled ? "BT on" : "BT off"].join(" · ")
                 v.lines = panel.airplane ? ["On"] : [Networking.wifiEnabled ? "Wi-Fi on" : "Wi-Fi off",
                     root.adapter && root.adapter.enabled ? "BT on" : "BT off"]
-                break
-            // Hotspot (Hotspot.qml): 1 row 4 wide, while it runs: the
-            // network on the status line, devices beside it (at 3 wide the
-            // name got cut off -- the count alone); 2 rows, buttons.
-            case "hotspot":
-                v.short = Hotspot.active ? (Hotspot.clients > 0 ? Hotspot.clients + (Hotspot.clients === 1 ? " device" : " devices") : "Hotspot")
-                    : Hotspot.armed ? "Tap again" : Hotspot.busy ? v.sub : "Hotspot"
-                // Narrower, room for the count only (sub's default).
-                if (Hotspot.active && Hotspot.clients > 0 && w >= (tall ? 3 : 5)) v.sub = Hotspot.ssid + " · " + v.sub
-                if (tall) v.control = extraHotspot
-                else if (w >= 4 && Hotspot.active) { v.sub = Hotspot.ssid; v.control = extraHotspotInfo; v.under = false }
-                v.lines = Hotspot.active ? [Hotspot.ssid, Hotspot.clients > 0 ? v.short : ""].filter(t => t)
-                    : Hotspot.armed ? ["Tap again", "Wi-Fi off"] : [v.sub]
                 break
             case "nightlight": {
                 v.control = tall ? bodyNight : extraWarmth
@@ -637,20 +583,6 @@ Pill {
                 if (tall) v.body = bodyOpaque
                 v.lines = [ShellState.transparencyOpaque ? "Solid" : "Glass " + Math.round(BarSettings.terminalOpacity * 100) + "%"]
                 break
-            case "phone": {
-                const d = Sichlink.phone
-                const batt = d && d.connected ? Sichlink.batteryText(d) : ""
-                const pctOnly = d && d.connected && d.battery !== null && d.battery !== undefined ? d.battery + "%" : ""
-                v.short = pctOnly || (PhoneMirrorState.open ? "Mirroring" : "Phone")
-                if (w === 1 && tall) v.label = "Phone"
-                v.control = extraPhoneButtons
-                v.tag = w >= 4 ? batt : pctOnly
-                v.detail = !d || !d.connected ? ""
-                    : [Sichlink.lockText(d), d.adb_serial ? "Wireless adb" : "", d.bt_link ? "Extend Unlock" : ""].filter(t => t !== "").join(" · ")
-                v.lines = [pctOnly, d && d.charging ? "Charging" : "",
-                    PhoneMirrorState.open ? "Mirroring" : d && d.connected ? Sichlink.lockText(d) : "Offline"].filter(t => t)
-                break
-            }
             case "powerprofile": {
                 const bat = PowerInfo.present
                 const pctText = bat && root.battery ? panel.pct(root.battery.percentage) : ""
@@ -675,18 +607,6 @@ Pill {
                 if (w >= 3) v.under = true
                 v.lines = [root.sink && root.sink.audio ? panel.pct(root.sink.audio.volume) : "", AudioInfo.shortName(root.sink)].filter(t => t)
                 break
-            case "update":
-                v.short = upd.count ? upd.count + (upd.count === 1 ? " update" : " updates") : upd.count === 0 ? "Up to date" : "Updates"
-                v.control = extraUpdate
-                if (tall && w >= 4) v.body = bodyUpdates
-                if (upd.rebootNeeded) v.sub = "Restart to finish"
-                // 1 row: the count is the title (the control hides the status).
-                if (!tall && w <= 3) v.title = upd.rebootNeeded ? "Restart needed" : v.short
-                v.tag = w >= 3 ? [upd.dnfCount ? upd.dnfCount + " dnf" : "", upd.flatpakCount ? upd.flatpakCount + " flatpak" : ""].filter(t => t).join(" · ") : ""
-                v.detail = [upd.dnfCount ? upd.dnfCount + " dnf" : "", upd.flatpakCount ? upd.flatpakCount + " flatpak" : ""]
-                    .filter(t => t !== "").join(" · ")
-                v.lines = [v.sub, v.detail.split(" · ")[0] || "", v.detail.split(" · ")[1] || ""].filter(t => t)
-                break
             case "vpn": {
                 const where = [VpnStatus.countryFlag, VpnStatus.city].filter(t => t).join(" ")
                 v.short = VpnStatus.connected ? (VpnStatus.countryFlag + " " + VpnStatus.server).trim() : VpnStatus.connecting ? "Connecting…" : "VPN off"
@@ -705,14 +625,6 @@ Pill {
                 v.lines = VpnStatus.connected ? [VpnStatus.server, VpnStatus.city].filter(t => t) : ["Off"]
                 break
             }
-            case "dns": {
-                // "Mullvad Base" -> "Base" where it's cramped.
-                const word = DnsSettings.name.replace("Mullvad ", "")
-                v.short = DnsSettings.active ? word : "DNS"
-                v.control = extraDns
-                v.lines = DnsSettings.active ? ["Mullvad", word] : ["Default"]
-                break
-            }
             case "lid": {
                 if (w <= 2) { v.title = "Lid closes"; v.label = "Lid closes" }
                 v.control = extraLid
@@ -721,48 +633,6 @@ Pill {
                 v.detail = !Displays.docked ? "Undocked it always sleeps"
                     : LidSettings.sleep ? "Suspends the laptop" : "Panel off, others keep running"
                 v.lines = [LidSettings.sleep ? "Sleep" : "Keep on", v.tag]
-                break
-            }
-            case "version": {
-                // The hash is the version; the name (branch / tag / pin) and
-                // age beside it. The line under it: what needs a look, else
-                // the commit message (2 rows: wrapped in the body instead).
-                const sv = SichosVersion
-                if (!sv.known) break
-                const when = sv.ago(sv.info.deployed_at)
-                v.title = sv.info.deployed
-                v.titleTail = w >= 3 ? sv.name + " · " + when : sv.name
-                v.sub = sv.flags.length > 0 ? sv.flags.join(" · ") + (w >= 4 ? " · " + sv.info.deployed_subject : "")
-                    : w >= 3 ? sv.info.deployed_subject : when
-                v.lines = [sv.name, sv.info.deployed, sv.flags[0] || when]
-                if (tall) {
-                    v.titleTail = sv.name
-                    v.sub = when
-                    v.body = bodyVersion
-                }
-                break
-            }
-            case "stats": {
-                const cpu = "CPU " + panel.pct(SystemStats.cpu)
-                const temp = SystemStats.temp > 0 ? Math.round(SystemStats.temp) + "°C" : ""
-                const ram = "RAM " + SystemStats.ramUsedGb.toFixed(1) + " / " + Math.round(SystemStats.ramTotalGb) + " GB"
-                const gpu = SystemStats.gpu >= 0 ? "GPU " + panel.pct(SystemStats.gpu) : ""
-                v.short = panel.pct(SystemStats.cpu) + (temp ? " · " + temp : "")
-                v.lines = [cpu, "RAM " + panel.pct(SystemStats.ram), temp].filter(t => t)
-                if (!tall && w <= 3) {
-                    v.title = [cpu, temp].filter(t => t).join(" · ")
-                    v.sub = w === 2 ? ram : ["RAM " + panel.pct(SystemStats.ram), gpu].filter(t => t).join(" · ")
-                    if (w === 3) { v.control = extraSpark; v.under = false; v.besideWidth = 64 }
-                } else if (!tall) {
-                    v.sub = [temp, SystemStats.fanRpm > 0 ? SystemStats.fanRpm + " rpm" : ""].filter(t => t).join(" · ")
-                    v.control = extraMeters
-                    v.under = false
-                } else {
-                    v.body = extraStats
-                    v.sub = [temp ? "CPU " + temp : "", SystemStats.gpuTemp > 0 ? "GPU " + Math.round(SystemStats.gpuTemp) + "°" : "",
-                        w >= 3 && SystemStats.fanRpm > 0 ? SystemStats.fanRpm + " rpm" : "",
-                        w >= 4 ? "up " + SystemStats.durationText(SystemStats.uptimeSec) : ""].filter(t => t).join(" · ")
-                }
                 break
             }
             }
@@ -777,75 +647,6 @@ Pill {
         // --- Tile controls and bodies (see tileView). `parent` is the
         // Loader: parent.cols = tile width in columns, parent.tall = 2 rows.
 
-        Component {
-            id: extraUpdate
-            ButtonRow {
-                buttons: [
-                    upd.rebootNeeded
-                        ? { label: "Restart", selected: true, action: () => { ShellState.activePopup = ""; upd.reboot() } }
-                        : { label: upd.checking ? "Checking…" : "Check", action: () => upd.checkNow() },
-                    { label: upd.updating ? "Updating…" : "Update all", selected: !!upd.count && !upd.updating,
-                      available: !!upd.count || upd.updating, action: () => upd.runUpdate() }
-                ]
-            }
-        }
-        // 4x2 Updates: pending packages beside the buttons.
-        Component {
-            id: bodyUpdates
-            Row {
-                spacing: 12
-                Column {
-                    width: parent.width - 100 - 12
-                    spacing: 2
-                    Repeater {
-                        model: upd.packages.slice(0, 2)
-                        delegate: TileListRow {
-                            required property var modelData
-                            name: modelData.name
-                            status: modelData.kind === "flatpak" ? "flatpak" : modelData.version
-                            onClicked: root.openPopup("qs-update")
-                        }
-                    }
-                    Text {
-                        visible: upd.packages.length > 2
-                        leftPadding: 4
-                        text: "+" + (upd.packages.length - 2) + " more"
-                        color: Theme.textDim
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 3
-                    }
-                    Text {
-                        visible: upd.packages.length === 0
-                        leftPadding: 4
-                        text: upd.count === 0 ? "Everything is up to date" : upd.checking ? "Checking…" : "No list yet"
-                        color: Theme.textDim
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 2
-                    }
-                }
-                Column {
-                    width: 100
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 6
-                    TileButton {
-                        width: parent.width
-                        anchors.bottom: undefined
-                        height: Theme.controlHeight
-                        label: upd.updating ? "Updating…" : "Update all"
-                        selected: !!upd.count && !upd.updating
-                        available: !!upd.count || upd.updating
-                        onClicked: upd.runUpdate()
-                    }
-                    TileButton {
-                        width: parent.width
-                        anchors.bottom: undefined
-                        height: Theme.controlHeight
-                        label: upd.rebootNeeded ? "Restart" : upd.checking ? "Checking…" : "Check"
-                        onClicked: upd.rebootNeeded ? (ShellState.activePopup = "", upd.reboot()) : upd.checkNow()
-                    }
-                }
-            }
-        }
         // VPN: 1 row shows where it's connected (the tap already toggles);
         // 2 rows get the buttons.
         Component {
@@ -870,101 +671,6 @@ Pill {
                 }
             }
         }
-        // System. 1 row, 3 wide: a CPU sparkline; 4 wide: CPU/RAM/GPU bars;
-        // 2 rows: graphs (CPU, RAM, + GPU at 3+ wide), plus a summary line
-        // at 4 wide.
-        Component {
-            id: extraSpark
-            MiniGraph { height: 30; history: SystemStats.cpuHistory }
-        }
-        Component {
-            id: extraMeters
-            Row {
-                id: meters
-                spacing: 8
-                Repeater {
-                    model: [
-                        { label: "CPU", value: SystemStats.cpu },
-                        { label: "RAM", value: SystemStats.ram },
-                        { label: "GPU", value: SystemStats.gpu }
-                    ].filter(m => m.value >= 0)
-                    delegate: Column {
-                        required property var modelData
-                        width: (meters.width - 16) / 3
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 4
-                        Text {
-                            text: modelData.label + " " + panel.pct(modelData.value)
-                            color: Theme.text
-                            font.family: Theme.uiFontFamily
-                            font.pixelSize: Theme.fontSize - 3
-                        }
-                        Rectangle {
-                            width: parent.width
-                            height: 4
-                            radius: 2
-                            color: Theme.track
-                            Rectangle { width: parent.width * Math.min(1, modelData.value); height: parent.height; radius: 2; color: Theme.accent }
-                        }
-                    }
-                }
-            }
-        }
-        Component {
-            id: extraStats
-            Column {
-                id: statsBox
-                readonly property bool wide: parent.cols >= 4
-                spacing: 4
-                Row {
-                    id: graphs
-                    width: parent.width
-                    height: statsBox.height - (statsBox.wide ? summary.height + 4 : 0)
-                    spacing: 10
-                    Repeater {
-                        model: [
-                            { label: "CPU", value: SystemStats.cpu, history: SystemStats.cpuHistory },
-                            { label: "RAM", value: SystemStats.ram, history: SystemStats.ramHistory },
-                            { label: "GPU", value: SystemStats.gpu, history: SystemStats.gpuHistory }
-                        ].filter(g => g.value >= 0).slice(0, statsBox.parent.cols >= 3 ? 3 : 2)
-                        delegate: Item {
-                            required property var modelData
-                            required property int index
-                            width: (graphs.width - 10 * (statsBox.parent.cols >= 3 ? 2 : 1)) / (statsBox.parent.cols >= 3 ? 3 : 2)
-                            height: graphs.height
-                            Text {
-                                id: graphLabel
-                                text: modelData.label + " " + panel.pct(modelData.value)
-                                color: Theme.textMuted
-                                font.family: Theme.uiFontFamily
-                                font.pixelSize: Theme.fontSize - 3
-                            }
-                            MiniGraph {
-                                anchors.top: graphLabel.bottom
-                                anchors.topMargin: 4
-                                anchors.left: parent.left
-                                anchors.right: parent.right
-                                anchors.bottom: parent.bottom
-                                history: modelData.history
-                            }
-                        }
-                    }
-                }
-                Text {
-                    id: summary
-                    visible: statsBox.wide
-                    width: parent.width
-                    elide: Text.ElideRight
-                    text: ["RAM " + SystemStats.ramUsedGb.toFixed(1) + "/" + Math.round(SystemStats.ramTotalGb) + " GB",
-                        SystemStats.swapTotalGb > 0 ? "swap " + SystemStats.swapUsedGb.toFixed(1) + " GB" : "",
-                        SystemStats.diskTotalGb > 0 ? "disk " + Math.round(SystemStats.diskUsedGb / SystemStats.diskTotalGb * 100) + "%" : "",
-                        "↓" + SystemStats.rateText(SystemStats.netRx)].filter(t => t).join(" · ")
-                    color: Theme.textDim
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 3
-                }
-            }
-        }
         Component {
             id: extraVolume
             TileSlider {
@@ -977,25 +683,6 @@ Pill {
             TileSlider {
                 value: root.source && root.source.audio ? root.source.audio.volume : 0
                 onMoved: (v) => { if (root.source && root.source.audio) root.source.audio.volume = v }
-            }
-        }
-        // Hotspot, 2 rows: stop / copy the password while it runs; else
-        // start -- labelled with what it costs when it can't share.
-        Component {
-            id: extraHotspot
-            ButtonRow {
-                buttons: Hotspot.active || Hotspot.starting
-                    ? [{ label: "Copy password", available: Hotspot.password !== "", action: () => Hotspot.copyPassword() },
-                       { label: "Stop", selected: true, available: Hotspot.pending === "", action: () => Hotspot.stop() }]
-                    : [{ label: Hotspot.canShare || !Hotspot.wifiConnected ? "Start" : parent.cols >= 3 ? "Start, Wi-Fi off" : "Wi-Fi off",
-                         available: Hotspot.pending === "",
-                         action: () => Hotspot.start(Hotspot.canShare ? "shared" : "standalone") }]
-            }
-        }
-        Component {
-            id: extraHotspotInfo
-            Readout2 {
-                line1: Hotspot.clients > 0 ? Hotspot.clients + (Hotspot.clients === 1 ? " device" : " devices") : "No devices"
             }
         }
         // SunsetPopup's range.
@@ -1098,17 +785,6 @@ Pill {
                     { label: "Sleep", selected: LidSettings.sleep, action: () => LidSettings.setSleep(true) },
                     { label: parent.cols >= 3 ? "Keep working" : "Keep on", selected: !LidSettings.sleep, action: () => LidSettings.setSleep(false) }
                 ]
-            }
-        }
-        // DNS: one button per resolver.
-        Component {
-            id: extraDns
-            ButtonRow {
-                buttons: DnsSettings.presets.map(p => ({
-                    label: p.label,
-                    selected: DnsSettings.current === p.id,
-                    available: !DnsSettings.busy,
-                    action: () => DnsSettings.set(p.id) }))
             }
         }
         // Wi-Fi body: the connected network, then saved, then the strongest
@@ -1246,29 +922,6 @@ Pill {
                     .map(d => (parent.cols >= 4 ? (d.name || d.deviceName) + " " : "") + panel.pct(d.battery)).join("  ·  ")
             }
         }
-        // Phone: mirror and files, then -- with room -- what fits the state:
-        // Unlock while locked, Audio while mirroring, else Display.
-        Component {
-            id: extraPhoneButtons
-            ButtonRow {
-                readonly property var d: Sichlink.phone
-                readonly property bool online: !!(d && d.connected)
-                readonly property var extras: [
-                    online && d.locked ? { label: "Unlock", action: () => Sichlink.wake(d.id) } : null,
-                    PhoneMirrorState.open ? { label: "Audio", selected: PhoneMirrorState.audio, action: () => PhoneMirrorState.setAudio(!PhoneMirrorState.audio) }
-                        : { label: Sichlink.displayStarting ? "Starting…" : "Display", selected: Sichlink.displayOn, available: online,
-                            action: () => Sichlink.setDisplay(!Sichlink.displayOn) },
-                    PhoneMirrorState.open ? { label: "Stop", action: () => PhoneMirrorState.close() } : null
-                ].filter(b => b)
-                buttons: [
-                    { label: PhoneMirrorState.toggleLabel, selected: PhoneMirrorState.open && !PhoneMirrorState.collapsed,
-                      available: PhoneMirrorState.open || online, action: () => PhoneMirrorState.toggle(root.screenName) },
-                    { label: Sichlink.driveBusy ? "Mounting…" : "Files", selected: Sichlink.driveMounted,
-                      available: !Sichlink.driveBusy && (Sichlink.driveMounted || online),
-                      action: () => { if (!Sichlink.driveMounted) { Sichlink.setDrive(true); return } ShellState.activePopup = ""; Sichlink.openDrive() } }
-                ].concat(extras.slice(0, Math.max(0, parent.cols - 2)))
-            }
-        }
         // Silence for a while; while on, extend it instead.
         function nextMorning() {
             const d = new Date()
@@ -1332,37 +985,6 @@ Pill {
                     action: () => HdrSettings.toggleMonitor(m.name) }))
             }
         }
-        // Version, 2 rows: the commit message, wrapped rather than cut,
-        // then one status line -- what needs a look, or that all's in step.
-        Component {
-            id: bodyVersion
-            Column {
-                readonly property var sv: SichosVersion
-                spacing: 4
-                Text {
-                    width: parent.width
-                    text: parent.sv.known ? parent.sv.info.deployed_subject : ""
-                    wrapMode: Text.Wrap
-                    maximumLineCount: 2
-                    elide: Text.ElideRight
-                    color: Theme.text
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 2
-                }
-                Text {
-                    width: parent.width
-                    text: !parent.sv.known ? ""
-                        : parent.sv.flags.length > 0 ? parent.sv.flags.join(" · ")
-                        : parent.sv.info.upstream ? "In step with " + parent.sv.info.upstream : "Auto-update on"
-                    wrapMode: Text.Wrap
-                    maximumLineCount: 2
-                    elide: Text.ElideRight
-                    color: Theme.textMuted
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 3
-                }
-            }
-        }
         Component {
             id: bodyHdr
             Column {
@@ -1402,62 +1024,101 @@ Pill {
 
             Column {
                 id: column
-                anchors.centerIn: parent
+                anchors.top: parent.top
+                anchors.topMargin: Theme.surfacePadding
+                anchors.horizontalCenter: parent.horizontalCenter
                 width: root.cardWidth
                 spacing: Theme.sectionSpacing
 
-                // Header
-                // Taller than the other popups' headers, like the
-                // launcher's: this card is a page of its own, not a tooltip.
+                // Top row: the power profile (left) and the tiles' edit button;
+                // while editing, its title with Reset / Done.
                 Item {
                     width: parent.width
-                    height: 32
-
-                    Row {
-                        spacing: 8
+                    height: 28
+                    // Power profile as three icon segments (Saver / Balanced /
+                    // Performance), the current one lit -- picked from the
+                    // placement studies (hub-studies/power-profile.html, 6).
+                    Rectangle {
+                        visible: !panel.editing
                         anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
-                        HeaderIcon {
-                            glyph: "\u{f1542}" // nf-md-tune_variant
-                            inkHeight: Theme.headerIconSize + 3
-                            inkWidth: inkHeight * 1.1
-                            color: Theme.accent
+                        width: profileRow.implicitWidth + 4
+                        height: 28
+                        radius: 14
+                        color: Theme.controlFill
+                        Row {
+                            id: profileRow
+                            anchors.centerIn: parent
+                            spacing: 2
+                            Repeater {
+                                model: [
+                                    { profile: UP.PowerProfile.PowerSaver, glyph: "\u{f032a}" },  // nf-md-leaf
+                                    { profile: UP.PowerProfile.Balanced, glyph: "\u{f05d1}" },    // nf-md-scale_balance
+                                    { profile: UP.PowerProfile.Performance, glyph: "\u{f04c5}" }  // nf-md-speedometer
+                                ]
+                                delegate: Rectangle {
+                                    id: profileSeg
+                                    required property var modelData
+                                    readonly property bool current: UP.PowerProfiles.profile === profileSeg.modelData.profile
+                                    width: 30
+                                    height: 24
+                                    radius: 12
+                                    // Selected = the lighter accent with a dark glyph:
+                                    // accent + light glyph read too faint, a white
+                                    // disc too bright.
+                                    color: profileSeg.current ? Theme.accentHover : profileArea.containsMouse ? Theme.hoverFill : "transparent"
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: profileSeg.modelData.glyph
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: Theme.fontSize + 3
+                                        color: profileSeg.current ? Theme.textOnLight : Theme.textMuted
+                                    }
+                                    MouseArea {
+                                        id: profileArea
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: UP.PowerProfiles.profile = profileSeg.modelData.profile
+                                    }
+                                }
+                            }
                         }
-                        Text {
-                            text: panel.editing ? "Edit tiles" : "Control Center"
-                            font.family: Theme.uiFontFamily
-                            font.pixelSize: Theme.fontSize + 2
-                            font.bold: true
-                            color: Theme.text
-                        }
+                    }
+                    Text {
+                        visible: panel.editing
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Edit tiles"
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize
+                        font.bold: true
+                        color: Theme.text
                     }
                     Row {
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        spacing: 8
-                        Text {
-                            visible: !panel.editing
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: panel.batteryText()
-                            color: root.battery && root.battery.state === UP.UPowerDeviceState.Charging ? Theme.success : Theme.textMuted
-                            font.family: Theme.uiFontFamily
-                            font.pixelSize: Theme.fontSize - 1
-                        }
+                        spacing: 6
                         HeaderButton {
                             visible: panel.editing
                             label: "Reset"
                             onClicked: ControlCenterTiles.reset()
                         }
                         HeaderButton {
-                            label: panel.editing ? "Done" : ""
-                            glyph: panel.editing ? "" : "\u{f03eb}" // nf-md-pencil
-                            primary: panel.editing
-                            onClicked: panel.editing = !panel.editing
+                            visible: panel.editing
+                            label: "Done"
+                            primary: true
+                            onClicked: panel.editing = false
+                        }
+                        HeaderButton {
+                            visible: !panel.editing
+                            round: true
+                            glyph: "\u{f03eb}" // nf-md-pencil
+                            onClicked: panel.editing = true
                         }
                     }
                 }
 
-                Rectangle { width: parent.width; height: 1; color: Theme.separator }
 
                 // Tiles (ControlCenterTiles): w 1-4 columns x h 1-2 rows,
                 // packed first-fit. Tap toggles; a wide tile's chevron -- or
@@ -1518,7 +1179,10 @@ Pill {
                             readonly property var info: panel.tileView(tile.tileId, tile.cell.w, tile.cell.h)
                             readonly property bool small: tile.cell.w === 1
                             readonly property bool tall: tile.cell.h === 2
-                            readonly property Component control: tile.info.control
+                            // One-row tiles are name + status only (every tile is
+                            // 2x1 now, see ControlCenterTiles); controls stay
+                            // on the tile's page.
+                            readonly property Component control: tile.tall ? tile.info.control : null
                             readonly property Component body: tile.tall ? tile.info.body : null
                             // 1 row: the control under a title line (with
                             // `tag` on its right), or beside the header.
@@ -1703,18 +1367,28 @@ Pill {
                                     // (the ink-width cap) so wide glyphs like
                                     // HDR don't run into the label, and labels
                                     // line up across tiles.
+                                    // Round badge behind the icon: accent while on.
+                                    Rectangle {
+                                        visible: !tile.small
+                                        x: 10
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 32
+                                        height: 32
+                                        radius: 16
+                                        color: tile.info.active ? Theme.accent : Qt.rgba(1, 1, 1, 0.08)
+                                    }
                                     HeaderIcon {
-                                        x: tile.small ? (parent.width - width) / 2 : 12 + (30 - width) / 2
+                                        x: tile.small ? (parent.width - width) / 2 : 10 + (32 - width) / 2
                                         anchors.verticalCenterOffset: tile.small ? -9 : 0
                                         glyph: tile.info.glyph
-                                        inkHeight: 19
+                                        inkHeight: tile.small ? 19 : 15
                                         // Width capped at ~1.3x the height so
                                         // wide-and-short glyphs (gamepad)
                                         // don't read bigger than the rest --
                                         // a little more for HDR's mountains,
                                         // flatter still, or they'd shrink to
                                         // a sliver.
-                                        inkWidth: tile.info.glyph === "\u{f02f5}" ? 28 : 24
+                                        inkWidth: (tile.info.glyph === "\u{f02f5}" ? 28 : 24) * (tile.small ? 1 : 0.8)
                                         color: tile.info.active ? Theme.text : Theme.textMuted
                                         opacity: tile.info.busy ? 0.5 : 1
                                         SequentialAnimation on opacity {
@@ -2192,129 +1866,6 @@ Pill {
                     width: parent.width
                     spacing: Theme.sectionSpacing
 
-                    // Media
-                    Repeater {
-                        model: root.players
-                        delegate: Rectangle {
-                            id: mediaCard
-                            required property var modelData
-                            readonly property var player: mediaCard.modelData
-                            readonly property string artSource: root.artFor(mediaCard.player)
-                            width: column.width
-                            height: 64
-                            radius: Theme.controlRadius
-                            color: Theme.controlFill
-                            border.color: Theme.surfaceBorder
-                            border.width: 1
-
-                            Rectangle {
-                                id: art
-                                anchors.left: parent.left
-                                anchors.leftMargin: 8
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 48
-                                height: 48
-                                radius: Theme.controlRadius
-                                color: Theme.controlFill
-                                clip: true
-
-                                Text {
-                                    visible: mediaCard.artSource === ""
-                                    anchors.centerIn: parent
-                                    text: "\u{f075a}" // nf-md-music_note
-                                    color: Theme.textMuted
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: Theme.fontSize + 10
-                                }
-                                Image {
-                                    visible: mediaCard.artSource !== ""
-                                    anchors.fill: parent
-                                    source: mediaCard.artSource
-                                    fillMode: Image.PreserveAspectCrop
-                                    asynchronous: false
-                                    sourceSize.width: 96
-                                    sourceSize.height: 96
-                                }
-                            }
-
-                            // Title / artist / app. The title gets the full width;
-                            // the buttons only sit beside the two smaller lines.
-                            Column {
-                                anchors.left: art.right
-                                anchors.leftMargin: 10
-                                anchors.right: parent.right
-                                anchors.rightMargin: 6
-                                anchors.verticalCenter: parent.verticalCenter
-                                spacing: 2
-                                Text {
-                                    width: parent.width
-                                    rightPadding: 4
-                                    text: mediaCard.player ? (mediaCard.player.trackTitle || mediaCard.player.identity || "") : ""
-                                    elide: Text.ElideRight
-                                    color: Theme.text
-                                    font.family: Theme.uiFontFamily
-                                    font.pixelSize: Theme.fontSize
-                                    font.bold: true
-                                }
-                                Item {
-                                    width: parent.width
-                                    // Keeps room for the buttons when the player gives neither line.
-                                    height: Math.max(lowerLines.height, 24)
-
-                                    Column {
-                                        id: lowerLines
-                                        anchors.left: parent.left
-                                        anchors.right: mediaButtons.left
-                                        anchors.rightMargin: 8
-                                        spacing: 2
-                                        Text {
-                                            width: parent.width
-                                            visible: text !== ""
-                                            text: mediaCard.player ? (mediaCard.player.trackArtist || "") : ""
-                                            elide: Text.ElideRight
-                                            color: Theme.textMuted
-                                            font.family: Theme.uiFontFamily
-                                            font.pixelSize: Theme.fontSize - 2
-                                        }
-                                        Text {
-                                            width: parent.width
-                                            visible: text !== ""
-                                            text: mediaCard.player ? (mediaCard.player.identity || "") : ""
-                                            elide: Text.ElideRight
-                                            color: Theme.textDim
-                                            font.family: Theme.uiFontFamily
-                                            font.pixelSize: Theme.fontSize - 3
-                                        }
-                                    }
-
-                                    Row {
-                                        id: mediaButtons
-                                        anchors.right: parent.right
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        spacing: 0
-
-                                        MediaButton {
-                                            glyph: "\u{f04ae}" // nf-md-skip_previous
-                                            enabledState: !!mediaCard.player && mediaCard.player.canGoPrevious
-                                            onClicked: mediaCard.player.previous()
-                                        }
-                                        MediaButton {
-                                            glyph: mediaCard.player && mediaCard.player.isPlaying ? "\u{f03e4}" : "\u{f040a}" // pause / play
-                                            big: true
-                                            enabledState: !!mediaCard.player && mediaCard.player.canTogglePlaying
-                                            onClicked: mediaCard.player.togglePlaying()
-                                        }
-                                        MediaButton {
-                                            glyph: "\u{f04ad}" // nf-md-skip_next
-                                            enabledState: !!mediaCard.player && mediaCard.player.canGoNext
-                                            onClicked: mediaCard.player.next()
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
                     // Levels
                     Column {
                         width: parent.width
@@ -2328,6 +1879,7 @@ Pill {
                             value: root.sink && root.sink.audio ? root.sink.audio.volume : 0
                             onGlyphClicked: if (root.sink && root.sink.audio) root.sink.audio.muted = !root.sink.audio.muted
                             onMoved: (v) => { if (root.sink && root.sink.audio) root.sink.audio.volume = v }
+                            onMore: root.openPopup("qs-audio")
                         }
                         SliderRow {
                             width: parent.width
@@ -2335,64 +1887,149 @@ Pill {
                             glyph: "\u{f00e0}" // nf-md-brightness_6
                             value: panel.pendingBacklight >= 0 ? panel.pendingBacklight / 100 : panel.backlight
                             onMoved: (v) => panel.setBacklight(v)
+                            onMore: root.openPopup("qs-display")
                         }
                     }
 
-                    // Power profile
-                    Row {
+                    // Media: every player with something loaded (root.players,
+                    // playing ones first) at once -- the first as a large card
+                    // with its playhead, the others as one-line rows.
+                    Column {
+                        visible: root.players.length > 0
+                        width: parent.width
                         spacing: 6
 
-                        Repeater {
-                            model: [
-                                { profile: UP.PowerProfile.PowerSaver, label: "Saver" },
-                                { profile: UP.PowerProfile.Balanced, label: "Balanced" },
-                                { profile: UP.PowerProfile.Performance, label: "Performance" }
-                            ]
-                            delegate: Rectangle {
-                                id: profileButton
-                                required property var modelData
-                                readonly property bool active: UP.PowerProfiles.profile === modelData.profile
-                                width: (root.cardWidth - 12) / 3
-                                height: Theme.controlHeight + 8
-                                radius: Theme.controlRadius
-                                color: profileButton.active ? Theme.selectedFill : profileArea.containsMouse ? Theme.hoverFill : Theme.controlFill
-
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: profileButton.modelData.label
-                                    font.family: Theme.uiFontFamily
-                                    font.pixelSize: Theme.fontSize
-                                    color: profileButton.active ? Theme.text : Theme.textMuted
-                                }
+                        Item {
+                            width: parent.width
+                            height: nowPlayingLabel.implicitHeight
+                            SectionLabel {
+                                id: nowPlayingLabel
+                                text: root.players.length > 1 ? "Now playing · " + root.players.length + " sources" : "Now playing"
+                            }
+                            Text {
+                                id: pauseAll
+                                readonly property var playing: root.players.filter(p => p.isPlaying)
+                                visible: pauseAll.playing.length > 1
+                                anchors.right: parent.right
+                                text: "Pause all"
+                                font.family: Theme.uiFontFamily
+                                font.pixelSize: Theme.fontSize - 2
+                                color: pauseAllArea.containsMouse ? Theme.text : Theme.accent
                                 MouseArea {
-                                    id: profileArea
+                                    id: pauseAllArea
                                     anchors.fill: parent
+                                    anchors.margins: -4
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: UP.PowerProfiles.profile = profileButton.modelData.profile
+                                    onClicked: { for (const p of pauseAll.playing) if (p.canPause) p.pause() }
                                 }
                             }
                         }
-                    }
-
-                    Rectangle { width: parent.width; height: 1; color: Theme.separator }
-
-                    Column {
-                        width: parent.width
-                        spacing: 2
-
-                        LinkRow {
+                        PlayerHero {
                             width: parent.width
-                            glyph: "\u{f04c3}" // nf-md-speaker
-                            label: "Sound"
-                            detail: root.nodeName(root.sink)
-                            onClicked: root.openPopup("qs-audio")
+                            player: root.players.length > 0 ? root.players[0] : null
+                            artSource: root.artFor(player)
                         }
-                        LinkRow {
-                            width: parent.width
-                            glyph: "\u{f0e51}"
-                            label: "Display"
-                            onClicked: root.openPopup("qs-display")
+                        Repeater {
+                            model: root.players.slice(1)
+                            delegate: PlayerRow {
+                                required property var modelData
+                                width: column.width
+                                player: modelData
+                                artSource: root.artFor(modelData)
+                            }
+                        }
+                    }
+                }
+
+            }
+
+            // The footer, pinned to the bottom edge of the page (the page
+            // takes its host's full height, see panel.height): the version
+            // line, then the battery, the icon switches and edit / lock /
+            // power.
+            Column {
+                id: footerColumn
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: Theme.surfacePadding
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: root.cardWidth
+                spacing: Theme.sectionSpacing
+
+                Rectangle { width: parent.width; height: 1; color: Theme.separator }
+
+                // The deployed SichOS commit (was the Version tile), on its own
+                // line above the footer row: the hash and branch, then what
+                // needs a look (uncommitted live changes, pinned, behind...);
+                // click for update.sh status + recent commits in a terminal.
+                Item {
+                    visible: !panel.editing && (SichosVersion.known || batteryChip.visible)
+                    width: parent.width
+                    height: versionChip.height
+                    // The battery, at the right end -- above the power button.
+                    FooterChip {
+                        id: batteryChip
+                        anchors.right: parent.right
+                        visible: panel.batteryText() !== ""
+                        glyph: "\u{f0079}" // nf-md-battery
+                        label: panel.batteryShort()
+                        highlight: root.battery && root.battery.state === UP.UPowerDeviceState.Charging
+                    }
+                    FooterChip {
+                        id: versionChip
+                        visible: SichosVersion.known
+                        anchors.left: parent.left
+                        glyph: "\u{f062c}"
+                        label: !SichosVersion.known ? ""
+                            : [SichosVersion.info.deployed.slice(0, 7) + " " + SichosVersion.name]
+                                .concat(SichosVersion.flags).join(" · ")
+                        highlight: SichosVersion.flags.length > 0
+                        clickable: true
+                        maxWidth: parent.width - (batteryChip.visible ? batteryChip.width + 6 : 0)
+                        onClicked: {
+                            ShellState.activePopup = ""
+                            SichosVersion.openDetails()
+                        }
+                    }
+                }
+
+                // Footer: the icon switches, then the power menu (which has
+                // Lock). Edit mode's controls are in the top row.
+                Item {
+                    width: parent.width
+                    height: Theme.controlHeight + 2
+
+                    Row {
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 6
+                        // Quick switches as icons only (were tiles): click
+                        // toggles, right-click / press-and-hold opens the page.
+                        // Grouped by what they act on: audio (Mic), how the
+                        // screen looks (Night Light, HDR, Opaque), focus (Game
+                        // Focus), then power / session (Stay Awake, Lid).
+                        Repeater {
+                            model: ["micmute", "nightlight", "hdr", "opaque", "gamefocus", "awake", "lid"]
+                            delegate: FooterToggle {
+                                required property string modelData
+                                info: panel.tileInfo(modelData)
+                                onToggle: panel.tileToggle(modelData)
+                                onMore: if (info.more) root.openPopup(info.more)
+                            }
+                        }
+                    }
+                    Row {
+                        id: footerButtons
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 6
+                        HeaderButton {
+                            round: true
+                            glyph: "\u{f0425}" // nf-md-power
+                            onClicked: {
+                                ShellState.activePopup = ""
+                                Quickshell.execDetached(["quickshell", "ipc", "call", "power", "open"])
+                            }
                         }
                     }
                 }
@@ -2470,12 +2107,12 @@ Pill {
         anchorItem: root
         shown: ShellState.activePopup === "qs-hotspot" && ShellState.activePopupScreen === root.screenName
         contentWidth: root.cardWidth
-        onBack: root.openPopup(root.popupId)
+        onBack: root.openPopup("qs-wifi")
     }
 
     // --- Phone page ---
     readonly property Item _phoneContent: PhonePage {
-        parent: root.popupHost
+        parent: root.phoneHost || root.popupHost
         anchorItem: root
         shown: ShellState.activePopup === "qs-phone" && ShellState.activePopupScreen === root.screenName
         contentWidth: root.cardWidth
@@ -2604,26 +2241,325 @@ Pill {
         }
     }
 
+    // A media player as one compact row (the second and third players).
+    component PlayerRow: Rectangle {
+        id: mediaCard
+        property var player: null
+        // root.artFor(player), set where it is used.
+        property string artSource: ""
+        height: 56
+        radius: Theme.controlRadius
+        color: Theme.controlFill
+        border.color: Theme.surfaceBorder
+        border.width: 1
+
+        Rectangle {
+            id: art
+            anchors.left: parent.left
+            anchors.leftMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            width: 40
+            height: 40
+            radius: Theme.controlRadius
+            color: Theme.controlFill
+            clip: true
+
+            Text {
+                visible: mediaCard.artSource === ""
+                anchors.centerIn: parent
+                text: "\u{f075a}" // nf-md-music_note
+                color: Theme.textMuted
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSize + 10
+            }
+            Image {
+                visible: mediaCard.artSource !== ""
+                anchors.fill: parent
+                source: mediaCard.artSource
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: false
+                sourceSize.width: 80
+                sourceSize.height: 80
+            }
+        }
+
+        // Title / artist / app. The title gets the full width;
+        // the buttons only sit beside the two smaller lines.
+        Column {
+            anchors.left: art.right
+            anchors.leftMargin: 10
+            anchors.right: parent.right
+            anchors.rightMargin: 6
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 2
+            Text {
+                width: parent.width
+                rightPadding: 4
+                text: mediaCard.player ? (mediaCard.player.trackTitle || mediaCard.player.identity || "") : ""
+                elide: Text.ElideRight
+                color: Theme.text
+                font.family: Theme.uiFontFamily
+                font.pixelSize: Theme.fontSize
+                font.bold: true
+            }
+            Item {
+                width: parent.width
+                // Keeps room for the buttons when the player gives neither line.
+                height: Math.max(lowerLines.height, 24)
+
+                Column {
+                    id: lowerLines
+                    anchors.left: parent.left
+                    anchors.right: mediaButtons.left
+                    anchors.rightMargin: 8
+                    spacing: 2
+                    Text {
+                        width: parent.width
+                        visible: text !== ""
+                        text: mediaCard.player ? (mediaCard.player.trackArtist || "") : ""
+                        elide: Text.ElideRight
+                        color: Theme.textMuted
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 2
+                    }
+                    Text {
+                        width: parent.width
+                        visible: text !== ""
+                        text: mediaCard.player ? (mediaCard.player.identity || "") : ""
+                        elide: Text.ElideRight
+                        color: Theme.textDim
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 3
+                    }
+                }
+
+                Row {
+                    id: mediaButtons
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 0
+
+                    MediaButton {
+                        glyph: "\u{f04ae}" // nf-md-skip_previous
+                        enabledState: !!mediaCard.player && mediaCard.player.canGoPrevious
+                        onClicked: mediaCard.player.previous()
+                    }
+                    MediaButton {
+                        glyph: mediaCard.player && mediaCard.player.isPlaying ? "\u{f03e4}" : "\u{f040a}" // pause / play
+                        big: true
+                        enabledState: !!mediaCard.player && mediaCard.player.canTogglePlaying
+                        onClicked: mediaCard.player.togglePlaying()
+                    }
+                    MediaButton {
+                        glyph: "\u{f04ad}" // nf-md-skip_next
+                        enabledState: !!mediaCard.player && mediaCard.player.canGoNext
+                        onClicked: mediaCard.player.next()
+                    }
+                }
+            }
+        }
+    }
+
+    // The first media player, large: art, app/title/artist/album, its
+    // playhead (seekable when the player allows it) and the transport.
+    component PlayerHero: Rectangle {
+        id: hero
+        property var player: null
+        // root.artFor(player), set where it is used.
+        property string artSource: ""
+        readonly property bool hasLength: !!hero.player && hero.player.lengthSupported && hero.player.length > 0
+        function fmt(secs) {
+            const t = Math.max(0, Math.floor(secs))
+            const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60
+            const ss = (sec < 10 ? "0" : "") + sec
+            return h > 0 ? h + ":" + (m < 10 ? "0" : "") + m + ":" + ss : m + ":" + ss
+        }
+        height: heroColumn.implicitHeight + 20
+        radius: Theme.controlRadius
+        color: Theme.controlFill
+        border.color: Theme.surfaceBorder
+        border.width: 1
+
+        // MprisPlayer.position isn't pushed while a track plays -- it's only
+        // re-read when positionChanged() is emitted.
+        Timer {
+            interval: 1000
+            repeat: true
+            running: hero.visible && !!hero.player && hero.player.isPlaying && hero.player.positionSupported
+            onTriggered: hero.player.positionChanged()
+        }
+
+        Column {
+            id: heroColumn
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: 10
+            spacing: 8
+
+            Row {
+                width: parent.width
+                spacing: 12
+                Rectangle {
+                    width: 72
+                    height: 72
+                    radius: Theme.controlRadius
+                    color: Theme.controlFill
+                    clip: true
+                    Text {
+                        visible: hero.artSource === ""
+                        anchors.centerIn: parent
+                        text: "\u{f075a}" // nf-md-music_note
+                        color: Theme.textMuted
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSize + 16
+                    }
+                    Image {
+                        visible: hero.artSource !== ""
+                        anchors.fill: parent
+                        source: hero.artSource
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: false
+                        sourceSize.width: 144
+                        sourceSize.height: 144
+                    }
+                }
+                Column {
+                    width: parent.width - 72 - parent.spacing
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 2
+                    Text {
+                        width: parent.width
+                        visible: text !== ""
+                        text: hero.player ? (hero.player.identity || "") : ""
+                        elide: Text.ElideRight
+                        color: Theme.textDim
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 3
+                    }
+                    Text {
+                        width: parent.width
+                        text: hero.player ? (hero.player.trackTitle || hero.player.identity || "") : ""
+                        elide: Text.ElideRight
+                        color: Theme.text
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize + 1
+                        font.bold: true
+                    }
+                    Text {
+                        width: parent.width
+                        visible: text !== ""
+                        text: hero.player ? (hero.player.trackArtist || "") : ""
+                        elide: Text.ElideRight
+                        color: Theme.textMuted
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 1
+                    }
+                    Text {
+                        width: parent.width
+                        visible: text !== ""
+                        text: hero.player ? (hero.player.trackAlbum || "") : ""
+                        elide: Text.ElideRight
+                        color: Theme.textDim
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 2
+                    }
+                }
+            }
+
+            // Playhead, only when the player reports a length.
+            Column {
+                visible: hero.hasLength
+                width: parent.width
+                spacing: 4
+                Rectangle {
+                    id: heroTrack
+                    width: parent.width
+                    height: 4
+                    radius: 2
+                    color: Theme.track
+                    Rectangle {
+                        height: parent.height
+                        radius: 2
+                        color: Theme.text
+                        width: hero.hasLength ? parent.width * Math.max(0, Math.min(1, hero.player.position / hero.player.length)) : 0
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.topMargin: -6
+                        anchors.bottomMargin: -6
+                        enabled: hero.hasLength && hero.player.canSeek
+                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                        onClicked: (mouse) => hero.player.position = hero.player.length * Math.max(0, Math.min(1, mouse.x / heroTrack.width))
+                    }
+                }
+                Item {
+                    width: parent.width
+                    height: posText.implicitHeight
+                    Text {
+                        id: posText
+                        text: hero.hasLength ? hero.fmt(hero.player.position) : ""
+                        color: Theme.textDim
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 3
+                    }
+                    Text {
+                        anchors.right: parent.right
+                        text: hero.hasLength ? hero.fmt(hero.player.length) : ""
+                        color: Theme.textDim
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 3
+                    }
+                }
+            }
+
+            Row {
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: 8
+                MediaButton {
+                    glyph: "\u{f04ae}" // nf-md-skip_previous
+                    enabledState: !!hero.player && hero.player.canGoPrevious
+                    onClicked: hero.player.previous()
+                }
+                MediaButton {
+                    glyph: hero.player && hero.player.isPlaying ? "\u{f03e4}" : "\u{f040a}" // pause / play
+                    big: true
+                    filled: true
+                    enabledState: !!hero.player && hero.player.canTogglePlaying
+                    onClicked: hero.player.togglePlaying()
+                }
+                MediaButton {
+                    glyph: "\u{f04ad}" // nf-md-skip_next
+                    enabledState: !!hero.player && hero.player.canGoNext
+                    onClicked: hero.player.next()
+                }
+            }
+        }
+    }
+
     component MediaButton: Item {
         id: mb
         property string glyph: ""
         property bool big: false
+        // A white disc with a dark glyph (the large card's play/pause).
+        property bool filled: false
         property bool enabledState: true
         signal clicked()
 
-        width: 34
-        height: 34
+        width: mb.filled ? 40 : 34
+        height: mb.filled ? 40 : 34
         Rectangle {
             anchors.fill: parent
             radius: width / 2
-            color: mbArea.containsMouse && mb.enabledState ? Theme.hoverFill : "transparent"
+            color: mb.filled ? (mbArea.containsMouse ? "white" : Theme.text)
+                : mbArea.containsMouse && mb.enabledState ? Theme.hoverFill : "transparent"
         }
         Text {
             anchors.centerIn: parent
             text: mb.glyph
-            color: mb.enabledState ? Theme.text : Theme.textDim
+            color: mb.filled ? Theme.textOnLight : mb.enabledState ? Theme.text : Theme.textDim
             font.family: Theme.fontFamily
-            font.pixelSize: mb.big ? Theme.fontSize + 11 : Theme.fontSize + 5
+            font.pixelSize: mb.filled ? Theme.fontSize + 7 : mb.big ? Theme.fontSize + 11 : Theme.fontSize + 5
         }
         MouseArea {
             id: mbArea
@@ -2644,14 +2580,17 @@ Pill {
         property real value: 0
         signal moved(real v)
         signal glyphClicked()
+        // Connected = shows a chevron at the end that opens a page.
+        signal more()
+        property bool hasMore: true
 
-        height: Theme.controlHeight + 8
+        height: Theme.controlHeight + 4
 
         function valueAt(x) { return Math.max(0, Math.min(1, x / track.width)) }
 
         Item {
             id: glyphBox
-            width: 32
+            width: 24
             height: parent.height
             Text {
                 // Left-aligned like Volume.qml: the volume glyphs differ in
@@ -2661,7 +2600,7 @@ Pill {
                 text: slider.glyph
                 color: slider.dim ? Theme.textDim : glyphArea.containsMouse ? Theme.accent : Theme.text
                 font.family: Theme.fontFamily
-                font.pixelSize: (Theme.fontSize + 9) * slider.glyphScale
+                font.pixelSize: (Theme.fontSize + 3) * slider.glyphScale
             }
             MouseArea {
                 id: glyphArea
@@ -2679,7 +2618,7 @@ Pill {
             anchors.right: pct.left
             anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
-            height: Theme.trackHeight + 2
+            height: Theme.trackHeight - 2
             radius: Theme.trackRadius
             color: Theme.track
             opacity: slider.dim ? 0.5 : 1
@@ -2688,7 +2627,15 @@ Pill {
                 width: track.width * Math.max(0, Math.min(1, slider.value))
                 height: parent.height
                 radius: Theme.trackRadius
-                color: Theme.accent
+                color: Theme.text
+            }
+            Rectangle {
+                x: track.width * Math.max(0, Math.min(1, slider.value)) - width / 2
+                anchors.verticalCenter: parent.verticalCenter
+                width: 14
+                height: 14
+                radius: 7
+                color: "white"
             }
 
             MouseArea {
@@ -2703,16 +2650,129 @@ Pill {
             }
         }
 
+        Rectangle {
+            id: sliderMore
+            visible: slider.hasMore
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            width: slider.hasMore ? 24 : 0
+            height: 24
+            radius: Theme.controlRadius
+            color: sliderMoreArea.containsMouse ? Theme.hoverFill : "transparent"
+            Text {
+                anchors.centerIn: parent
+                text: "\u{f0142}" // nf-md-chevron_right
+                color: sliderMoreArea.containsMouse ? Theme.text : Theme.textMuted
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSize + 1
+            }
+            MouseArea {
+                id: sliderMoreArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: slider.more()
+            }
+        }
         Text {
             id: pct
-            anchors.right: parent.right
+            anchors.right: sliderMore.left
+            anchors.rightMargin: 2
             anchors.verticalCenter: parent.verticalCenter
             width: 40
             horizontalAlignment: Text.AlignRight
             text: Math.round(slider.value * 100) + "%"
             color: Theme.textMuted
             font.family: Theme.uiFontFamily
-            font.pixelSize: Theme.fontSize
+            font.pixelSize: Theme.fontSize - 2
+        }
+    }
+
+    // Icon-only switch in the footer: the lighter accent with a dark glyph
+    // while on (accent + light glyph was too faint, a white disc too bright).
+    component FooterToggle: Rectangle {
+        id: ft
+        property var info: ({})
+        signal toggle()
+        signal more()
+        anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+        width: 28
+        height: 28
+        radius: 14
+        color: ft.info.active ? (ftArea.containsMouse ? Qt.lighter(Theme.accentHover, 1.12) : Theme.accentHover)
+            : ftArea.containsMouse ? Theme.hoverFill : Theme.controlFill
+        Text {
+            anchors.centerIn: parent
+            text: ft.info.glyph || ""
+            font.family: Theme.fontFamily
+            font.pixelSize: ft.info.wideGlyph ? Theme.fontSize + 8 : Theme.fontSize + 3
+            color: ft.info.active ? Theme.textOnLight : Theme.textMuted
+        }
+        MouseArea {
+            id: ftArea
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            cursorShape: Qt.PointingHandCursor
+            pressAndHoldInterval: 450
+            property bool held: false
+            onPressed: ftArea.held = false
+            onPressAndHold: { ftArea.held = true; ft.more() }
+            onClicked: (mouse) => {
+                if (ftArea.held) return
+                if (mouse.button === Qt.RightButton) ft.more()
+                else ft.toggle()
+            }
+        }
+    }
+
+    // Small status pill in the footer (battery, version).
+    component FooterChip: Rectangle {
+        id: chip
+        property string glyph: ""
+        property string label: ""
+        property bool highlight: false
+        property real maxWidth: 1000
+        // Hover fill + pointer only when set (the version chip).
+        property bool clickable: false
+        signal clicked()
+        anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+        // Same height as the footer's circle switches and buttons.
+        height: 28
+        width: chipRow.implicitWidth + 20
+        radius: height / 2
+        color: chip.clickable && chipArea.containsMouse ? Theme.hoverFill : Theme.controlFill
+        MouseArea {
+            id: chipArea
+            anchors.fill: parent
+            enabled: chip.clickable
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: chip.clicked()
+        }
+        Row {
+            id: chipRow
+            anchors.centerIn: parent
+            spacing: 4
+            Text {
+                id: chipGlyph
+                visible: chip.glyph !== ""
+                anchors.verticalCenter: parent.verticalCenter
+                text: chip.glyph
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSize - 1
+                color: chip.highlight ? Theme.success : Theme.textMuted
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                // Elided to maxWidth (the version chip's flags can run long).
+                width: Math.min(implicitWidth, chip.maxWidth - 16 - (chipGlyph.visible ? chipGlyph.implicitWidth + 4 : 0))
+                elide: Text.ElideRight
+                text: chip.label
+                font.family: Theme.uiFontFamily
+                font.pixelSize: Theme.fontSize - 2
+                color: chip.highlight ? Theme.success : Theme.textMuted
+            }
         }
     }
 
@@ -2857,11 +2917,14 @@ Pill {
         property string label: ""
         property string glyph: ""
         property bool primary: false
+        // Glyph-only as a 28px circle (the footer's edit / lock / power, to
+        // match its icon switches).
+        property bool round: false
         signal clicked()
         anchors.verticalCenter: parent ? parent.verticalCenter : undefined
-        width: hb.label !== "" ? hbText.implicitWidth + 18 : Theme.controlHeight
-        height: Theme.controlHeight - 2
-        radius: Theme.controlRadius
+        width: hb.round ? 28 : hb.label !== "" ? hbText.implicitWidth + 18 : Theme.controlHeight
+        height: hb.round ? 28 : Theme.controlHeight - 2
+        radius: hb.round ? 14 : Theme.controlRadius
         color: hb.primary ? (hbArea.containsMouse ? Theme.accentHover : Theme.accent)
             : hbArea.containsMouse ? Theme.hoverFill : Theme.controlFill
         Text {
@@ -3038,42 +3101,6 @@ Pill {
         TileReadout { width: parent.width; text: parent.line1 }
         TileReadout { width: parent.width; text: parent.line2; visible: text !== ""; color: Theme.textDim }
     }
-    // History graph like the System tile's: area + line.
-    component MiniGraph: Canvas {
-        id: mg
-        property var history: []
-        property real maxValue: 1   // 0 = auto (largest sample)
-        property color tint: Theme.accent
-        onHistoryChanged: requestPaint()
-        onWidthChanged: requestPaint()
-        onHeightChanged: requestPaint()
-        onPaint: {
-            const ctx = getContext("2d")
-            ctx.reset()
-            const h = mg.history
-            if (!h || h.length < 2) return
-            const top = mg.maxValue > 0 ? mg.maxValue : Math.max(1, ...h)
-            const step = width / (SystemStats.historyLength - 1)
-            const x0 = width - (h.length - 1) * step
-            const y = v => height - Math.min(1, v / top) * height
-            ctx.beginPath()
-            ctx.moveTo(x0, height)
-            for (let i = 0; i < h.length; i++) ctx.lineTo(x0 + i * step, y(h[i]))
-            ctx.lineTo(x0 + (h.length - 1) * step, height)
-            ctx.closePath()
-            ctx.fillStyle = Qt.rgba(mg.tint.r, mg.tint.g, mg.tint.b, 0.3)
-            ctx.fill()
-            ctx.beginPath()
-            for (let i = 0; i < h.length; i++) {
-                if (i === 0) ctx.moveTo(x0, y(h[0]))
-                else ctx.lineTo(x0 + i * step, y(h[i]))
-            }
-            ctx.strokeStyle = mg.tint
-            ctx.lineWidth = 1.5
-            ctx.stroke()
-        }
-    }
-
     component TileButton: Rectangle {
         id: tb
         property string label: ""

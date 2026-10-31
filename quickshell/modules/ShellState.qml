@@ -283,14 +283,6 @@ QtObject {
         function undim() { root.idleDimActive = false }
     }
 
-    // Screen (Quickshell ScreenInfo.name) where the notification center
-    // panel is currently open, or "" if closed. Bar.qml instantiates one
-    // NotificationCenter (and its own PanelWindow) per screen, same as
-    // every other right-side widget -- this makes sure only one of those
-    // panels is ever visible at a time, on whichever screen's bell icon
-    // was actually clicked, instead of each one just always rendering on
-    // Quickshell.screens[0] regardless of which bar it belongs to.
-    property string notificationCenterScreen: ""
 
     // The launcher is open on a list showing the Hotspot/VPN switches
     // (Controls, or Suggested while searching) -- VpnStatus and Hotspot

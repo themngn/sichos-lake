@@ -22,7 +22,6 @@ QtObject {
 
     readonly property var widgets: [
         { id: "ai-model-usage", name: "AI Model Usage" },
-        { id: "notifications", name: "Notification Center" },
         { id: "system-update", name: "System Update" },
         { id: "tray", name: "Tray" },
         { id: "language", name: "Keyboard Layout" },
@@ -31,7 +30,6 @@ QtObject {
         { id: "volume", name: "Volume" },
         { id: "backlight", name: "Backlight" },
         { id: "display", name: "Display" },
-        { id: "quicksettings", name: "Quick Settings" },
         { id: "phone", name: "Phone Mirror" },
         { id: "powerprofile", name: "Power Profile" },
         { id: "battery", name: "Battery" }
@@ -126,9 +124,12 @@ QtObject {
 
         adapter: JsonAdapter {
             id: adapter
-            // Quick Settings covers these, so a fresh config starts with
-            // just it; each can still be turned back on as its own icon.
-            property var disabled: ["network", "bluetooth", "volume", "backlight", "display", "powerprofile", "battery",
+            // The hub's Controls column covers these, so a fresh config
+            // starts without them; each can still be turned back on as its
+            // own icon. Battery stays on: with the Control Center pill gone
+            // it's the bar's only charge indicator (it hides itself on
+            // machines without one).
+            property var disabled: ["network", "bluetooth", "volume", "backlight", "display", "powerprofile",
                                  "phone"]
             property var unpinnedToggles: []
             // Opacity in the transparency toggle's "semi" mode, shared by
@@ -136,8 +137,7 @@ QtObject {
             // backdropTarget) -- see ShellState.setTerminalOpacity.
             property real terminalOpacity: 0.8
             property var order: ["claude-usage", "system-update", "tray", "language", "bluetooth", "network",
-                                  "volume", "backlight", "display", "phone", "powerprofile", "battery", "quicksettings",
-                                  "notifications"]
+                                  "volume", "backlight", "display", "phone", "powerprofile", "battery"]
         }
     }
 }

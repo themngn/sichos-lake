@@ -10,7 +10,8 @@ import Quickshell.Networking
 // the connected one -- a details view in the same card: a "join this
 // network" QR code and the password (both hidden until asked for), security,
 // signal, address, connect/forget (scripts/wifi-share.py reads the secret).
-// Scans only while shown.
+// Below the list: Hotspot (switch + its page, "qs-hotspot") and DNS
+// (Default / Mullvad Base, DnsSettings). Scans only while shown.
 //
 // The password field isn't a TextInput: a popup surface never gets keyboard
 // focus, so while it's open this item is ShellState.keySink and the bar
@@ -22,7 +23,12 @@ MorphContent {
     signal back()
 
     implicitWidth: menu.contentWidth + 2 * Theme.surfacePadding
-    implicitHeight: (menu.detail ? detailColumn : column).implicitHeight + 2 * Theme.surfacePadding
+    implicitHeight: (menu.detail ? detailColumn.implicitHeight
+        : column.implicitHeight + Theme.sectionSpacing + bottomColumn.implicitHeight) + 2 * Theme.surfacePadding
+    // At least as tall as where it's shown (the hub's Controls column), so
+    // bottomColumn sits at the column's bottom edge. Only `height`: the hub
+    // sizes itself from implicitHeight, so this doesn't feed back into it.
+    height: parent ? Math.max(implicitHeight, parent.height) : implicitHeight
 
     readonly property var device: {
         for (const d of Networking.devices.values) if (d.type === DeviceType.Wifi) return d
@@ -206,7 +212,9 @@ MorphContent {
     Column {
         id: column
         visible: !menu.detail
-        anchors.centerIn: parent
+        anchors.top: parent.top
+        anchors.topMargin: Theme.surfacePadding
+        anchors.horizontalCenter: parent.horizontalCenter
         width: menu.contentWidth
         spacing: Theme.sectionSpacing
 
@@ -494,6 +502,105 @@ MorphContent {
                 }
             }
         }
+    }
+
+    // Everything but the network list, at the bottom of the page: the page
+    // is as tall as its column in the hub (see `height` above), so these
+    // stay put at the bottom edge however many networks are around.
+    Column {
+        id: bottomColumn
+        visible: !menu.detail
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: Theme.surfacePadding
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: menu.contentWidth
+        spacing: Theme.sectionSpacing
+
+        Rectangle { width: parent.width; height: 1; color: Theme.separator }
+
+        // Hotspot and DNS live here (they used to be Control Center tiles):
+        // both are about this Wi-Fi connection.
+        SettingRow {
+            glyph: Hotspot.active ? "\u{f0003}" : "\u{f1511}" // access_point_network / _off
+            label: "Hotspot"
+            // Never the password: this is on screen for anyone to read (its
+            // page has Copy password).
+            status: Hotspot.pending === "off" ? "Stopping…" : Hotspot.busy ? "Starting…"
+                : Hotspot.active ? (Hotspot.clients > 0 ? Hotspot.ssid + " · " + Hotspot.clients + (Hotspot.clients === 1 ? " device" : " devices") : Hotspot.ssid)
+                : Hotspot.armed ? "Switch again: turns Wi-Fi off"
+                : Hotspot.error || (Hotspot.canShare ? "Off · would share " + Hotspot.wifiName : "Off")
+            Row {
+                spacing: 4
+                anchors.verticalCenter: parent.verticalCenter
+                Switch {
+                    checked: Hotspot.active || Hotspot.starting
+                    opacity: Hotspot.busy ? 0.5 : 1
+                    onToggled: Hotspot.toggle()
+                }
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 24
+                    height: 24
+                    radius: Theme.controlRadius
+                    color: hotspotMore.containsMouse ? Theme.hoverFill : "transparent"
+                    Text {
+                        anchors.centerIn: parent
+                        text: "\u{f0142}" // nf-md-chevron_right
+                        color: hotspotMore.containsMouse ? Theme.text : Theme.textMuted
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSize + 1
+                    }
+                    MouseArea {
+                        id: hotspotMore
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            ShellState.activePopupScreen = menu.screenName
+                            ShellState.activePopup = "qs-hotspot"
+                        }
+                    }
+                }
+            }
+        }
+        SettingRow {
+            glyph: "\u{f0b8c}"
+            label: "DNS"
+            status: DnsSettings.busy ? "Switching…" : DnsSettings.error || DnsSettings.desc
+            Row {
+                spacing: 2
+                anchors.verticalCenter: parent.verticalCenter
+                Repeater {
+                    model: DnsSettings.presets
+                    delegate: Rectangle {
+                        id: dnsButton
+                        required property var modelData
+                        readonly property bool selected: DnsSettings.current === dnsButton.modelData.id
+                        width: dnsLabel.implicitWidth + 16
+                        height: Theme.controlHeight - 2
+                        radius: Theme.controlRadius
+                        color: dnsButton.selected ? Theme.selectedFill : dnsArea.containsMouse ? Theme.hoverFill : Theme.controlFill
+                        opacity: DnsSettings.busy ? 0.5 : 1
+                        Text {
+                            id: dnsLabel
+                            anchors.centerIn: parent
+                            text: dnsButton.modelData.label
+                            font.family: Theme.uiFontFamily
+                            font.pixelSize: Theme.fontSize - 2
+                            color: dnsButton.selected ? Theme.text : Theme.textMuted
+                        }
+                        MouseArea {
+                            id: dnsArea
+                            anchors.fill: parent
+                            enabled: !DnsSettings.busy
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: DnsSettings.set(dnsButton.modelData.id)
+                        }
+                    }
+                }
+            }
+        }
 
         Rectangle { width: parent.width; height: 1; color: Theme.separator }
 
@@ -537,7 +644,9 @@ MorphContent {
     Column {
         id: detailColumn
         visible: !!menu.detail
-        anchors.centerIn: parent
+        anchors.top: parent.top
+        anchors.topMargin: Theme.surfacePadding
+        anchors.horizontalCenter: parent.horizontalCenter
         width: menu.contentWidth
         spacing: Theme.sectionSpacing
         readonly property var n: menu.detail
@@ -752,6 +861,63 @@ MorphContent {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: db.clicked()
+        }
+    }
+
+    // One setting under the network list: icon, name, a status line, and its
+    // controls (children) on the right.
+    component SettingRow: Item {
+        id: sr
+        property string glyph: ""
+        property string label: ""
+        property string status: ""
+        default property alias controls: srControls.data
+        width: parent ? parent.width : 0
+        height: 40
+
+        Text {
+            id: srGlyph
+            x: 4
+            width: 22
+            anchors.verticalCenter: parent.verticalCenter
+            horizontalAlignment: Text.AlignHCenter
+            text: sr.glyph
+            color: Theme.textMuted
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontSize + 4
+        }
+        Column {
+            anchors.left: srGlyph.right
+            anchors.leftMargin: 10
+            anchors.right: srControls.left
+            anchors.rightMargin: 10
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 1
+            Text {
+                width: parent.width
+                text: sr.label
+                elide: Text.ElideRight
+                color: Theme.text
+                font.family: Theme.uiFontFamily
+                font.pixelSize: Theme.fontSize - 1
+                font.bold: true
+            }
+            Text {
+                width: parent.width
+                visible: text !== ""
+                text: sr.status
+                elide: Text.ElideRight
+                color: Theme.textDim
+                font.family: Theme.uiFontFamily
+                font.pixelSize: Theme.fontSize - 3
+            }
+        }
+        Item {
+            id: srControls
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            width: childrenRect.width
+            height: parent.height
         }
     }
 }

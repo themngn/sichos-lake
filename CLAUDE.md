@@ -93,7 +93,7 @@ places — the repo file (what `install.sh` ships to every future machine) and t
   retitles existing BLS entries in `/boot/loader/entries` instead of renaming `/etc/os-release`).
   `firewalld/localsend.xml` → `/etc/firewalld/services/localsend.xml` (only if firewalld is active).
   `udev/70-sichos-hotspot.rules` → `/etc/udev/rules.d/` and `NetworkManager/90-sichos-hotspot.conf` →
-  `/etc/NetworkManager/conf.d/` (the Hotspot tile's second Wi-Fi interface, `sichos-ap0`, unmanaged by NM
+  `/etc/NetworkManager/conf.d/` (the Wi-Fi page's Hotspot's second Wi-Fi interface, `sichos-ap0`, unmanaged by NM
   until `quickshell/scripts/hotspot.py` hands it over — see that script's header).
 
 `TODO.md` tracks known workarounds that aren't real fixes (e.g. the bar going opaque under HDR) — check
@@ -123,9 +123,9 @@ it before "fixing" something that looks odd but is deliberately worked around.
 - **Screenshotting a real bar popup** without hovering: there's no IPC to open one, so temporarily add an
   `IpcHandler { target: "dbgpopup"; function open(id: string, screen: string): void { root.activePopup =
   id; root.activePopupScreen = screen } }` to the *deployed* `ShellState.qml` only, then
-  `quickshell ipc call dbgpopup open weather DP-2` + `grim -g "x,y wxh" out.png` (popup ids are the
-  modules' `popupId` strings: calendar, hdr, ai-model-usage, idle, gamefocus, mic, bluetooth, display,
-  system-update, sunset, weather, quicksettings and its pages qs-*). An IPC-opened hover popup with no
+  `quickshell ipc call dbgpopup open bluetooth DP-2` + `grim -g "x,y wxh" out.png` (popup ids are the
+  modules' `popupId` strings: hdr, ai-model-usage, idle, gamefocus, mic, bluetooth, display,
+  system-update, sunset, quicksettings (= the hub) and its pages qs-*). An IPC-opened hover popup with no
   pointer over it closes after ~300ms (the hover close check), so grab within ~0.25s; the Control Center
   doesn't (it closes only on a click outside). Restore the deployed file from the repo afterwards and confirm with
   `quickshell ipc show` that `dbgpopup` is gone.
@@ -223,15 +223,35 @@ own files.
   has a popup, or the row will collapse out from under it. The right section is data-driven —
   `BarSettings.orderedIds()` picks which widgets render and in what order via a `Loader`/`Component`
   switch (`componentFor(id)`), so reordering/hiding a widget is a settings change, not a `Bar.qml` edit.
-  The toggle row is fixed and outside that system. `QuickSettings.qml` (the "Control Center") is one of those widgets
-  standing in for Network/Bluetooth/Volume/Backlight/PowerProfile/Battery/Display/Phone (disabled by
+  The toggle row is fixed and outside that system. `QuickSettings.qml` (the "Control Center") used to be one of those widgets
+  (now hidden, shown in the hub -- see below), standing in for Network/Bluetooth/Volume/Backlight/PowerProfile/Battery/Display/Phone (disabled by
   default, still available individually), and also repeats the toggle row's switches as tiles (same
   state calls, the row itself stays). Its bar icons are those widgets instantiated with
   `Pill.interactive: false` (`enabled: false` isn't enough: Qt 6 still delivers hover to disabled
   items, so a nested pill swallows the outer one's hover). Its Bluetooth/Display submenus are hidden
   BluetoothIndicator/DisplaySettings instances with their own `popupId` (`qs-bluetooth`/`qs-display`),
   `popupAnchor` and `backPopupId`; its Sound page (`qs-audio`) is a second MorphContent in the same
-  file, its Wi-Fi page (`qs-wifi`) is `WifiMenu.qml`. All of them morph the same card. It opens on
+  file, its Wi-Fi page (`qs-wifi`) is `WifiMenu.qml` -- the network list on top,
+  and pinned to the column's bottom edge (the page takes its host's full height, sized from
+  implicitHeight so it doesn't feed back) the Hotspot row (switch + chevron to `qs-hotspot`, whose
+  back arrow returns to Wi-Fi), DNS (Default / Mullvad Base) and Network settings; neither is a
+  tile anymore. **It lives inside the hub** (`Hub.qml`): one
+  fixed card under the clock with three columns -- notifications (NotificationHistory as one stack per app,
+  however interleaved, sorted by newest into Messages/Today/Yesterday/Earlier, `NotificationEntry.qml`
+  cards; it replaced the bell + drawer) with the phone card at its bottom (sichlink: wallpaper
+  preview, lock/battery, Mirror/Files/Unlock-or-Display; it opens the Phone page *in that column* --
+  QuickSettings' `phoneHost` = `hub.phoneSlot`, its main page staying up beside it), Today (month
+  grid + weather from the bar's hidden `Weather` pill; no calendar event source exists yet) and
+  Controls; under the first two a system strip (`SystemStats` CPU/RAM/GPU/network with
+  `MiniGraph.qml` sparklines -> btop, and System Update's state via `QuickSettings.updater` ->
+  `qs-update`). The Phone, System, Updates and Version tiles are gone (version = the footer chip:
+  hash + first `SichosVersion.flags`, click = `openDetails()`). Bar.qml passes QuickSettings `hub.controlsSlot` as its popupHost, so its main
+  page and every page above render in that column and cross-fade there; the card is sized to the
+  tallest of them and never morphs between pages. The hub is open whenever any QuickSettings page
+  is (`quicksettings`/`qs-*`); the clock (which also shows the weather icon + temperature -- the
+  separate Weather pill is hidden, kept as the data source) and SUPER+N open it. QuickSettings is no
+  longer a Bar Widgets entry: Bar.qml instantiates it hidden (no bar icon) just to feed the hub.
+  `hub` is the hub's own popup id only if no QuickSettings is present. It opens on
   click only and closes only on a click outside (HyprlandFocusGrab); while open,
   `ShellState.popupLockGroup` reverts any other popup's attempt to take over on hover.
   Text entry in a bar popup (Wi-Fi password, Bluetooth PIN) can't use a TextInput — a popup surface
@@ -241,10 +261,19 @@ own files.
   a field opened — so its grab is suspended (`typing`) while a keySink on its screen is set. Bluetooth pairing
   goes through `scripts/bt-agent.py` (a BlueZ agent run by the `BluetoothAgent` singleton; nothing
   else registers one here, so code-based pairing used to fail). Quickshell's `WifiNetwork.signalStrength`
-  is 0..1, not a percentage. Its tiles are Android-style editable (pencil in the header: drag to
-  reorder, drag the right/bottom edge or corner to resize up to 4x2, remove/add -- by badge, click,
-  or dragging a tile between the grid and the spare "Add tiles" list; tiles pack first-fit,
-  and what a tile shows at each size -- header lines, inline control, a 2-row tile's body -- comes from
+  is 0..1, not a percentage. Its main page is laid out like the hub mockup: two even columns of
+  2x1 tiles (round icon badge, name, status, chevron; `ControlCenterTiles.uniform` forces every tile
+  to 2x1 and hides inline controls on one-row tiles -- saved per-tile sizes stay in the JSON, unused),
+  volume/brightness sliders whose chevrons open Sound/Display, the media players, and a footer
+  pinned to the column's bottom edge (the page takes its host's full height): the version line
+  (hash, branch, `SichosVersion.flags`), with the battery chip (`batteryShort()`) at its right end, above the power button; then icon-only circle
+  switches for Mic / Night Light / HDR / Opaque / Game Focus / Stay Awake / Lid (`FooterToggle`:
+  tap = `tileToggle`, right-click/hold = its page; no longer tiles) and a round power button; the
+  top row has the power profile as three icon segments (Saver / Balanced / Performance) on the
+  left and the edit pencil (Reset / Done while editing) on the right.
+  Its tiles are Android-style editable (footer pencil: drag to reorder, remove/add -- by badge, click,
+  or dragging a tile between the grid and the spare "Add tiles" list; resizing only exists with
+  `uniform` off; tiles pack first-fit, and what a tile shows at each size -- header lines, inline control, a 2-row tile's body -- comes from
   `tileView(id, w, h)`; its `titleTail` is a short muted note after the title, e.g. a 1-row Wi-Fi
   tile 2+ wide shows the band, "Wi-Fi 5 GHz", from `NetInfo`, so the SSID keeps the status line).
   `~/Documents/sichos/control-center-tiles.html` is a sheet of every tile at every size, rendered
@@ -274,7 +303,7 @@ own files.
   setting needs the same. Night Light never re-sends hyprsunset's own schedule switch (that showed as a
   double toggle) -- `ShellState._syncSunset` pushes only when hyprsunset's actual temperature disagrees. A new tile = an id in its `allIds`
   plus a case in QuickSettings' `tileInfo()`/`tileToggle()`, per-size content in `tileView()` (and its glyph measured into HeaderIcon). **Bar hover popups don't own windows**: the toggle
-  row's, the clock's calendar, Weather, the right-side widgets with hover popups (AI usage, Bluetooth,
+  row's, the hub, the right-side widgets with hover popups (AI usage, Bluetooth,
   System Update, Display) and custom widgets that opt in (alert-widget) all render a `MorphContent`
   into the bar's one `MorphPopup` card. Each widget assigns its content to a property (not a child —
   `Pill`'s default property would lay it out inside the pill), sets `parent: root.popupHost` (passed
@@ -464,10 +493,10 @@ own files.
   shared by notification id so closing or hovering a toast on one screen applies to all; `NotificationHistory.qml` (singleton) is the persisted history in
   `~/.config/quickshell/notification-history.json`, with its own folding of consecutive repeats, plus
   a non-persisted registry of live `Notification` objects so a history entry can still invoke its
-  sender's actions; `NotificationCenter.qml` is the bar bell + drawer. Clicking a toast or center entry
+  sender's actions; the hub's notifications column (`Hub.qml` + `NotificationEntry.qml`) shows it -- the
+  bell + drawer are gone. Clicking a toast or hub entry
   runs the notification's `default` action, else `NotificationHistory.focusOrLaunchApp()`. Phone notifications (sichlink) get a
-  `PhoneBadge.qml` on their icon, recognised by their app icon path under `~/.cache/sichlink/notification-icons/`. A Notification
-  Center entry of one has a bell button that mutes/unmutes its app (`Sichlink.muteApp` → the phone's own list, also
+  `PhoneBadge.qml` on their icon, recognised by their app icon path under `~/.cache/sichlink/notification-icons/`. A hub entry of one has a bell button that mutes/unmutes its app (`Sichlink.muteApp` → the phone's own list, also
   edited in the sichlink app's "Choose apps" and the Phone page).
 
 #### UI style

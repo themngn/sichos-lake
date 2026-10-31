@@ -4,8 +4,8 @@ import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
 
-// Past notifications shown in the bar's Notification Center popup
-// (NotificationCenter.qml). Independent of the live toasts in
+// Past notifications shown in the hub's notifications column
+// (Hub.qml). Independent of the live toasts in
 // Notifications.qml — a toast expiring on its own timeout, or the user
 // dismissing/clicking it away, doesn't erase its record here; those are
 // still things worth being able to scroll back to, so only Clear All (or
@@ -16,7 +16,7 @@ import Quickshell.Io
 // longer relevant, which is different from it merely having been shown
 // already, so Notifications.qml calls removeByNotifId() for that case only.
 // Entries store the raw appIcon/image strings from the notification rather
-// than a resolved path, same as Notifications.qml, so NotificationCenter.qml
+// than a resolved path, same as Notifications.qml, so NotificationEntry.qml
 // resolves them the same way at render time.
 QtObject {
     id: root
@@ -70,11 +70,11 @@ QtObject {
         // still the same app+summary and nothing else has landed in
         // between (i.e. it's genuinely consecutive, not just "same title,
         // sometime earlier"), keeps one row per burst with a count badge
-        // (rendered in NotificationCenter.qml) instead.
+        // (rendered in NotificationEntry.qml) instead.
         const top = adapter.entries[0]
         if (idx === -1 && top && top.appName === entry.appName && top.summary === entry.summary) {
             // `bodies` carries every message in the run (oldest first) so
-            // NotificationCenter.qml can expand the merged row and show
+            // NotificationEntry.qml can expand the merged row and show
             // each one in full -- `body`/`time` alone (overwritten to the
             // newest message below via the entry spread) would silently
             // discard everything but the latest message's text.
@@ -95,7 +95,7 @@ QtObject {
         adapter.entries = [withId].concat(rest).slice(0, root.maxEntries)
     }
     // Live Notification objects by namespaced notifId, so a history entry
-    // can still reach its notification's own actions (NotificationCenter's
+    // can still reach its notification's own actions (the hub's
     // click -> the sender's "default" action, e.g. Telegram opening that
     // chat) for as long as it's tracked -- see Notifications.qml's grace
     // timer for how long that is. Deliberately not part of the persisted
@@ -146,11 +146,32 @@ QtObject {
         }
     }
 
+    // Clicking a history entry (the hub), same as clicking its
+    // toast: the sender's own "default" action if the notification is still
+    // live (e.g. Telegram opens that exact chat). Once it isn't -- past the
+    // grace window, or after a restart -- the next best thing: focus the
+    // app's existing window, or launch the app if none is open. Either way
+    // the entry has been dealt with, so it's removed.
+    function activate(entry) {
+        const live = root.liveFor(entry)
+        const action = live ? live.actions.find(a => a.identifier === "default") : null
+        if (action) {
+            action.invoke()
+        } else {
+            root.focusOrLaunchApp(entry.desktopEntry, entry.appName)
+        }
+        root.remove(entry.id)
+    }
+
     function remove(id) {
         adapter.entries = adapter.entries.filter(e => e.id !== id)
     }
+    // Several at once (the hub's "clear this app"): one write, not one each.
+    function removeMany(ids) {
+        adapter.entries = adapter.entries.filter(e => ids.indexOf(e.id) === -1)
+    }
     // Dismisses a single message out of a folded (count > 1) entry's
-    // `bodies` run -- NotificationCenter.qml's expanded-message close
+    // `bodies` run -- NotificationEntry.qml's expanded-message close
     // glyph. Collapses the entry back down to a plain, non-folded shape
     // (no count/bodies field, same as an entry add() has never merged
     // anything into) once only one message is left, rather than leaving a

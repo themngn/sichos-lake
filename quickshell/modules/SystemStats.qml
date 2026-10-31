@@ -4,15 +4,19 @@ import Quickshell
 import Quickshell.Io
 
 // CPU / RAM / temperature (plus GPU, fan, swap, network, disk and uptime)
-// for the Control Center's System tile. Polls /proc and the hwmon/drm sensors
-// only while the Control Center's main page is open (on any screen) -- nothing
-// runs the rest of the time. Keeps the last `historyLength` samples for the
-// 2-row tile's graphs.
+// for the hub's system strip (Hub.qml). Polls /proc and the hwmon/drm sensors
+// only while the hub is open (on any screen) -- nothing runs the rest of the
+// time. Keeps the last `historyLength` samples for the strip's graphs.
 QtObject {
     id: root
 
-    readonly property bool active: ShellState.activePopup === "quicksettings"
+    // While the hub is open on any of its pages: its system strip shows
+    // these whichever Controls page is up.
+    readonly property bool active: ShellState.activePopup === "quicksettings" || ShellState.activePopup === "hub"
+        || ShellState.activePopup.startsWith("qs-")
     readonly property int historyLength: 40
+    // How often it samples; MiniGraph scrolls one step over this long.
+    readonly property int sampleInterval: 1500
 
     property real cpu: 0      // 0..1
     property real ram: 0      // 0..1
@@ -165,7 +169,7 @@ QtObject {
     }
 
     property Timer _timer: Timer {
-        interval: 1500
+        interval: root.sampleInterval
         repeat: true
         running: root.active
         triggeredOnStart: true

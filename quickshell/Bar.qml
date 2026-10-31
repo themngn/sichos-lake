@@ -164,7 +164,6 @@ PanelWindow {
     Component { id: trayComp; Tray { horizontalPadding: 12 * Theme.barIconSpacingScale } }
     Component { id: systemUpdateComp; SystemUpdate { screenName: bar.screen.name; popupHost: barMorph.slot; horizontalPadding: 4 * Theme.barIconSpacingScale } }
     Component { id: aiModelUsageComp; AiModelUsage { screenName: bar.screen.name; popupHost: barMorph.slot; horizontalPadding: 4 * Theme.barIconSpacingScale } }
-    Component { id: notificationCenterComp; NotificationCenter { screen: bar.screen; screenName: bar.screen.name; horizontalPadding: 4 * Theme.barIconSpacingScale } }
     Component { id: languageComp; Language { horizontalPadding: 4 * Theme.barIconSpacingScale } }
     Component { id: bluetoothComp; BluetoothIndicator { screenName: bar.screen.name; popupHost: barMorph.slot; horizontalPadding: 4 * Theme.barIconSpacingScale } }
     Component { id: networkComp; NetworkIndicator { horizontalPadding: 4 * Theme.barIconSpacingScale } }
@@ -173,7 +172,6 @@ PanelWindow {
     Component { id: displayComp; DisplaySettings { screenName: bar.screen.name; popupHost: barMorph.slot; horizontalPadding: 4 * Theme.barIconSpacingScale } }
     Component { id: powerProfileComp; PowerProfile { horizontalPadding: 4 * Theme.barIconSpacingScale } }
     Component { id: batteryComp; Battery { horizontalPadding: 4 * Theme.barIconSpacingScale } }
-    Component { id: quickSettingsComp; QuickSettings { screenName: bar.screen.name; popupHost: barMorph.slot; horizontalPadding: 4 * Theme.barIconSpacingScale } }
     Component { id: phoneMirrorComp; PhoneMirror { screenName: bar.screen.name; horizontalPadding: 4 * Theme.barIconSpacingScale } }
 
     function componentFor(id) {
@@ -182,7 +180,6 @@ PanelWindow {
         case "system-update": return systemUpdateComp
         case "ai-model-usage":
         case "claude-usage": return aiModelUsageComp
-        case "notifications": return notificationCenterComp
         case "language": return languageComp
         case "bluetooth": return bluetoothComp
         case "network": return networkComp
@@ -192,7 +189,6 @@ PanelWindow {
         case "powerprofile": return powerProfileComp
         case "battery": return batteryComp
         case "phone": return phoneMirrorComp
-        case "quicksettings": return quickSettingsComp
         }
         return null
     }
@@ -216,7 +212,8 @@ PanelWindow {
     ClockWidget {
         id: clock
         screenName: bar.screen.name
-        popupHost: barMorph.slot
+        hub: hub
+        weather: weatherPill
         anchors {
             horizontalCenter: parent.horizontalCenter
             verticalCenter: parent.verticalCenter
@@ -272,6 +269,32 @@ PanelWindow {
     MorphPopup {
         id: barMorph
         bar: bar
+    }
+
+    // Notifications, calendar, weather and the Control Center in one card
+    // under the clock (opened by the clock, the Control Center pill and
+    // SUPER+N). Lives in the morph card like the hover popups.
+    readonly property Item _hub: Hub {
+        id: hub
+        parent: barMorph.slot
+        anchorItem: clock
+        screenName: bar.screen.name
+        weather: weatherPill
+        barWindow: bar
+        updater: controlCenter.updater
+        maxHeight: bar.screen.height - Theme.barHeight - 24
+    }
+    // The Control Center, rendered into the hub's Controls column so its
+    // pages swap inside the hub's fixed frame. No bar icon of its own
+    // anymore (nor a bell: the hub's notifications column replaced the
+    // drawer) -- the clock is the one way in, plus SUPER+N. Hidden rather
+    // than dropped: it owns the controls' state, focus grab and pages.
+    QuickSettings {
+        id: controlCenter
+        visible: false
+        screenName: bar.screen.name
+        popupHost: hub.controlsSlot
+        phoneHost: hub.phoneSlot
     }
 
     Row {
@@ -332,7 +355,10 @@ PanelWindow {
         }
         spacing: 4
 
-        Weather { screenName: bar.screen.name; popupHost: barMorph.slot }
+        // Hidden: the clock shows its icon and temperature (one date + weather
+        // pill) and the hub its forecast; it stays as their data source
+        // (weather.py poll + cache).
+        Weather { id: weatherPill; visible: false; screenName: bar.screen.name; popupHost: barMorph.slot }
         // User-local, not part of this repo — see CustomWidget.qml's own
         // comment and CustomWidgets.qml. One entry per
         // ~/.config/quickshell/custom/<id>/main.qml found on this machine,

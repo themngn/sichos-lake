@@ -10,7 +10,7 @@ import Quickshell.Services.Notifications
 // quickshell-native rather than external processes. One toast per
 // notification, stacked newest-at-bottom in arrival order — no folding of
 // same-app/summary runs into a single collapsible entry (that's
-// NotificationHistory.qml/NotificationCenter.qml's job for the persisted
+// NotificationHistory.qml/Hub.qml's job for the persisted
 // history; a burst of live toasts is short-lived enough that stacking them
 // plainly reads better than a dropdown affordance on a fast-changing list).
 //
@@ -204,7 +204,7 @@ Scope {
                     appIcon: notification.appIcon,
                     summary: notification.summary,
                     body: notification.body,
-                    // Lets NotificationCenter.qml focus/launch the right app
+                    // Lets NotificationEntry.qml focus/launch the right app
                     // when clicked after the live notification is gone.
                     desktopEntry: notification.desktopEntry,
                     urgency: notification.urgency
@@ -499,7 +499,7 @@ Scope {
                                 }
 
                                 // How many messages this toast is showing (see joinGroup)
-                                // -- same badge as NotificationCenter.qml's folded entries.
+                                // -- same badge as NotificationEntry.qml's folded entries.
                                 Rectangle {
                                     id: countBadge
                                     visible: toast.members.length > 1
@@ -524,7 +524,7 @@ Scope {
                                     id: closeButton
                                     anchors.verticalCenter: parent.verticalCenter
                                     // Font Awesome "times", same glyph
-                                    // NotificationCenter.qml's history rows use for
+                                    // NotificationEntry.qml's history rows use for
                                     // their own close button -- keeps the one
                                     // "this ✕ dismisses" affordance visually
                                     // consistent between the live toast and history.
@@ -589,7 +589,7 @@ Scope {
                                 onLinkActivated: link => Qt.openUrlExternally(link)
                             }
 
-                            // Same format/styling as NotificationCenter.qml's history
+                            // Same format/styling as NotificationEntry.qml's history
                             // rows, for the same timestamp on the live toast as it'll
                             // show once it lands in history.
                             Text {

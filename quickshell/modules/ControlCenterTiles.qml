@@ -16,23 +16,32 @@ QtObject {
     id: root
 
     // Every tile that exists, in the order "Add tiles" lists them.
-    readonly property var allIds: ["wifi", "bluetooth", "airplane", "hotspot", "nightlight", "silence", "micmute",
-        "awake", "gamefocus", "hdr", "opaque", "phone", "powerprofile", "sound",
-        "update", "vpn", "dns", "stats", "lid", "version"]
+    readonly property var allIds: ["wifi", "bluetooth", "airplane", "silence", "powerprofile", "sound", "vpn"]
+    // Not tiles anymore (a saved layout that still lists them just drops
+    // them): "hotspot" and "dns" moved into the Wi-Fi page (WifiMenu.qml),
+    // "version" into the footer's version chip, "stats" and "update" into
+    // the hub's system strip, "phone" into the phone card under the hub's
+    // notifications (Hub.qml); "hdr", "nightlight", "opaque", "micmute",
+    // "gamefocus", "awake" and "lid" into icon switches in the footer
+    // (QuickSettings.qml).
     readonly property int columns: 4
     readonly property int maxRows: 2
     // Tiles that only come in 1x1: Airplane has nothing worth a bigger
     // tile (its old per-radio buttons just repeated Wi-Fi/Bluetooth's).
     readonly property var fixedSize: ["airplane"]
-    function resizable(id) { return root.fixedSize.indexOf(id) === -1 }
-    function clampW(id, w) { return root.resizable(id) ? Math.max(1, Math.min(root.columns, w)) : 1 }
-    function clampH(id, h) { return root.resizable(id) ? Math.max(1, Math.min(root.maxRows, h)) : 1 }
+    // Every tile is shown at one size now, half the card wide and one row
+    // tall (the hub's Controls column: two even columns of name + status
+    // tiles, no mix of sizes). Saved sizes (w/h) are still read and kept
+    // in control-center.json, just not used -- so the old per-tile sizes
+    // come back if this is ever reverted. Edit mode still adds, removes
+    // and reorders; there's nothing to resize.
+    readonly property bool uniform: true
+    function resizable(id) { return !root.uniform && root.fixedSize.indexOf(id) === -1 }
+    function clampW(id, w) { return root.uniform ? 2 : root.resizable(id) ? Math.max(1, Math.min(root.columns, w)) : 1 }
+    function clampH(id, h) { return root.uniform ? 1 : root.resizable(id) ? Math.max(1, Math.min(root.maxRows, h)) : 1 }
     readonly property var defaults: [
         { id: "wifi", w: 2, h: 1 }, { id: "bluetooth", w: 2, h: 1 },
-        { id: "hdr", w: 1, h: 1 }, { id: "gamefocus", w: 2, h: 1 }, { id: "micmute", w: 1, h: 1 },
-        { id: "nightlight", w: 1, h: 1 }, { id: "awake", w: 1, h: 1 }, { id: "stats", w: 2, h: 1 },
-        { id: "update", w: 4, h: 1 },
-        { id: "silence", w: 1, h: 1 }, { id: "opaque", w: 2, h: 1 }, { id: "phone", w: 1, h: 1 }
+        { id: "vpn", w: 2, h: 1 }, { id: "silence", w: 1, h: 1 }
     ]
 
     property ListModel model: ListModel {}

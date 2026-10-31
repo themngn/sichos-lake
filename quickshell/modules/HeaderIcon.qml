@@ -29,7 +29,7 @@ Item {
     // 16px up, gamepad 15px) were measured too tall -- they came out too
     // small and rode high. A glyph not listed falls back to it.
     readonly property var _measured: ({
-        0xf0f3: [0, -70, 60, 69],   // bell (NotificationCenter)
+        0xf0f3: [0, -70, 60, 69],   // bell (notifications)
         0xf116b: [0, -71, 61, 70],  // bell with dot
         0xf293: [0, -77, 60, 82],   // bluetooth
         0xf0176: [-1, -64, 62, 56], // coffee (Idle)
