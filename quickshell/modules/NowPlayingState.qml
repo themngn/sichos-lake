@@ -18,9 +18,41 @@ QtObject {
     readonly property var spotify: {
         const players = Mpris.players.values
         for (let i = 0; i < players.length; i++) {
-            if (players[i].desktopEntry === "spotify") return players[i]
+            if (players[i].desktopEntry === "spotify" && !root.isProxy(players[i])) return players[i]
         }
         return null
+    }
+
+    // The player that most recently started playing, kept after it pauses:
+    // the Control Center's large card shows it, so pausing Spotify doesn't
+    // swap the card to whatever else has a track loaded -- only another
+    // player starting does. Null once that player's gone (closed).
+    property var lastActive: null
+    readonly property var _playing: Mpris.players.values.filter(p => p.isPlaying && !root.isProxy(p))
+    property var _prevPlaying: []
+    on_PlayingChanged: {
+        const fresh = root._playing.filter(p => !root._prevPlaying.includes(p))
+        if (fresh.length > 0) root.lastActive = fresh[fresh.length - 1]
+        else if (!root.lastActive && root._playing.length > 0) root.lastActive = root._playing[0]
+        root._prevPlaying = root._playing
+    }
+
+    // playerctld re-exports the active player under its own bus name (same
+    // identity, desktop entry and track), so it's never a player of its own.
+    function isProxy(p) {
+        return !!p && p.dbusName === "org.mpris.MediaPlayer2.playerctld"
+    }
+
+    // A player's name as its app calls itself: the desktop entry's Name,
+    // since MPRIS Identity can be anything -- Firefox's is "Mozilla
+    // org.mozilla.firefox". Identity only when there's no entry.
+    function appName(p) {
+        if (!p) return ""
+        // Read so a binding calling this re-runs once the entries have
+        // loaded (byId alone isn't a dependency; the first call can be early).
+        void DesktopEntries.applications.values.length
+        const e = p.desktopEntry ? DesktopEntries.byId(p.desktopEntry) : null
+        return e && e.name ? e.name : (p.identity || "")
     }
 
     readonly property string trackArtist: root.spotify ? (root.spotify.trackArtist || "") : ""

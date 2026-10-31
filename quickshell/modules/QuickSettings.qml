@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Widgets
 import Quickshell.Hyprland
 import Quickshell.Networking
 import Quickshell.Bluetooth
@@ -53,9 +54,18 @@ Pill {
 
     // Every MPRIS player with something loaded, playing ones first (then
     // Spotify, NowPlayingState's) -- one card each, up to three.
+    // playerctld (playerctl's daemon) is itself an MPRIS player mirroring
+    // whichever one is active, so it showed every track twice.
     readonly property var players: Mpris.players.values
-        .filter(p => p.isPlaying || !!p.trackTitle)
+        .filter(p => (p.isPlaying || !!p.trackTitle) && !NowPlayingState.isProxy(p))
         .sort((a, b) => {
+            // The last one to start playing (NowPlayingState.lastActive) leads
+            // -- but a paused source only while nothing plays: once anything
+            // is playing the large card is a playing one. Then playing ones.
+            const anyPlaying = Mpris.players.values.some(p => p.isPlaying && !NowPlayingState.isProxy(p))
+            const lastP = NowPlayingState.lastActive
+            const last = lastP && (lastP.isPlaying || !anyPlaying) ? lastP : null
+            if ((a === last) !== (b === last)) return a === last ? -1 : 1
             if (a.isPlaying !== b.isPlaying) return a.isPlaying ? -1 : 1
             return (b === NowPlayingState.spotify) - (a === NowPlayingState.spotify)
         })
@@ -1925,18 +1935,133 @@ Pill {
                                 }
                             }
                         }
-                        PlayerHero {
+                        // One card per source for its whole life (the
+                        // Repeater runs on Mpris.players, an object model, so
+                        // a source's delegate survives reorders), placed by its
+                        // rank in root.players: when the order changes the
+                        // cards slide past each other -- the new lead moving
+                        // up while growing into the large card, the old one
+                        // moving down while shrinking into a row. Rebuilt rows
+                        // (a Repeater over the players array) used to get stuck
+                        // invisible when a fade-in was cut short.
+                        Item {
+                            id: mediaStack
                             width: parent.width
-                            player: root.players.length > 0 ? root.players[0] : null
-                            artSource: root.artFor(player)
-                        }
-                        Repeater {
-                            model: root.players.slice(1)
-                            delegate: PlayerRow {
-                                required property var modelData
-                                width: column.width
-                                player: modelData
-                                artSource: root.artFor(modelData)
+                            readonly property int rowHeight: 56
+                            readonly property int gap: 6
+                            // The lead card's current height, from its delegate.
+                            property real heroHeight: 0
+                            height: root.players.length === 0 ? 0
+                                : heroHeight + (root.players.length - 1) * (rowHeight + gap)
+
+                            Repeater {
+                                model: Mpris.players
+                                delegate: Item {
+                                    id: source
+                                    required property var modelData
+                                    readonly property int rank: root.players.indexOf(source.modelData)
+                                    readonly property bool lead: source.rank === 0
+                                    visible: source.rank >= 0
+                                    width: mediaStack.width
+                                    height: source.lead ? sourceHero.height : mediaStack.rowHeight
+                                    y: source.rank <= 0 ? 0
+                                        : mediaStack.heroHeight + mediaStack.gap + (source.rank - 1) * (mediaStack.rowHeight + mediaStack.gap)
+                                    // The lead slides over the others while they pass under it.
+                                    z: source.lead ? 1 : 0
+                                    clip: true
+                                    Behavior on y { NumberAnimation { duration: 520; easing.type: Easing.OutCubic } }
+                                    Behavior on height { NumberAnimation { duration: 520; easing.type: Easing.OutCubic } }
+
+                                    // The swap in 3D: on its way up a card tips
+                                    // its top edge toward you and lifts (grows),
+                                    // on its way down it tips away and sinks
+                                    // (shrinks, darkens) -- they pass like two
+                                    // cards being shuffled rather than sliding
+                                    // flat. Rotation about X is perspective-
+                                    // projected, so the tilt reads as depth.
+                                    transform: [
+                                        Rotation {
+                                            id: tilt
+                                            axis { x: 1; y: 0; z: 0 }
+                                            origin.x: source.width / 2
+                                            origin.y: source.height / 2
+                                            angle: 0
+                                        },
+                                        Scale {
+                                            id: depth
+                                            origin.x: source.width / 2
+                                            origin.y: source.height / 2
+                                        }
+                                    ]
+                                    property int _prevRank: -1
+                                    onRankChanged: {
+                                        if (source._prevRank >= 0 && source.rank >= 0 && source.rank !== source._prevRank)
+                                            (source.rank < source._prevRank ? riseAnim : sinkAnim).restart()
+                                        source._prevRank = source.rank
+                                    }
+                                    Component.onCompleted: source._prevRank = source.rank
+                                    SequentialAnimation {
+                                        id: riseAnim
+                                        ParallelAnimation {
+                                            NumberAnimation { target: tilt; property: "angle"; to: -18; duration: 220; easing.type: Easing.OutQuad }
+                                            NumberAnimation { target: depth; properties: "xScale,yScale"; to: 1.05; duration: 220; easing.type: Easing.OutQuad }
+                                        }
+                                        ParallelAnimation {
+                                            NumberAnimation { target: tilt; property: "angle"; to: 0; duration: 420; easing.type: Easing.OutBack }
+                                            NumberAnimation { target: depth; properties: "xScale,yScale"; to: 1; duration: 420; easing.type: Easing.OutCubic }
+                                        }
+                                    }
+                                    SequentialAnimation {
+                                        id: sinkAnim
+                                        ParallelAnimation {
+                                            NumberAnimation { target: tilt; property: "angle"; to: 18; duration: 220; easing.type: Easing.OutQuad }
+                                            NumberAnimation { target: depth; properties: "xScale,yScale"; to: 0.9; duration: 220; easing.type: Easing.OutQuad }
+                                            NumberAnimation { target: shade; property: "opacity"; to: 0.45; duration: 220; easing.type: Easing.OutQuad }
+                                        }
+                                        ParallelAnimation {
+                                            NumberAnimation { target: tilt; property: "angle"; to: 0; duration: 420; easing.type: Easing.OutBack }
+                                            NumberAnimation { target: depth; properties: "xScale,yScale"; to: 1; duration: 420; easing.type: Easing.OutCubic }
+                                            NumberAnimation { target: shade; property: "opacity"; to: 0; duration: 420; easing.type: Easing.OutCubic }
+                                        }
+                                    }
+
+                                    Binding {
+                                        target: mediaStack
+                                        property: "heroHeight"
+                                        value: sourceHero.height
+                                        when: source.lead
+                                        // The old lead letting go mustn't put back
+                                        // its stale value over the new lead's.
+                                        restoreMode: Binding.RestoreNone
+                                    }
+
+                                    PlayerHero {
+                                        id: sourceHero
+                                        width: parent.width
+                                        player: source.modelData
+                                        artSource: source.rank >= 0 ? root.artFor(source.modelData) : ""
+                                        opacity: source.lead ? 1 : 0
+                                        visible: opacity > 0
+                                        Behavior on opacity { NumberAnimation { duration: 420; easing.type: Easing.InOutQuad } }
+                                    }
+                                    PlayerRow {
+                                        width: parent.width
+                                        player: source.modelData
+                                        artSource: source.rank >= 0 ? root.artFor(source.modelData) : ""
+                                        opacity: source.lead ? 0 : 1
+                                        visible: opacity > 0
+                                        Behavior on opacity { NumberAnimation { duration: 420; easing.type: Easing.InOutQuad } }
+                                    }
+                                    // Darkens the card while it sinks (sinkAnim).
+                                    Rectangle {
+                                        id: shade
+                                        anchors.fill: parent
+                                        radius: Theme.controlRadius
+                                        color: "black"
+                                        opacity: 0
+                                        visible: opacity > 0
+                                    }
+                                }
                             }
                         }
                     }
@@ -2241,31 +2366,62 @@ Pill {
         }
     }
 
-    // A media player as one compact row (the second and third players).
-    component PlayerRow: Rectangle {
+    // A media player as one compact row (the second and third players):
+    // the large card's look in small -- the cover filling the row's height
+    // at its own shape (square up to 16:9), fading into a gradient of its
+    // colour. ClippingRectangle so the cover follows the corners.
+    component PlayerRow: ClippingRectangle {
         id: mediaCard
         property var player: null
         // root.artFor(player), set where it is used.
         property string artSource: ""
+        readonly property bool hasArt: mediaCard.artSource !== "" && rowArt.status === Image.Ready
+        readonly property real artRatio: mediaCard.hasArt && rowArt.implicitHeight > 0
+            ? Math.max(1, Math.min(16 / 9, rowArt.implicitWidth / rowArt.implicitHeight)) : 1
         height: 56
         radius: Theme.controlRadius
         color: Theme.controlFill
-        border.color: Theme.surfaceBorder
-        border.width: 1
+
+        // Same colour pick as PlayerHero's tint.
+        ColorQuantizer {
+            id: rowQuant
+            source: mediaCard.artSource
+            depth: 3
+            rescaleSize: 64
+        }
+        property color tint: {
+            const cs = rowQuant.colors || []
+            let best = null, score = -1
+            for (const c of cs) {
+                const sc = c.hslSaturation * (1 - Math.abs(c.hslLightness - 0.5))
+                if (sc > score) { score = sc; best = c }
+            }
+            if (!best || !mediaCard.hasArt) return Theme.controlFill
+            return Qt.hsla(Math.max(0, best.hslHue), Math.min(best.hslSaturation, 0.55), 0.22, 1)
+        }
+        readonly property color tintDeep: mediaCard.hasArt
+            ? Qt.hsla(Math.max(0, mediaCard.tint.hslHue), mediaCard.tint.hslSaturation * 0.8, 0.12, 1) : Theme.controlFill
+        Behavior on tint { ColorAnimation { duration: 400 } }
 
         Rectangle {
+            anchors.fill: parent
+            visible: mediaCard.hasArt
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0; color: mediaCard.tint }
+                GradientStop { position: mediaCard.width > 0 ? art.width / mediaCard.width : 0; color: mediaCard.tint }
+                GradientStop { position: 1; color: mediaCard.tintDeep }
+            }
+        }
+
+        Item {
             id: art
-            anchors.left: parent.left
-            anchors.leftMargin: 8
-            anchors.verticalCenter: parent.verticalCenter
-            width: 40
-            height: 40
-            radius: Theme.controlRadius
-            color: Theme.controlFill
-            clip: true
+            width: Math.round(mediaCard.height * mediaCard.artRatio)
+            height: parent.height
+            Behavior on width { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
 
             Text {
-                visible: mediaCard.artSource === ""
+                visible: !mediaCard.hasArt
                 anchors.centerIn: parent
                 text: "\u{f075a}" // nf-md-music_note
                 color: Theme.textMuted
@@ -2273,29 +2429,72 @@ Pill {
                 font.pixelSize: Theme.fontSize + 10
             }
             Image {
+                id: rowArt
                 visible: mediaCard.artSource !== ""
                 anchors.fill: parent
                 source: mediaCard.artSource
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: false
-                sourceSize.width: 80
-                sourceSize.height: 80
+                // Height only, so implicitWidth keeps the aspect.
+                sourceSize.height: 112
             }
+            // The cover's right edge dissolving into the tint.
+            Rectangle {
+                visible: mediaCard.hasArt
+                anchors.right: parent.right
+                width: 16
+                height: parent.height
+                gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0; color: Qt.rgba(mediaCard.tint.r, mediaCard.tint.g, mediaCard.tint.b, 0) }
+                    GradientStop { position: 1; color: mediaCard.tint }
+                }
+            }
+        }
+
+        // Clicking the row (not its buttons, declared after so they stay on
+        // top) makes it the large card and plays it alone: it becomes
+        // NowPlayingState's lastActive, which leads the order -- the same
+        // swap as a source starting to play.
+        MouseArea {
+            id: rowArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            // Resumes it too if it's paused (a paused source can only be the
+            // large card while nothing plays, see root.players) and pauses
+            // every other source: switching to it, not mixing it in.
+            onClicked: {
+                const p = mediaCard.player
+                if (!p) return
+                NowPlayingState.lastActive = p
+                for (const o of Mpris.players.values)
+                    if (o !== p && o.isPlaying && o.canPause && !NowPlayingState.isProxy(o)) o.pause()
+                if (!p.isPlaying && p.canPlay) p.play()
+            }
+        }
+        Rectangle {
+            anchors.fill: parent
+            color: Theme.hoverFill
+            opacity: rowArea.containsMouse ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 120 } }
         }
 
         // Title / artist / app. The title gets the full width;
         // the buttons only sit beside the two smaller lines.
+        // Right margin and button spacing as in the large card (heroInfo,
+        // heroButtons), so the transport lines up down every card.
         Column {
             anchors.left: art.right
             anchors.leftMargin: 10
             anchors.right: parent.right
-            anchors.rightMargin: 6
+            anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
             spacing: 2
             Text {
                 width: parent.width
                 rightPadding: 4
-                text: mediaCard.player ? (mediaCard.player.trackTitle || mediaCard.player.identity || "") : ""
+                text: mediaCard.player ? (mediaCard.player.trackTitle || NowPlayingState.appName(mediaCard.player)) : ""
                 elide: Text.ElideRight
                 color: Theme.text
                 font.family: Theme.uiFontFamily
@@ -2325,7 +2524,7 @@ Pill {
                     Text {
                         width: parent.width
                         visible: text !== ""
-                        text: mediaCard.player ? (mediaCard.player.identity || "") : ""
+                        text: mediaCard.player ? (NowPlayingState.appName(mediaCard.player)) : ""
                         elide: Text.ElideRight
                         color: Theme.textDim
                         font.family: Theme.uiFontFamily
@@ -2337,7 +2536,7 @@ Pill {
                     id: mediaButtons
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 0
+                    spacing: 2
 
                     MediaButton {
                         glyph: "\u{f04ae}" // nf-md-skip_previous
@@ -2345,8 +2544,9 @@ Pill {
                         onClicked: mediaCard.player.previous()
                     }
                     MediaButton {
+                        anchors.verticalCenter: parent.verticalCenter
+                        // Plain like its neighbours, the same in every card.
                         glyph: mediaCard.player && mediaCard.player.isPlaying ? "\u{f03e4}" : "\u{f040a}" // pause / play
-                        big: true
                         enabledState: !!mediaCard.player && mediaCard.player.canTogglePlaying
                         onClicked: mediaCard.player.togglePlaying()
                     }
@@ -2358,27 +2558,92 @@ Pill {
                 }
             }
         }
+
+        // The border on top, so the cover doesn't paint over it.
+        Rectangle {
+            anchors.fill: parent
+            radius: mediaCard.radius
+            color: "transparent"
+            border.color: Theme.surfaceBorder
+            border.width: 1
+        }
     }
 
-    // The first media player, large: art, app/title/artist/album, its
-    // playhead (seekable when the player allows it) and the transport.
-    component PlayerHero: Rectangle {
+    // The first media player, large: the cover filling the card's height on
+    // the left, fading into a gradient of its own colour that carries the
+    // title/artist, source + transport and the playhead (seekable when the
+    // player allows it). ClippingRectangle so the cover follows the corners.
+    component PlayerHero: ClippingRectangle {
         id: hero
         property var player: null
         // root.artFor(player), set where it is used.
         property string artSource: ""
         readonly property bool hasLength: !!hero.player && hero.player.lengthSupported && hero.player.length > 0
+        readonly property bool hasArt: hero.artSource !== "" && heroArt.status === Image.Ready
         function fmt(secs) {
             const t = Math.max(0, Math.floor(secs))
             const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60
             const ss = (sec < 10 ? "0" : "") + sec
             return h > 0 ? h + ":" + (m < 10 ? "0" : "") + m + ":" + ss : m + ":" + ss
         }
-        height: heroColumn.implicitHeight + 20
+
+        // The cover's own shape, square up to 16:9 (browsers hand out video
+        // thumbnails, YouTube's 16:9, which a square box cropped to their
+        // middle), but never more than half the card so the text keeps
+        // room; past that it crops. Taller-than-square covers crop too.
+        readonly property real artRatio: hero.hasArt && heroArt.implicitHeight > 0
+            ? Math.max(1, Math.min(16 / 9, heroArt.implicitWidth / heroArt.implicitHeight)) : 1
+        readonly property int coverWidth: hero.wide ? hero.width : Math.round(Math.min(hero.height * hero.artRatio, hero.width * 0.5))
+        // A wide cover (a video thumbnail) can't sit beside the text whole --
+        // at the card's height a 16:9 one needs ~260 of its 360px, and capped
+        // at half the width it got its sides cut. So it becomes a full-width
+        // banner at its own ratio, the text over a scrim fading up from the
+        // bottom.
+        readonly property bool wide: hero.hasArt && hero.artRatio > 1.2
+
+        // The card's colour: the most saturated of the cover's eight
+        // quantized colours (the average of a cover is mostly grey-brown),
+        // pinned to a dark lightness so the white text always reads on it.
+        ColorQuantizer {
+            id: quant
+            source: hero.artSource !== "" ? hero.artSource : ""
+            depth: 3
+            rescaleSize: 64
+        }
+        // Not readonly: the Behavior below animates it.
+        property color tint: {
+            const cs = quant.colors || []
+            let best = null, score = -1
+            for (const c of cs) {
+                const s = c.hslSaturation * (1 - Math.abs(c.hslLightness - 0.5))
+                if (s > score) { score = s; best = c }
+            }
+            if (!best || !hero.hasArt) return Theme.controlFill
+            return Qt.hsla(Math.max(0, best.hslHue), Math.min(best.hslSaturation, 0.55), 0.22, 1)
+        }
+        readonly property color tintDeep: hero.hasArt
+            ? Qt.hsla(Math.max(0, hero.tint.hslHue), hero.tint.hslSaturation * 0.8, 0.12, 1) : Theme.controlFill
+        Behavior on tint { ColorAnimation { duration: 400 } }
+        property string _lastArt: ""
+        // A new track's title/artist fade in rather than snapping over.
+        readonly property string _title: hero.player ? (hero.player.trackTitle || "") : ""
+        on_TitleChanged: textFade.restart()
+        NumberAnimation { id: textFade; target: heroText; property: "opacity"; from: 0; to: 1; duration: 300; easing.type: Easing.OutCubic }
+        onArtSourceChanged: {
+            if (hero._lastArt !== "" && hero.artSource !== "") {
+                heroArtOld.source = hero._lastArt
+                oldFade.restart()
+            }
+            hero._lastArt = hero.artSource
+        }
+
+        height: hero.wide ? Math.max(Math.round(hero.width / hero.artRatio), heroInfo.implicitHeight + 56)
+            : Math.max(112, heroInfo.implicitHeight + 20)
+        // Square <-> banner (switching between Spotify and a video) and a
+        // title going from one line to two resize instead of jumping.
+        Behavior on height { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
         radius: Theme.controlRadius
         color: Theme.controlFill
-        border.color: Theme.surfaceBorder
-        border.width: 1
 
         // MprisPlayer.position isn't pushed while a track plays -- it's only
         // re-read when positionChanged() is emitted.
@@ -2389,100 +2654,227 @@ Pill {
             onTriggered: hero.player.positionChanged()
         }
 
-        Column {
-            id: heroColumn
+        // Background: the tint where the cover ends, deepening to the right.
+        Rectangle {
+            anchors.fill: parent
+            visible: hero.hasArt && !hero.wide
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0; color: hero.tint }
+                GradientStop { position: hero.width > 0 ? hero.coverWidth / hero.width : 0; color: hero.tint }
+                GradientStop { position: 1; color: hero.tintDeep }
+            }
+        }
+        Item {
+            id: coverBox
+            width: hero.coverWidth
+            height: parent.height
+            Behavior on width { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
+            Image {
+                id: heroArt
+                visible: hero.artSource !== ""
+                anchors.fill: parent
+                source: hero.artSource
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: false
+                // Height only, so implicitWidth keeps the aspect.
+                sourceSize.height: 256
+            }
+            // The previous cover, fading out over the new one on a track
+            // change (a local file, loaded synchronously like heroArt).
+            Image {
+                id: heroArtOld
+                anchors.fill: parent
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: false
+                sourceSize.height: 256
+                opacity: 0
+                NumberAnimation on opacity { id: oldFade; running: false; from: 1; to: 0; duration: 350; easing.type: Easing.InOutQuad }
+            }
+            // The cover's right edge dissolving into the tint -- only its
+            // last few pixels, a wider fade read as the cover cut off.
+            Rectangle {
+                visible: hero.hasArt && !hero.wide
+                anchors.right: parent.right
+                width: 24
+                height: parent.height
+                gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0; color: Qt.rgba(hero.tint.r, hero.tint.g, hero.tint.b, 0) }
+                    GradientStop { position: 1; color: hero.tint }
+                }
+            }
+            Text {
+                visible: !hero.hasArt
+                anchors.centerIn: parent
+                text: "\u{f075a}" // nf-md-music_note
+                color: Theme.textMuted
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSize + 20
+            }
+        }
+
+        // Wide covers: clear on top, the tint rising behind the text --
+        // light where the title starts, so the banner stays visible. Its own
+        // height and fixed stops: stop positions bound to heroInfo.y didn't
+        // follow it, and the scrim stayed spread over the whole banner.
+        Rectangle {
+            visible: hero.wide
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.margins: 10
-            spacing: 8
+            anchors.bottom: parent.bottom
+            height: Math.min(parent.height, heroInfo.height + 50)
+            gradient: Gradient {
+                GradientStop { position: 0; color: "transparent" }
+                GradientStop { position: 0.4; color: Qt.rgba(hero.tint.r, hero.tint.g, hero.tint.b, 0.8) }
+                GradientStop { position: 1; color: Qt.rgba(hero.tintDeep.r, hero.tintDeep.g, hero.tintDeep.b, 0.92) }
+            }
+        }
 
-            Row {
+        // Positioned by hand rather than a Column: on a wide cover the
+        // playhead moves up beside the transport (and the app name into the
+        // artist line), so the text takes as little of the banner as it can.
+        Item {
+            id: heroInfo
+            anchors.left: hero.wide ? parent.left : coverBox.right
+            anchors.leftMargin: 10
+            anchors.right: parent.right
+            anchors.rightMargin: 10
+            // Low on a wide cover: as little of the banner under text as possible.
+            y: hero.wide ? parent.height - height - 4 : Math.round((parent.height - height) / 2)
+            height: implicitHeight
+            implicitHeight: controlsRow.y + controlsRow.height
+                + (!hero.wide && hero.hasLength ? 4 + playhead.height : 0)
+
+            Column {
+                id: heroText
                 width: parent.width
-                spacing: 12
-                Rectangle {
-                    width: 72
-                    height: 72
-                    radius: Theme.controlRadius
-                    color: Theme.controlFill
-                    clip: true
-                    Text {
-                        visible: hero.artSource === ""
-                        anchors.centerIn: parent
-                        text: "\u{f075a}" // nf-md-music_note
-                        color: Theme.textMuted
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize + 16
-                    }
-                    Image {
-                        visible: hero.artSource !== ""
-                        anchors.fill: parent
-                        source: hero.artSource
-                        fillMode: Image.PreserveAspectCrop
-                        asynchronous: false
-                        sourceSize.width: 144
-                        sourceSize.height: 144
-                    }
+                spacing: 1
+                Text {
+                    width: parent.width
+                    text: hero.player ? (hero.player.trackTitle || NowPlayingState.appName(hero.player)) : ""
+                    // Two lines: video titles are long, and the narrow
+                    // column beside a cover cut them after a few words.
+                    wrapMode: Text.Wrap
+                    maximumLineCount: 2
+                    elide: Text.ElideRight
+                    lineHeight: 0.95
+                    color: Theme.text
+                    font.family: Theme.uiFontFamily
+                    font.pixelSize: Theme.fontSize + 1
+                    font.bold: true
                 }
-                Column {
-                    width: parent.width - 72 - parent.spacing
+                Text {
+                    width: parent.width
+                    visible: text !== ""
+                    text: hero.player ? [hero.player.trackArtist || "", hero.player.trackAlbum || "",
+                        hero.wide ? (NowPlayingState.appName(hero.player)) : ""].filter(s => s !== "").join(" · ") : ""
+                    elide: Text.ElideRight
+                    color: Theme.textMuted
+                    font.family: Theme.uiFontFamily
+                    font.pixelSize: Theme.fontSize - 1
+                }
+            }
+
+            // The source app (side layout only), left of the transport.
+            Item {
+                id: controlsRow
+                y: heroText.height + 2
+                width: parent.width
+                height: heroButtons.height
+                Text {
+                    visible: !hero.wide
+                    anchors.left: parent.left
+                    anchors.right: heroButtons.left
+                    anchors.rightMargin: 6
                     anchors.verticalCenter: parent.verticalCenter
+                    text: hero.player ? (NowPlayingState.appName(hero.player)) : ""
+                    elide: Text.ElideRight
+                    color: Theme.textMuted
+                    font.family: Theme.uiFontFamily
+                    font.pixelSize: Theme.fontSize - 3
+                }
+                Row {
+                    id: heroButtons
+                    anchors.right: parent.right
                     spacing: 2
-                    Text {
-                        width: parent.width
-                        visible: text !== ""
-                        text: hero.player ? (hero.player.identity || "") : ""
-                        elide: Text.ElideRight
-                        color: Theme.textDim
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 3
+                    MediaButton {
+                        anchors.verticalCenter: parent.verticalCenter
+                        glyph: "\u{f04ae}" // nf-md-skip_previous
+                        enabledState: !!hero.player && hero.player.canGoPrevious
+                        onClicked: hero.player.previous()
                     }
-                    Text {
-                        width: parent.width
-                        text: hero.player ? (hero.player.trackTitle || hero.player.identity || "") : ""
-                        elide: Text.ElideRight
-                        color: Theme.text
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize + 1
-                        font.bold: true
+                    MediaButton {
+                        anchors.verticalCenter: parent.verticalCenter
+                        // Plain like its neighbours, the same in every card.
+                        glyph: hero.player && hero.player.isPlaying ? "\u{f03e4}" : "\u{f040a}" // pause / play
+                        enabledState: !!hero.player && hero.player.canTogglePlaying
+                        onClicked: hero.player.togglePlaying()
                     }
-                    Text {
-                        width: parent.width
-                        visible: text !== ""
-                        text: hero.player ? (hero.player.trackArtist || "") : ""
-                        elide: Text.ElideRight
-                        color: Theme.textMuted
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 1
-                    }
-                    Text {
-                        width: parent.width
-                        visible: text !== ""
-                        text: hero.player ? (hero.player.trackAlbum || "") : ""
-                        elide: Text.ElideRight
-                        color: Theme.textDim
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 2
+                    MediaButton {
+                        anchors.verticalCenter: parent.verticalCenter
+                        glyph: "\u{f04ad}" // nf-md-skip_next
+                        enabledState: !!hero.player && hero.player.canGoNext
+                        onClicked: hero.player.next()
                     }
                 }
             }
 
-            // Playhead, only when the player reports a length.
-            Column {
+            // Playhead, only when the player reports a length:
+            // position | track | length on one line -- under the transport,
+            // or on a wide cover beside it.
+            Item {
+                id: playhead
                 visible: hero.hasLength
-                width: parent.width
-                spacing: 4
+                x: 0
+                width: hero.wide ? parent.width - heroButtons.width - 10 : parent.width
+                height: Math.max(posText.implicitHeight, 16)
+                y: hero.wide ? controlsRow.y + Math.round((controlsRow.height - height) / 2)
+                    : controlsRow.y + controlsRow.height + 4
+                Text {
+                    id: posText
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.max(implicitWidth, lenText.implicitWidth)
+                    text: hero.hasLength ? hero.fmt(hero.player.position) : ""
+                    color: Theme.textMuted
+                    font.family: Theme.uiFontFamily
+                    font.pixelSize: Theme.fontSize - 3
+                    font.features: { "tnum": 1 }
+                }
+                Text {
+                    id: lenText
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    horizontalAlignment: Text.AlignRight
+                    width: Math.max(implicitWidth, posText.implicitWidth)
+                    text: hero.hasLength ? hero.fmt(hero.player.length) : ""
+                    color: Theme.textMuted
+                    font.family: Theme.uiFontFamily
+                    font.pixelSize: Theme.fontSize - 3
+                    font.features: { "tnum": 1 }
+                }
                 Rectangle {
                     id: heroTrack
-                    width: parent.width
+                    anchors.left: posText.right
+                    anchors.right: lenText.left
+                    anchors.leftMargin: 8
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
                     height: 4
                     radius: 2
-                    color: Theme.track
+                    color: Qt.rgba(1, 1, 1, 0.18)
                     Rectangle {
                         height: parent.height
                         radius: 2
                         color: Theme.text
                         width: hero.hasLength ? parent.width * Math.max(0, Math.min(1, hero.player.position / hero.player.length)) : 0
+                        // Glides between the once-a-second position reads
+                        // while playing, rather than ticking.
+                        Behavior on width {
+                            enabled: !!hero.player && hero.player.isPlaying
+                            NumberAnimation { duration: 1000; easing.type: Easing.Linear }
+                        }
                     }
                     MouseArea {
                         anchors.fill: parent
@@ -2493,47 +2885,16 @@ Pill {
                         onClicked: (mouse) => hero.player.position = hero.player.length * Math.max(0, Math.min(1, mouse.x / heroTrack.width))
                     }
                 }
-                Item {
-                    width: parent.width
-                    height: posText.implicitHeight
-                    Text {
-                        id: posText
-                        text: hero.hasLength ? hero.fmt(hero.player.position) : ""
-                        color: Theme.textDim
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 3
-                    }
-                    Text {
-                        anchors.right: parent.right
-                        text: hero.hasLength ? hero.fmt(hero.player.length) : ""
-                        color: Theme.textDim
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 3
-                    }
-                }
             }
+        }
 
-            Row {
-                anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 8
-                MediaButton {
-                    glyph: "\u{f04ae}" // nf-md-skip_previous
-                    enabledState: !!hero.player && hero.player.canGoPrevious
-                    onClicked: hero.player.previous()
-                }
-                MediaButton {
-                    glyph: hero.player && hero.player.isPlaying ? "\u{f03e4}" : "\u{f040a}" // pause / play
-                    big: true
-                    filled: true
-                    enabledState: !!hero.player && hero.player.canTogglePlaying
-                    onClicked: hero.player.togglePlaying()
-                }
-                MediaButton {
-                    glyph: "\u{f04ad}" // nf-md-skip_next
-                    enabledState: !!hero.player && hero.player.canGoNext
-                    onClicked: hero.player.next()
-                }
-            }
+        // The border on top, so the cover doesn't paint over it.
+        Rectangle {
+            anchors.fill: parent
+            radius: hero.radius
+            color: "transparent"
+            border.color: Theme.surfaceBorder
+            border.width: 1
         }
     }
 
@@ -2546,20 +2907,48 @@ Pill {
         property bool enabledState: true
         signal clicked()
 
-        width: mb.filled ? 40 : 34
-        height: mb.filled ? 40 : 34
+        width: mb.filled ? 28 : 34
+        height: mb.filled ? 28 : 34
         Rectangle {
             anchors.fill: parent
             radius: width / 2
             color: mb.filled ? (mbArea.containsMouse ? "white" : Theme.text)
                 : mbArea.containsMouse && mb.enabledState ? Theme.hoverFill : "transparent"
+            scale: mbArea.pressed ? 0.88 : 1
+            Behavior on color { ColorAnimation { duration: 120 } }
+            Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
         }
         Text {
-            anchors.centerIn: parent
+            id: mbGlyph
+            // Centered by hand on whole pixels: anchors.centerIn put the
+            // small play glyph a pixel left in its disc. The play triangle
+            // also gets nudged right -- its ink box is centered in the glyph,
+            // but a triangle's visual middle sits a third of the way in from
+            // its flat side, so a centered one reads as off to the left.
+            readonly property real nudge: mb.glyph === "\u{f040a}" ? font.pixelSize * 0.2 : 0
+            x: Math.round((parent.width - width) / 2 + nudge)
+            y: Math.round((parent.height - height) / 2)
             text: mb.glyph
             color: mb.filled ? Theme.textOnLight : mb.enabledState ? Theme.text : Theme.textDim
             font.family: Theme.fontFamily
-            font.pixelSize: mb.filled ? Theme.fontSize + 7 : mb.big ? Theme.fontSize + 11 : Theme.fontSize + 5
+            font.pixelSize: mb.filled ? Theme.fontSize - 1 : mb.big ? Theme.fontSize + 11 : Theme.fontSize + 5
+            scale: mbArea.pressed ? 0.88 : 1
+            Behavior on color { ColorAnimation { duration: 120 } }
+            Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+            transform: Scale { id: swapScale; origin.x: mbGlyph.width / 2; origin.y: mbGlyph.height / 2 }
+        }
+        // Play <-> pause: the new glyph fades and grows in instead of
+        // swapping in one frame. A separate Scale transform, so it doesn't
+        // fight the pressed scale above.
+        property string _shown: ""
+        onGlyphChanged: {
+            if (mb._shown !== "" && mb._shown !== mb.glyph) swapAnim.restart()
+            mb._shown = mb.glyph
+        }
+        ParallelAnimation {
+            id: swapAnim
+            NumberAnimation { target: mbGlyph; property: "opacity"; from: 0; to: 1; duration: 180; easing.type: Easing.OutCubic }
+            NumberAnimation { target: swapScale; properties: "xScale,yScale"; from: 0.5; to: 1; duration: 220; easing.type: Easing.OutBack }
         }
         MouseArea {
             id: mbArea
