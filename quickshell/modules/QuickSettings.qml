@@ -200,8 +200,8 @@ Pill {
         // keyboard: the bar taking exclusive keyboard focus (ShellState.keySink)
         // makes Hyprland clear the grab, and onCleared closed the whole card
         // the moment the field opened. Re-armed when the field lets go.
-        active: root.grabbing && !root.typing
-        onCleared: if (root.anyOpen && !root.typing) ShellState.activePopup = ""
+        active: root.grabbing && !root.typing && !ShellState.popupRemapping
+        onCleared: if (root.anyOpen && !root.typing && !ShellState.popupRemapping) ShellState.activePopup = ""
     }
 
     function nodeName(n) {
@@ -2081,7 +2081,14 @@ Pill {
                 width: root.cardWidth
                 spacing: Theme.sectionSpacing
 
-                Rectangle { width: parent.width; height: 1; color: Theme.separator }
+                // surfacePadding under the line, not sectionSpacing: the hub's
+                // system strip (Hub.qml) leaves that much under its own line,
+                // and the two lines continue each other across the card.
+                Item {
+                    width: parent.width
+                    height: 1 + Theme.surfacePadding - footerColumn.spacing
+                    Rectangle { width: parent.width; height: 1; color: Theme.separator }
+                }
 
                 // The deployed SichOS commit (was the Version tile), on its own
                 // line above the footer row: the hash and branch, then what

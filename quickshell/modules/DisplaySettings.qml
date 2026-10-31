@@ -327,10 +327,57 @@ Pill {
             popup.saveMonitorConfig(name, modeSpec, null)
         }
 
+        // A monitor's logical footprint (layout px) at a given scale --
+        // width/height are unrotated pixels, see the layout diagram.
+        function logicalSize(m, scale) {
+            const rotated = (m.transform === 1 || m.transform === 3
+                || m.transform === 5 || m.transform === 7)
+            const w = rotated ? m.height : m.width, h = rotated ? m.width : m.height
+            return { w: Math.round(w / scale), h: Math.round(h / scale) }
+        }
+
+        // A new scale changes the monitor's logical size, but Hyprland
+        // leaves every other monitor where it was: DP-1 at 1.25x is 2048px
+        // wide, so DP-2 at x=2560 would sit behind a 512px gap the cursor
+        // can't cross (and growing it would overlap). So every live monitor
+        // that starts at or past this one's old right/bottom edge moves by
+        // the size difference, keeping the arrangement touching. One
+        // hyprctl eval for all of it: separate detached calls could reach
+        // Hyprland in any order, and a neighbour moved before the rescale
+        // lands overlaps for a moment and gets shoved by Hyprland itself.
         function applyScale(name, scale) {
-            Quickshell.execDetached(["hyprctl", "eval",
-                'hl.monitor({output="' + name + '",scale=' + scale + '})'])
+            const m = popup.monitorFor(name)
+            let lua = 'hl.monitor({output="' + name + '",scale=' + scale + '})'
+            const moved = []
+            if (m) {
+                const before = popup.logicalSize(m, m.scale > 0 ? m.scale : 1)
+                const after = popup.logicalSize(m, scale)
+                const dw = after.w - before.w, dh = after.h - before.h
+                const right = m.x + before.w, bottom = m.y + before.h
+                for (const o of popup.freshMonitors) {
+                    if (o.name === name || o.disabled || (o.mirrorOf && o.mirrorOf !== "none")) continue
+                    // Only ones actually beside/below it: the laptop panel
+                    // under DP-1 mustn't move up when DP-2 shrinks.
+                    const os = popup.logicalSize(o, o.scale > 0 ? o.scale : 1)
+                    const sideBySide = o.y < bottom && o.y + os.h > m.y
+                    const stacked = o.x < right && o.x + os.w > m.x
+                    const x = sideBySide && o.x >= right ? o.x + dw : o.x
+                    const y = stacked && o.y >= bottom ? o.y + dh : o.y
+                    if (x === o.x && y === o.y) continue
+                    moved.push({ name: o.name, x: x, y: y })
+                    lua += ' hl.monitor({output="' + o.name + '",position="' + x + "x" + y + '"})'
+                }
+            }
+            popup.freshMonitors = popup.freshMonitors.map(o => {
+                if (o.name === name) return Object.assign({}, o, { scale: scale })
+                const mv = moved.find(v => v.name === o.name)
+                return mv ? Object.assign({}, o, { x: mv.x, y: mv.y }) : o
+            })
+            Quickshell.execDetached(["hyprctl", "eval", lua])
+            ShellState.rescaled(name)
             popup.saveMonitorConfig(name, null, String(scale))
+            for (const mv of moved) popup.saveMonitorConfig(mv.name, null, null, mv.x + "x" + mv.y)
+            refreshTimer.restart()
         }
 
         function saveMonitorConfig(name, modeSpec, scale, position) {
@@ -974,33 +1021,24 @@ Pill {
 
                             // Candidate stops -- there's no equivalent of
                             // availableModes for scale, monitors.lua just
-                            // takes any float, so this would otherwise be the
-                            // same small set of stops most desktop scaling
-                            // UIs offer ([1, 1.25, 1.6, 2, 2.5, 4]). Cut down
-                            // to just 1x for now: the bar's Language pill
-                            // (flag glyph, a color/bitmap emoji rather than a
-                            // Nerd Font icon) doesn't scale correctly at
-                            // anything else -- confirmed live it renders the
-                            // wrong size and, worse, drifts increasingly out
-                            // of vertical alignment with every other bar icon
-                            // as scale grows (0px off at 1x, ~8px+ low at
-                            // 2x). Every fix attempted (compensating pixelSize
-                            // by the real per-output Hyprland scale, a
-                            // calibrated vertical offset, a plain `scale`
-                            // transform instead of a bigger pixelSize) still
-                            // came out wrong at some stop -- Qt's color-emoji
-                            // rendering path just doesn't behave predictably
-                            // enough here to compensate for from outside.
-                            // Revert to the full list above once that's
-                            // actually fixed (or the flag glyph is replaced
-                            // with something that isn't a bitmap font).
-                            readonly property var scaleCandidates: [1]
+                            // takes any float. This used to be cut down to
+                            // just 1x: the bar's flag glyph (Language pill)
+                            // drew the wrong size and drifted low at other
+                            // scales under Noto Color Emoji. Since the emoji
+                            // font is Twemoji (vector, fontconfig/conf.d/
+                            // 55-sichos-twemoji.conf) it renders the same at
+                            // 1, 1.25, 1.6 and 2x (checked offscreen with
+                            // QT_SCALE_FACTOR, flag vs. Nerd Font icons).
+                            // 1.5 only survives the clean-division filter
+                            // below on 1080/1200-line panels, 1.6 on 1440.
+                            readonly property var scaleCandidates: [1, 1.25, 1.5, 1.6, 2, 2.5, 3]
 
                             // Actually-offered stops for this monitor: capped
                             // by native resolution (even 2x is already too
                             // much on a 1920x1200 panel -- a ~960x600 logical
                             // desktop is too cramped to be worth it, so that
-                            // tier caps at 1.6x instead) and filtered to only
+                            // tier caps at 1.6x instead, and 1440p at 2x: 2.5x
+                            // leaves a 1024x576 desktop) and filtered to only
                             // those that divide this panel's real resolution
                             // into a clean integer logical size, the same
                             // property that makes 2.5 vs. 3 matter above,
@@ -1008,7 +1046,7 @@ Pill {
                             readonly property var scaleOptions: {
                                 const w = row.modelData.width
                                 const h = row.modelData.height
-                                const maxScale = h <= 1200 ? 1.6 : (h <= 1440 ? 2.5 : 4)
+                                const maxScale = h <= 1200 ? 1.6 : (h <= 1440 ? 2 : 3)
                                 return row.scaleCandidates.filter(s => {
                                     if (s > maxScale) return false
                                     const lw = w / s, lh = h / s

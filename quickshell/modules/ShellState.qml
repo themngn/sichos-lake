@@ -26,6 +26,16 @@ QtObject {
     // widget's card open on every other monitor too.
     property string activePopupScreen: ""
 
+    // A monitor's scale changed (DisplaySettings.applyScale): the bar's card
+    // (MorphPopup, an xdg_popup) keeps rendering at the old scale -- blurry,
+    // upscaled or downsampled -- until it's unmapped, while the bar's own
+    // layer surface picks the new one up (seen live at 1.6x and 2x, cleared
+    // by closing the card). So that screen's MorphPopup re-maps itself.
+    // While it does, popupRemapping keeps the click-outside grabs from
+    // reading the unmap as a click outside and closing the Control Center.
+    signal rescaled(string screen)
+    property bool popupRemapping: false
+
     // While a popup that closes only on a click outside is open (the
     // Control Center: QuickSettings.qml sets its page ids here), other bar
     // popups mustn't take over on hover. Every widget's hover logic -- and

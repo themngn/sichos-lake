@@ -92,6 +92,31 @@ PopupWindow {
 
     mask: Region { item: card }
 
+    // Re-map after a scale change on this screen (see ShellState.rescaled).
+    // Delayed so Hyprland has applied the new scale before the new surface
+    // is created; the grab pause outlasts the re-map by a moment.
+    Connections {
+        target: ShellState
+        function onRescaled(screen) {
+            if (screen === host.bar.screen.name && host._open) remapTimer.restart()
+        }
+    }
+    Timer {
+        id: remapTimer
+        interval: 500
+        onTriggered: {
+            ShellState.popupRemapping = true
+            host._open = false
+            Qt.callLater(host._syncOpen)
+            remapDone.restart()
+        }
+    }
+    Timer {
+        id: remapDone
+        interval: 300
+        onTriggered: ShellState.popupRemapping = false
+    }
+
     // Geometry jumps straight to the first popup on open (the card's own
     // SurfaceAppear fade/scale plays instead) and only animates between
     // popups while already open.

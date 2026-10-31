@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Widgets
@@ -99,8 +100,8 @@ MorphContent {
     }
     HyprlandFocusGrab {
         windows: [hub.QsWindow.window, hub.barWindow].filter(w => !!w)
-        active: hub._grabbing
-        onCleared: if (hub._ownOpen) ShellState.activePopup = ""
+        active: hub._grabbing && !ShellState.popupRemapping
+        onCleared: if (hub._ownOpen && !ShellState.popupRemapping) ShellState.activePopup = ""
     }
 
     // Swallows clicks on the card's empty areas.
@@ -208,13 +209,30 @@ MorphContent {
                 visible: !hub.phoneOpen
                 anchors.top: notifHeader.bottom
                 anchors.topMargin: 6
-                anchors.bottom: phoneCard.top
-                anchors.bottomMargin: 8
+                anchors.bottom: notifDivider.top
+                anchors.bottomMargin: Theme.sectionSpacing
                 width: parent.width
                 clip: true
                 spacing: 6
                 boundsBehavior: Flickable.StopAtBounds
                 model: hub.groupedEntries
+
+                // A card the list cuts off fades out into the card instead of
+                // ending on a hard edge -- at the bottom while there's more
+                // below, at the top once scrolled, so either end of the list
+                // stays crisp when reached. An alpha mask, not a gradient
+                // painted over it: the card is translucent with Transparency
+                // on, and a surface-coloured overlay would show as a band.
+                readonly property bool overflows: notifList.contentHeight > notifList.height
+                readonly property bool fadeTop: notifList.overflows && !notifList.atYBeginning
+                readonly property bool fadeBottom: notifList.overflows && !notifList.atYEnd
+                layer.enabled: notifList.fadeTop || notifList.fadeBottom
+                layer.effect: MultiEffect {
+                    maskEnabled: true
+                    maskSource: notifFadeMask
+                    maskThresholdMin: 0.5
+                    maskSpreadAtMin: 1.0
+                }
 
                 delegate: Loader {
                     id: row
@@ -247,6 +265,36 @@ MorphContent {
                         }
                     }
                 }
+            }
+            // notifList's fade: a 48px ramp from transparent at each end that
+            // has more beyond it, opaque between (rendered only into its
+            // layer, never on screen).
+            Item {
+                id: notifFadeMask
+                readonly property real ramp: Math.min(0.5, 48 / Math.max(1, height))
+                width: notifList.width
+                height: notifList.height
+                visible: false
+                layer.enabled: true
+                Rectangle {
+                    anchors.fill: parent
+                    gradient: Gradient {
+                        GradientStop { position: 0; color: notifList.fadeTop ? "transparent" : "white" }
+                        GradientStop { position: notifFadeMask.ramp; color: "white" }
+                        GradientStop { position: 1 - notifFadeMask.ramp; color: "white" }
+                        GradientStop { position: 1; color: notifList.fadeBottom ? "transparent" : "white" }
+                    }
+                }
+            }
+            // Between the notifications and the phone card.
+            Rectangle {
+                id: notifDivider
+                visible: notifList.visible
+                anchors.bottom: phoneCard.top
+                anchors.bottomMargin: Theme.sectionSpacing
+                width: parent.width
+                height: 1
+                color: Theme.separator
             }
             PhoneCard {
                 id: phoneCard
@@ -297,7 +345,10 @@ MorphContent {
         }
         }
 
-        Separator { id: sep2; visible: hub.hasControls }
+        // No padding after the line: the Control Center's pages bring their
+        // own surfacePadding, so the full Separator gave that column twice
+        // the left margin of the others.
+        Separator { id: sep2; visible: hub.hasControls; trailingPad: false }
 
         // --- Controls: QuickSettings' pages land here (see the top) ---
         Item {
@@ -871,7 +922,8 @@ MorphContent {
     }
 
     component Separator: Item {
-        width: 2 * Theme.surfacePadding + 1
+        property bool trailingPad: true
+        width: (trailingPad ? 2 : 1) * Theme.surfacePadding + 1
         height: parent ? parent.height : 0
         Rectangle {
             x: Theme.surfacePadding
@@ -1099,6 +1151,10 @@ MorphContent {
             visible: ws.ready
             spacing: 12
             Text {
+                // Centred in the first hourly column, over the first hour
+                // and "Today" (the forecast rows' grid, below).
+                width: ws.width / 8
+                horizontalAlignment: Text.AlignHCenter
                 anchors.verticalCenter: parent.verticalCenter
                 text: ws.ready ? ws.weather.iconFor(ws.weather.code, ws.weather.isDay) : ""
                 font.family: ws.iconFont
@@ -1214,8 +1270,13 @@ MorphContent {
                     height: 30
                     Text {
                         id: dayName
-                        width: 46
+                        // The name and icon sit in the first two hourly
+                        // columns, centred like the hours and icons above
+                        // (and the high in the last one): flush with the
+                        // column's edge they were off that grid.
+                        width: ws.width / 8
                         anchors.verticalCenter: parent.verticalCenter
+                        horizontalAlignment: Text.AlignHCenter
                         text: {
                             if (dayRow.index === 0) return "Today"
                             const p = (dayRow.modelData.date || "").split("-")
@@ -1228,7 +1289,7 @@ MorphContent {
                     Text {
                         id: dayIcon
                         anchors.left: dayName.right
-                        width: 36
+                        width: ws.width / 8
                         anchors.verticalCenter: parent.verticalCenter
                         horizontalAlignment: Text.AlignHCenter
                         text: ws.weather.iconFor(dayRow.modelData.code, true)
@@ -1249,10 +1310,13 @@ MorphContent {
                     }
                     Text {
                         id: dayHi
+                        // One hourly column wide and centred like the hourly
+                        // temps above it: right-aligned at the column's edge
+                        // it stuck out past them and the calendar.
                         anchors.right: parent.right
-                        width: 32
+                        width: ws.width / 8
                         anchors.verticalCenter: parent.verticalCenter
-                        horizontalAlignment: Text.AlignRight
+                        horizontalAlignment: Text.AlignHCenter
                         text: Math.round(dayRow.modelData.tempMax) + "°"
                         font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize - 1
@@ -1263,7 +1327,7 @@ MorphContent {
                         anchors.left: dayLo.right
                         anchors.leftMargin: 10
                         anchors.right: dayHi.left
-                        anchors.rightMargin: 6
+                        anchors.rightMargin: 2
                         anchors.verticalCenter: parent.verticalCenter
                         height: 5
                         radius: height / 2
