@@ -26,7 +26,7 @@ hl.config({
 
     decoration = {
         rounding       = 0,
-        rounding_power = 0,
+        rounding_power = 2, -- Hyprland 0.57+ rejects < 1; no effect while rounding = 0
 
         -- Change transparency of focused and unfocused windows
         active_opacity   = 1.0,

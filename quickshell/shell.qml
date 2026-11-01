@@ -12,12 +12,6 @@ ShellRoot {
     Variants {
         model: Quickshell.screens
 
-        NowPlaying {}
-    }
-
-    Variants {
-        model: Quickshell.screens
-
         IdleDimOverlay {}
     }
 

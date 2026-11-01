@@ -35,7 +35,7 @@ import Quickshell.Hyprland
 // to next, it does NOT turn HDR on for this popup's monitor (see
 // HdrSettings.qml's own header for why that's opt-in and global-switched
 // rather than direct). The VRR/HDR checkboxes always occupy the same space
-// regardless of state (greyed-out MonitorCheckbox.capable, never
+// regardless of state (greyed-out PageRow.available, never
 // visible:false) so picking a different monitor above never resizes the
 // popup depending on what that monitor happens to support.
 Pill {
@@ -253,7 +253,7 @@ Pill {
         // refresh rate at its native resolution (confirmed live on this
         // machine -- the 165Hz Iiyama lists 4 rates at 2560x1440, the plain
         // 60Hz Lenovo lists only 1). A `false` here greys the checkbox out
-        // and blocks toggling it (MonitorCheckbox.capable) -- unlike
+        // and blocks toggling it (PageRow.available) -- unlike
         // HdrSettings/HdrPopup's own capability check, which only hints via
         // opacity and still lets an already-selected monitor be unchecked.
         function vrrCapable(m) {
@@ -465,38 +465,11 @@ Pill {
                 anchors.centerIn: parent
                 spacing: Theme.sectionSpacing
 
-                // Header
-                Item {
+                PageHeader {
                     width: popup.contentWidth
-                    height: 20
-
-                    Row {
-                        spacing: 6
-                        anchors.left: parent.left
-                        anchors.verticalCenter: parent.verticalCenter
-                        BackButton {
-                            visible: root.backPopupId !== ""
-                            onClicked: ShellState.activePopup = root.backPopupId
-                        }
-                        HeaderIcon {
-                            glyph: "󰹑"
-                            color: Theme.accent
-                        }
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "Display"
-                            font.family: Theme.uiFontFamily
-                            font.pixelSize: Theme.fontSize
-                            font.bold: true
-                            color: Theme.text
-                        }
-                    }
-                }
-
-                Rectangle {
-                    width: popup.contentWidth
-                    height: 1
-                    color: Theme.separator
+                    title: "Display"
+                    showBack: root.backPopupId !== ""
+                    onBack: ShellState.activePopup = root.backPopupId
                 }
 
                 Item {
@@ -504,7 +477,7 @@ Pill {
                     height: layoutLabel.implicitHeight
                     SectionLabel {
                         id: layoutLabel
-                        text: "Layout"
+                        text: "Arrangement"
                     }
                     Text {
                         visible: layoutBox.rects.filter(r => r.movable).length > 1
@@ -705,15 +678,18 @@ Pill {
                             y: modelData.ry + dragDY
                             z: dragArea.dragging ? 1 : 0
                             opacity: dragArea.dragging ? 0.85 : monRect.modelData.disabled ? 0.55 : 1
-                            width: modelData.rw
-                            height: modelData.rh
+                            // Fill only, like the Control Center's tiles --
+                            // so touching monitors keep a hairline gap
+                            // between them instead of merging into one box.
+                            width: Math.max(2, modelData.rw - 3)
+                            height: Math.max(2, modelData.rh - 3)
                             radius: Theme.controlRadius
                             readonly property bool selected: popup.selectedMonitor === modelData.name
-                            color: monRect.selected
-                                ? Theme.selectedFill
-                                : monRect.modelData.disabled ? "transparent" : Theme.controlFill
-                            border.width: 1
-                            border.color: monRect.selected ? Theme.accent : Theme.surfaceBorder
+                            color: monRect.selected ? Theme.selectedFill
+                                : monRect.modelData.disabled ? "transparent"
+                                : dragArea.containsMouse ? Theme.hoverFill : Theme.controlFill
+                            border.width: monRect.modelData.disabled ? 1 : 0
+                            border.color: Theme.surfaceBorder
 
                             // Click selects; past a few px it's a drag instead
                             // (and selects too). Positions are taken in
@@ -724,6 +700,7 @@ Pill {
                                 anchors.fill: parent
                                 // Nothing to set on an output that's off.
                                 enabled: !monRect.modelData.disabled
+                                hoverEnabled: true
                                 cursorShape: dragArea.dragging ? Qt.ClosedHandCursor : Qt.PointingHandCursor
                                 property bool dragging: false
                                 property point start
@@ -775,23 +752,24 @@ Pill {
                             Text {
                                 anchors.top: parent.top
                                 anchors.left: parent.left
-                                anchors.margins: 4
+                                anchors.margins: 6
                                 // Full width rather than sharing with the
                                 // model corner when there's no model text
                                 // to share with (the "Built-in Display"
                                 // label set in place of brand for the
                                 // laptop panel, which leaves model blank).
-                                width: (monRect.modelData.model ? parent.width / 2 - 2 : parent.width - 8)
+                                width: (monRect.modelData.model ? parent.width / 2 - 2 : parent.width - 12)
                                 text: monRect.modelData.brand
-                                color: Theme.textMuted
+                                color: Theme.text
                                 font.family: Theme.uiFontFamily
-                                font.pixelSize: Theme.fontSize - 4
+                                font.pixelSize: Theme.fontSize - 3
+                                font.bold: true
                                 elide: Text.ElideRight
                             }
                             Text {
                                 anchors.top: parent.top
                                 anchors.right: parent.right
-                                anchors.margins: 4
+                                anchors.margins: 6
                                 width: parent.width / 2 - 2
                                 horizontalAlignment: Text.AlignRight
                                 text: monRect.modelData.model
@@ -803,10 +781,10 @@ Pill {
                             Text {
                                 anchors.bottom: parent.bottom
                                 anchors.left: parent.left
-                                anchors.margins: 4
+                                anchors.margins: 6
                                 width: parent.width / 2 - 2
                                 text: monRect.modelData.name
-                                color: monRect.selected ? Theme.accent : Theme.textMuted
+                                color: monRect.selected ? Theme.text : Theme.textMuted
                                 font.family: Theme.uiFontFamily
                                 font.pixelSize: Theme.fontSize - 4
                                 elide: Text.ElideRight
@@ -814,7 +792,7 @@ Pill {
                             Row {
                                 anchors.bottom: parent.bottom
                                 anchors.right: parent.right
-                                anchors.margins: 4
+                                anchors.margins: 6
                                 spacing: 2
 
                                 Text {
@@ -844,7 +822,7 @@ Pill {
                                 width: parent.width - 8
                                 horizontalAlignment: Text.AlignHCenter
                                 elide: Text.ElideRight
-                                text: monRect.modelData.disabled ? monRect.modelData.offText : "This"
+                                text: monRect.modelData.disabled ? monRect.modelData.offText : "This screen"
                                 color: Theme.textDim
                                 font.family: Theme.uiFontFamily
                                 font.pixelSize: Theme.fontSize - 4
@@ -862,16 +840,6 @@ Pill {
                     }
                 }
 
-                Rectangle {
-                    width: popup.contentWidth
-                    height: 1
-                    color: Theme.separator
-                }
-
-                SectionLabel {
-                    text: "Settings"
-                }
-
                 Column {
                     width: popup.contentWidth
                     spacing: 10
@@ -883,7 +851,7 @@ Pill {
                             id: row
                             required property var modelData
                             width: popup.contentWidth
-                            spacing: 12
+                            spacing: Theme.sectionSpacing
 
                             readonly property bool isLaptopPanel: popup.isLaptopPanel(row.modelData.name)
                             readonly property var ddc: popup.ddcFor(row.modelData.name)
@@ -899,10 +867,6 @@ Pill {
                             property int percent: row.hasDdc && row.ddc.max > 0
                                 ? Math.round(row.ddc.brightness / row.ddc.max * 100)
                                 : (row.isLaptopPanel ? popup.backlightPercent : 0)
-
-                            function _percentAt(x) {
-                                return Math.max(0, Math.min(100, Math.round(x / (row.width - 40) * 100)))
-                            }
 
                             // "WxH@RRRHz" strings straight from hyprctl monitors
                             // -j's own availableModes.
@@ -1080,16 +1044,26 @@ Pill {
                                 popup.applyScale(row.modelData.name, scale)
                             }
 
+                            // The selected monitor, as the Control Center's
+                            // tiles draw a thing: what it is, and how it runs.
+                            PageRow {
+                                clickable: false
+                                glyph: row.isLaptopPanel ? "\u{f0322}" : "\u{f0e51}"
+                                active: true
+                                title: row.isLaptopPanel ? "Built-in Display"
+                                    : (popup.friendlyMake(row.modelData.make) + " " + (row.modelData.model || "")).trim()
+                                subtitle: row.modelData.name + " · "
+                                    + row.modelData.width + "×" + row.modelData.height + " · "
+                                    + Math.round(row.modelData.refreshRate || 0) + " Hz"
+                                    + (row.modelData.name === root.screenName ? " · this screen" : "")
+                            }
+
                             Column {
                                 width: parent.width
-                                spacing: 4
+                                spacing: 2
 
-                                Text {
-                                    text: "Resolution ("
-                                        + row.aspectLabel(row.modelData.width, row.modelData.height) + ")"
-                                    color: Theme.textMuted
-                                    font.family: Theme.uiFontFamily
-                                    font.pixelSize: Theme.fontSize - 1
+                                SectionLabel {
+                                    text: "Resolution · " + row.aspectLabel(row.modelData.width, row.modelData.height)
                                 }
 
                                 // Side by side, 3:2 -- "2560x1440" needs more
@@ -1101,151 +1075,64 @@ Pill {
 
                                     ModePicker {
                                         boxWidth: Math.floor((popup.contentWidth - 6) * 3 / 5)
-                                        current: row.selectedRes
-                                        options: row.resolutions
-                                        onPicked: (value) => row.pickResolution(value)
+                                        current: row.selectedRes.replace("x", " × ")
+                                        options: row.resolutions.map(r => r.replace("x", " × "))
+                                        onPicked: (value) => row.pickResolution(value.replace(" × ", "x"))
                                     }
 
                                     ModePicker {
                                         boxWidth: Math.floor((popup.contentWidth - 6) * 2 / 5)
-                                        current: Math.round(parseFloat(row.selectedRate)) + "Hz"
+                                        current: Math.round(parseFloat(row.selectedRate)) + " Hz"
                                         options: row.ratesFor(row.selectedRes)
-                                            .map(r => Math.round(parseFloat(r)) + "Hz")
+                                            .map(r => Math.round(parseFloat(r)) + " Hz")
                                         onPicked: (value) => row.pickRate(row.preciseRateFor(value))
                                     }
                                 }
                             }
 
+                            // Fixed, individually meaningful stops (not a
+                            // continuous range), few enough to all show.
                             Column {
                                 width: parent.width
-                                spacing: 4
+                                spacing: 2
 
-                                Text {
+                                SectionLabel {
                                     text: "Scale"
-                                    color: Theme.textMuted
-                                    font.family: Theme.uiFontFamily
-                                    font.pixelSize: Theme.fontSize - 1
                                 }
-
-                                // Same button shape as HdrPopup.qml's own On/Off
-                                // mode switch -- one per scaleOptions entry
-                                // rather than a slider, since these are fixed,
-                                // individually-meaningful stops (not a
-                                // continuous range) that are few enough to all
-                                // show at once.
-                                Row {
-                                    id: scaleButtons
+                                Segmented {
                                     width: parent.width
-                                    spacing: 4
-
-                                    Repeater {
-                                        model: row.scaleOptions
-
-                                        delegate: Rectangle {
-                                            id: scaleButton
-                                            required property real modelData
-                                            readonly property bool isActive: row.selectedScale === scaleButton.modelData
-                                            width: (scaleButtons.width - 4 * (row.scaleOptions.length - 1))
-                                                / row.scaleOptions.length
-                                            height: Theme.controlHeight
-                                            radius: Theme.controlRadius
-                                            color: scaleButton.isActive
-                                                ? Theme.selectedFill
-                                                : scaleArea.containsMouse ? Theme.hoverFill : Theme.controlFill
-                                            border.width: 1
-                                            border.color: scaleButton.isActive ? Theme.accent : Theme.surfaceBorder
-
-                                            Text {
-                                                anchors.centerIn: parent
-                                                text: scaleButton.modelData + "x"
-                                                color: scaleButton.isActive ? Theme.text : Theme.textMuted
-                                                font.family: Theme.uiFontFamily
-                                                font.pixelSize: Theme.fontSize - 1
-                                            }
-                                            MouseArea {
-                                                id: scaleArea
-                                                hoverEnabled: true
-                                                anchors.fill: parent
-                                                cursorShape: Qt.PointingHandCursor
-                                                onClicked: row.pickScale(scaleButton.modelData)
-                                            }
-                                        }
-                                    }
+                                    options: row.scaleOptions.map(s => ({ value: s, label: s + "×" }))
+                                    current: row.selectedScale
+                                    onPicked: (value) => row.pickScale(value)
                                 }
                             }
 
+                            // DDC for a desktop monitor, the laptop panel's
+                            // own backlight otherwise (see popup.hasBacklight/
+                            // backlightPercent above). The "none" line is as
+                            // tall as the slider, so the card keeps its size
+                            // between monitors.
                             Column {
                                 width: parent.width
-                                spacing: 4
+                                spacing: 2
 
-                                Text {
+                                SectionLabel {
                                     text: "Brightness"
-                                    color: Theme.textMuted
-                                    font.family: Theme.uiFontFamily
-                                    font.pixelSize: Theme.fontSize - 1
                                 }
-
-                                // Brightness slider -- DDC for a desktop monitor,
-                                // the laptop panel's own backlight otherwise (see
-                                // popup.hasBacklight/backlightPercent above).
-                                // A full text line tall (the % label's height), with
-                                // the track centered in it, rather than only as
-                                // tall as the track -- so it's the same height as
-                                // the "No brightness control" line below and the
-                                // popup doesn't change size between monitors.
-                                Row {
+                                SliderRow {
                                     visible: row.hasBrightness
                                     width: parent.width
-                                    height: percentText.implicitHeight
-                                    spacing: 6
-
-                                    Rectangle {
-                                        id: track
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: parent.width - 40
-                                        height: Theme.trackHeight
-                                        radius: Theme.trackRadius
-                                        color: Theme.track
-
-                                        Rectangle {
-                                            width: track.width * (row.percent / 100)
-                                            height: parent.height
-                                            radius: Theme.trackRadius
-                                            color: Theme.accent
-                                        }
-
-                                        MouseArea {
-                                            anchors.fill: parent
-                                            onPositionChanged: (mouse) => {
-                                                if (pressed) {
-                                                    row.percent = row._percentAt(mouse.x)
-                                                    commitTimer.restart()
-                                                }
-                                            }
-                                            onPressed: (mouse) => {
-                                                row.percent = row._percentAt(mouse.x)
-                                                commitTimer.restart()
-                                            }
-                                            onWheel: (wheel) => {
-                                                row.percent = Math.max(0, Math.min(100, row.percent + (wheel.angleDelta.y > 0 ? 2 : -2)))
-                                                commitTimer.restart()
-                                            }
-                                        }
-                                    }
-                                    Text {
-                                        id: percentText
-                                        width: 34
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: row.percent + "%"
-                                        color: Theme.textDim
-                                        font.family: Theme.uiFontFamily
-                                        font.pixelSize: Theme.fontSize - 1
+                                    glyph: "\u{f00e0}" // nf-md-brightness_6
+                                    hasMore: false
+                                    value: row.percent / 100
+                                    onMoved: (v) => {
+                                        row.percent = Math.round(v * 100)
+                                        commitTimer.restart()
                                     }
                                 }
-
                                 Text {
                                     visible: !row.hasBrightness
-                                    height: percentText.implicitHeight
+                                    height: Theme.controlHeight + 4
                                     verticalAlignment: Text.AlignVCenter
                                     text: "No brightness control"
                                     color: Theme.textDim
@@ -1267,35 +1154,49 @@ Pill {
                                 }
                             }
 
+                            // Greyed (never hidden) when this monitor can't
+                            // do it, so picking another monitor above never
+                            // changes how many rows there are.
                             Column {
                                 width: parent.width
-                                spacing: 4
+                                spacing: 6
 
-                                Text {
-                                    text: "Options"
-                                    color: Theme.textMuted
-                                    font.family: Theme.uiFontFamily
-                                    font.pixelSize: Theme.fontSize - 1
+                                PageRow {
+                                    glyph: "\u{f04c5}" // nf-md-speedometer
+                                    title: "Variable refresh rate"
+                                    subtitle: !row.vrrCapable ? "Not supported by this display"
+                                        : popup.isVrrEnabled(row.modelData.name) ? "In fullscreen games and video" : "Off"
+                                    available: row.vrrCapable
+                                    active: popup.isVrrEnabled(row.modelData.name)
+                                    onClicked: popup.toggleVrr(row.modelData.name)
+                                    Switch {
+                                        checked: popup.isVrrEnabled(row.modelData.name)
+                                        onToggled: popup.toggleVrr(row.modelData.name)
+                                    }
                                 }
 
-                                MonitorCheckbox {
-                                    label: "Variable refresh rate"
-                                    capable: row.vrrCapable
-                                    checked: popup.isVrrEnabled(row.modelData.name)
-                                    onToggled: popup.toggleVrr(row.modelData.name)
-                                }
-
-                                // Undefined (capability check hasn't returned yet)
-                                // or null (EDID unreadable/no CTA-861 block) both
-                                // mean "can't tell", not "unsupported" -- treated
-                                // as capable, same reasoning as HdrPopup.qml's own
-                                // use of this script. Only a confirmed `false`
-                                // greys it out.
-                                MonitorCheckbox {
-                                    label: "Use this display for HDR"
-                                    capable: row.hdrCapable !== false
-                                    checked: HdrSettings.isSelected(row.modelData.name)
-                                    onToggled: HdrSettings.toggleMonitor(row.modelData.name)
+                                // Undefined (capability check hasn't returned
+                                // yet) or null (EDID unreadable/no CTA-861
+                                // block) both mean "can't tell", not
+                                // "unsupported" -- treated as capable, same
+                                // reasoning as HdrPopup.qml's own use of this
+                                // script. Only a confirmed `false` greys it.
+                                // This only picks which monitors HDR applies
+                                // to; HDR itself is switched on its own page.
+                                PageRow {
+                                    glyph: "\u{f02f5}"
+                                    glyphInkWidth: 28 * 0.8
+                                    title: "Use for HDR"
+                                    subtitle: row.hdrCapable === false ? "Not supported by this display"
+                                        : !HdrSettings.isSelected(row.modelData.name) ? "Off"
+                                        : HdrSettings.active ? "HDR is on" : "When HDR is turned on"
+                                    available: row.hdrCapable !== false
+                                    active: HdrSettings.isSelected(row.modelData.name)
+                                    onClicked: HdrSettings.toggleMonitor(row.modelData.name)
+                                    Switch {
+                                        checked: HdrSettings.isSelected(row.modelData.name)
+                                        onToggled: HdrSettings.toggleMonitor(row.modelData.name)
+                                    }
                                 }
                             }
                         }
@@ -1309,41 +1210,6 @@ Pill {
                         font.pixelSize: Theme.fontSize - 1
                     }
                 }
-            }
-        }
-
-        // Similar shape to HdrPopup.qml's own MonitorCheckbox, but blocks
-        // the click when `capable` is false (that popup only greys out as a
-        // hint and still allows toggling). Greyed out rather than hidden so
-        // switching the selected monitor above never changes how many rows
-        // this Column has.
-        component MonitorCheckbox: Item {
-            id: checkbox
-            property string label: ""
-            property bool checked: false
-            property bool capable: true
-            signal toggled()
-
-            width: parent.width
-            height: checkText.implicitHeight
-            opacity: checkbox.capable ? 1 : 0.5
-
-            Text {
-                id: checkText
-                width: parent.width
-                elide: Text.ElideRight
-                text: (checkbox.checked ? "󰄲  " : "󰄱  ") + checkbox.label
-                font.family: Theme.uiFontFamily
-                font.pixelSize: Theme.fontSize - 1
-                color: checkArea.containsMouse ? Theme.text : Theme.textMuted
-            }
-            MouseArea {
-                id: checkArea
-                anchors.fill: parent
-                hoverEnabled: true
-                enabled: checkbox.capable
-                cursorShape: checkbox.capable ? Qt.PointingHandCursor : Qt.ArrowCursor
-                onClicked: checkbox.toggled()
             }
         }
 
@@ -1416,21 +1282,16 @@ Pill {
             Rectangle {
                 id: box
                 width: picker.boxWidth
-                height: Theme.controlHeight
+                height: Theme.controlHeight + 4
                 radius: Theme.controlRadius
-
-                // Same "sunken control" look on the closed box regardless of
-                // hover/open state -- only the border lights up, same
-                // treatment TimeSpinner's arrows give hover via containsMouse.
-                color: Theme.controlFill
-                border.width: 1
-                border.color: (boxHover.containsMouse || picker.expanded)
-                    ? Theme.accent : Theme.surfaceBorder
+                // Fill only, like the page's other controls.
+                color: picker.expanded ? Theme.selectedFill
+                    : boxHover.containsMouse ? Theme.hoverFill : Theme.controlFill
 
                 Text {
                     anchors.left: parent.left
-                    anchors.leftMargin: 8
-                    anchors.right: sep.left
+                    anchors.leftMargin: 10
+                    anchors.right: arrowBox.left
                     anchors.rightMargin: 6
                     anchors.verticalCenter: parent.verticalCenter
                     elide: Text.ElideRight
@@ -1440,28 +1301,18 @@ Pill {
                     font.pixelSize: Theme.fontSize - 1
                 }
 
-                // Vertical divider ahead of the arrow -- the detail that
-                // reads as "this is a button glued onto a field" rather than
-                // just an arrow floating at the end of a text label.
-                Rectangle {
-                    id: sep
-                    anchors.right: arrowBox.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 1
-                    height: parent.height - 10
-                    color: Theme.surfaceBorder
-                }
-
                 Item {
                     id: arrowBox
                     anchors.right: parent.right
-                    width: 22
+                    width: 26
                     height: parent.height
 
                     Text {
                         anchors.centerIn: parent
-                        text: picker.expanded ? "▲" : "▼"
-                        color: boxHover.containsMouse ? Theme.accent : Theme.textMuted
+                        text: "\u{f078}" // nf-fa-chevron_down
+                        rotation: picker.expanded ? 180 : 0
+                        Behavior on rotation { NumberAnimation { duration: 120 } }
+                        color: boxHover.containsMouse || picker.expanded ? Theme.text : Theme.textMuted
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontSize - 4
                     }
@@ -1508,8 +1359,9 @@ Pill {
 
                 Column {
                     id: optionsColumn
+                    x: 2
                     y: 2
-                    width: parent.width
+                    width: parent.width - 4
 
                     Repeater {
                         model: picker.options
@@ -1518,22 +1370,20 @@ Pill {
                             id: optionRow
                             required property string modelData
                             readonly property bool isCurrent: optionRow.modelData === picker.current
-                            width: picker.boxWidth
-                            height: 22
-                            radius: Theme.controlRadius
-                            color: optionHover.containsMouse
-                                ? Theme.selectedFill
-                                : (optionRow.isCurrent
-                                    ? Theme.hoverFill
-                                    : "transparent")
+                            width: optionsColumn.width
+                            height: Theme.controlHeight
+                            radius: Theme.controlRadius - 1
+                            color: optionRow.isCurrent ? Theme.selectedFill
+                                : optionHover.containsMouse ? Theme.hoverFill : "transparent"
 
                             Text {
                                 anchors.centerIn: parent
                                 width: optionRow.width - 8
                                 elide: Text.ElideRight
-                                horizontalAlignment: Text.AlignHCenter
+                                font.bold: optionRow.isCurrent
+                                leftPadding: 6
                                 text: optionRow.modelData
-                                color: optionRow.isCurrent ? Theme.accent : Theme.textMuted
+                                color: optionRow.isCurrent ? Theme.text : Theme.textMuted
                                 font.family: Theme.uiFontFamily
                                 font.pixelSize: Theme.fontSize - 1
                             }

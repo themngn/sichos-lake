@@ -204,48 +204,52 @@ Pill {
                 }
                 spacing: Theme.sectionSpacing
 
-                Row {
-                    spacing: 6
-                    BackButton {
-                        visible: root.backPopupId !== ""
-                        onClicked: ShellState.activePopup = root.backPopupId
-                    }
-                    HeaderIcon {
-                        glyph: "󰚰"
-                        color: Theme.accent
-                    }
+                PageHeader {
+                    title: "System Update"
+                    showBack: root.backPopupId !== ""
+                    onBack: ShellState.activePopup = root.backPopupId
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "System Update"
+                        text: checkProc.running ? "Checking…" : "Check now"
+                        color: checkArea.containsMouse ? Theme.accentHover : Theme.accent
                         font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize
-                        font.bold: true
-                        color: Theme.text
+                        font.pixelSize: Theme.fontSize - 1
+                        MouseArea {
+                            id: checkArea
+                            anchors.fill: parent
+                            anchors.margins: -4
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (!checkProc.running) checkProc.running = true
+                        }
                     }
                 }
 
-                Rectangle {
-                    width: parent.width
-                    height: 1
-                    color: Theme.separator
-                }
-
-                Text {
-                    width: parent.width
-                    text: root._breakdownText()
-                    color: Theme.text
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 1
-                    wrapMode: Text.Wrap
+                PageRow {
+                    clickable: false
+                    glyph: "\u{f06b0}"
+                    active: !!root.count
+                    busy: checkProc.running || root.updating
+                    title: root._breakdownText()
+                    subtitle: !root.checkedAt ? "Not checked yet"
+                        : (root.lastCheckOk ? "Checked " : "Check failed ") + root._dateText(root.checkedAt)
+                    subtitleColor: root.lastCheckOk || !root.checkedAt ? Theme.textMuted : Theme.critical
                 }
 
                 // What's pending, dnf then Flatpak (the order `packages`
                 // comes in); scrolls past ~10 rows rather than growing the
                 // card off the screen, cut mid-row so it reads as scrollable.
-                ListView {
-                    id: pkgList
+                Rectangle {
                     visible: root.packages.length > 0
                     width: parent.width
+                    height: pkgList.height + 12
+                    radius: Theme.controlRadius
+                    color: Theme.controlFill
+                ListView {
+                    id: pkgList
+                    x: 10
+                    y: 4
+                    width: parent.width - 20
                     height: Math.min(contentHeight, 22 + 10.5 * 20)
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
@@ -296,6 +300,8 @@ Pill {
                     }
                 }
 
+                }
+
                 Text {
                     // system-update-check.py caps the list at 200 rows.
                     visible: root.count !== null && root.packages.length > 0 && root.count > root.packages.length
@@ -306,56 +312,31 @@ Pill {
                 }
 
                 Text {
-                    text: "Last updated: " + root._dateText(root.lastUpdateEpoch)
-                    color: Theme.textMuted
+                    text: "Last updated " + root._dateText(root.lastUpdateEpoch)
+                    color: Theme.textDim
                     font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 2
+                    font.pixelSize: Theme.fontSize - 3
                 }
 
-                Item {
-                    width: parent.width
-                    height: checkNowLabel.implicitHeight
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: root.checkedAt
-                            ? (root.lastCheckOk ? "Checked " : "Check failed ") + root._dateText(root.checkedAt)
-                            : "Not checked yet"
-                        color: root.lastCheckOk ? Theme.textDim : Theme.critical
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 3
-                    }
-
-                    Text {
-                        id: checkNowLabel
-                        anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: checkProc.running ? "Checking…" : "Check now"
-                        color: Theme.accent
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 1
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: if (!checkProc.running) checkProc.running = true
-                        }
-                    }
-                }
-
+                // The page's one action, the accent button (as the VPN
+                // page's Reconnect).
                 Rectangle {
                     width: parent.width
-                    height: Theme.controlHeight
+                    height: Theme.controlHeight + 8
                     radius: Theme.controlRadius
+                    // Accent only with something to install.
+                    readonly property bool primary: !root.updating && !!root.count
                     color: root.updating ? Theme.controlFill
-                        : updateArea.containsMouse ? Theme.hoverFill : Theme.selectedFill
+                        : !primary ? (updateArea.containsMouse ? Theme.hoverFill : Theme.controlFill)
+                        : updateArea.containsMouse ? Theme.accentHover : Theme.accent
 
                     Text {
                         anchors.centerIn: parent
-                        text: root.updating ? "Updating…" : "Update All"
-                        color: root.updating ? Theme.textDim : Theme.text
+                        text: root.updating ? "Updating…" : "Update all"
+                        color: root.updating ? Theme.textDim : parent.primary ? Theme.textOnLight : Theme.text
                         font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize - 1
+                        font.bold: parent.primary
                     }
 
                     MouseArea {

@@ -94,7 +94,28 @@ Item {
         0xf033f: [0, -75, 60, 79],  // lock-open
         0xf04b2: [0, -58, 60, 44],  // sleep (zzz)
         0xf0343: [0, -69, 59, 66],  // logout
-        0xf0709: [0, -71, 60, 72]   // restart
+        0xf0709: [0, -71, 60, 72],  // restart
+        // Control Center pages (PageRow badges)
+        0xf091f: [0, -60, 60, 48],  // wifi strength 1..4 and _lock variants
+        0xf0920: [0, -60, 60, 48],
+        0xf0922: [0, -60, 60, 48],
+        0xf0923: [0, -60, 60, 48],
+        0xf0925: [0, -60, 60, 48],
+        0xf0926: [0, -60, 60, 48],
+        0xf0928: [0, -60, 60, 48],
+        0xf0929: [0, -60, 60, 48],
+        0xf04c5: [0, -63, 60, 53],  // speedometer (VRR)
+        0xf04c3: [-1, -79, 61, 86], // speaker
+        0xf02cb: [-1, -68, 62, 64], // headphones
+        0xf0208: [0, -57, 60, 42],  // eye (Bluetooth visible)
+        0xf0493: [0, -67, 60, 62],  // cog
+        0xf00de: [0, -66, 60, 60],  // brightness-4 (dim)
+        0xf0599: [0, -70, 60, 68],  // weather-sunny (day starts)
+        0xf037d: [-1, -77, 62, 82], // mouse
+        0xf030c: [-1, -58, 62, 44], // keyboard
+        0xf04f7: [-1, -77, 62, 82], // tablet
+        0xf042a: [-1, -64, 62, 56], // printer
+        0xf0100: [-1, -64, 62, 56]  // camera
     })
     readonly property real _ref: 100
     readonly property var _ink: {

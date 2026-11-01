@@ -77,10 +77,22 @@ Pill {
                     fillMode: Image.PreserveAspectFit
                 }
 
+                // The app's own tooltip title (StatusNotifierItem
+                // ToolTip), else its title -- several icons look alike.
+                BarTooltip {
+                    id: trayTip
+                    target: trayItem
+                    hovered: trayArea.containsMouse
+                    text: trayItem.modelData.tooltipTitle || trayItem.modelData.title || trayItem.modelData.id || ""
+                }
+
                 MouseArea {
+                    id: trayArea
                     anchors.fill: parent
+                    hoverEnabled: true
                     acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
                     onClicked: (mouse) => {
+                        trayTip.hide()
                         if (mouse.button === Qt.LeftButton) {
                             trayItem.modelData.activate()
                         } else if (mouse.button === Qt.MiddleButton) {

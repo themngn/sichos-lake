@@ -1,84 +1,73 @@
 import QtQuick
-import Quickshell
-import Quickshell.Wayland
 
-// Transient full-width strip, same height/position as Bar.qml, that pops up
-// for a few seconds whenever Spotify's track changes and shows "artist:
-// title" — a "Now Playing" toast rather than a permanent widget, same
-// pop()-then-auto-hide idea as VolumeOSD. One instance per screen (see
-// shell.qml's Variants) so it shows on every display at once; all the actual
-// state (spotify tracking, animation, visibility) lives in the shared
-// NowPlayingState singleton so every instance stays in lockstep instead of
-// animating independently.
-PanelWindow {
+// "Now Playing" toast for Spotify: for a few seconds after a track change
+// (or a resume) it takes the place of the workspaces in the bar's left
+// section -- Bar.qml swaps the two -- and types "artist: title" in. It used
+// to be its own full-width Overlay window covering the whole bar with a
+// 128px cover poking out below; now it's one line, no cover, and the clock,
+// toggles and right-side widgets stay visible. All the state (Spotify
+// tracking, typing animation, visibility) lives in the shared
+// NowPlayingState singleton, so every screen's bar stays in lockstep.
+Item {
     id: root
 
-    required property var modelData
-    screen: modelData
+    // Longest the line may get before it elides, set by Bar.qml so it never
+    // runs into the clock/toggle row in the middle.
+    property real maxWidth: 400
 
-    // Transparent window, not Theme.background — only the strip Rectangle
-    // below paints the bar-colored band, so growing the window taller to
-    // fit the album art doesn't turn the whole thing into a bigger bar; the
-    // art alone pokes out past the strip against the desktop underneath.
-    color: "transparent"
-    exclusiveZone: 0
-    visible: NowPlayingState.visible
+    readonly property string fullText: NowPlayingState.shownPrefix + NowPlayingState.shownAnimated
 
-    // Overlay (not the default Top layer Bar.qml sits on) so this paints in
-    // front of the bar instead of merely stacking as another Top surface.
-    WlrLayershell.layer: WlrLayer.Overlay
-
-    anchors {
-        top: true
-        left: true
-        right: true
-    }
-    // Confirmed live: Hyprland measures a zero-exclusive-zone top-anchored
-    // surface's margin from the space already left over by Bar.qml's own
-    // exclusiveZone (Theme.barHeight), regardless of this surface's own
-    // layer — Overlay only changed paint order, not that avoidance offset,
-    // so this still landed a full bar-height too low. Cancel it out
-    // explicitly to actually land flush at y=0, overlapping the bar.
-    margins.top: -Theme.barHeight
-
-    // Tall enough to hold the 128px album art, which pokes out past the
-    // bar's own 24px strip rather than being cropped down to fit it.
-    readonly property int coverSize: 128
-    implicitHeight: cover.visible ? coverSize : Theme.barHeight
-
-    Rectangle {
-        width: parent.width
-        height: Theme.barHeight
-        color: Theme.background
+    function _span(t, c, bold) {
+        if (t === "") return ""
+        const esc = t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        return "<font color=\"" + c + "\">" + (bold ? "<b>" + esc + "</b>" : esc) + "</font>"
     }
 
-    Image {
-        id: cover
-        // Local copy downloaded once by NowPlayingState (see artPath there
-        // for the crash this avoids), so synchronous loading is cheap and
-        // never leaves an in-flight load behind on a source change.
-        visible: NowPlayingState.artPath !== ""
-        anchors {
-            top: parent.top
-            left: parent.left
+    implicitHeight: Theme.barHeight
+    implicitWidth: row.implicitWidth
+
+    Row {
+        id: row
+        anchors.verticalCenter: parent.verticalCenter
+        spacing: 6
+
+        // nf-fa-spotify. Font Awesome glyphs ink ~860/1000em in the Mono
+        // build (approximate, not measured into a table) -- scaled to the
+        // shared bar icon height so it matches the right-side icons.
+        Text {
+            id: icon
+            anchors.verticalCenter: parent.verticalCenter
+            text: ""
+            font.family: Theme.fontFamily
+            // 1.35x the right-side icons' size: matched to them it read too
+            // small beside the text.
+            font.pixelSize: Theme.barIconInkHeight * 1.35 * 1000 / 860
+            color: Theme.accent
         }
-        width: visible ? root.coverSize : 0
-        height: root.coverSize
-        fillMode: Image.PreserveAspectCrop
-        asynchronous: false
-        source: NowPlayingState.artPath
-    }
 
-    Text {
-        anchors {
-            left: cover.visible ? cover.right : parent.left
-            leftMargin: 8
-            top: parent.top
-            topMargin: (Theme.barHeight - height) / 2
+        Text {
+            id: label
+            anchors.verticalCenter: parent.verticalCenter
+            // Width follows the typed text (so the slot grows as it types)
+            // up to maxWidth, then elides.
+            width: Math.min(implicitWidth, Math.max(0, root.maxWidth - icon.width - row.spacing))
+            elide: Text.ElideRight
+            // Artist muted, title bold in full text colour, the ": " between
+            // them dim. Split by position (NowPlayingState.shownArtist is the
+            // artist of the line on screen), so it works mid-animation too.
+            textFormat: Text.StyledText
+            text: {
+                const full = root.fullText
+                const n = NowPlayingState.shownArtist.length
+                if (n === 0 || !full.startsWith(NowPlayingState.shownArtist.slice(0, Math.min(n, full.length))))
+                    return root._span(full, Theme.text, true)
+                return root._span(full.slice(0, n), Theme.textMuted, false)
+                    + root._span(full.slice(n, n + 2), Theme.textDim, false)
+                    + root._span(full.slice(n + 2), Theme.text, true)
+            }
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontSize
+            color: Theme.text
         }
-        text: NowPlayingState.shownPrefix + NowPlayingState.shownAnimated
-        font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSize
-        color: Theme.text
     }
 }

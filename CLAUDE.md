@@ -510,7 +510,14 @@ controls inside them stay plain `controlRadius` Rectangles. Conventions
 the existing popups follow: header = `HeaderIcon { glyph: ... }` + bold title at `fontSize` in a `Row`;
 body text, buttons and checkboxes at `fontSize - 1`; section headings are `SectionLabel.qml` (small bold
 caps in `textDim`, the same as the launcher's rail/list group headings -- use it, not a styled `Text`);
-captions `fontSize - 3`. Text uses `Theme.uiFontFamily` (Inter); anything that renders Nerd Font glyphs
+captions `fontSize - 3`. **Control Center pages** (every `qs-*` page, and the same
+popups when the bar opens them) share the main page's tile look through `PageHeader.qml` (Back + title,
+the page's main switch/pin/text action on the right; no header icon, no separator), `PageRow.qml` (a
+filled row with a round icon badge -- accent while `active`, `selected` fill, bold title + status,
+trailing controls as children, optional chevron strip; `compact` for lists), `Segmented.qml` (sliding
+accent pill), `SliderRow.qml` (icon + slider + value, the main page's volume row) and `StepButton.qml`
+(round −/+); settings apply as they change (no Save buttons). Use those for a new page instead of flat
+text rows, checkboxes or bordered button rows. Text uses `Theme.uiFontFamily` (Inter); anything that renders Nerd Font glyphs
 must keep `Theme.fontFamily` (Inter has none of them). The bar itself stays on the Nerd Font.
 
 **Nerd Font glyph sizing/centering.** Nerd Font Mono icons don't share an ink-to-em ratio and sit on

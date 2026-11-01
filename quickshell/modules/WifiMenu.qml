@@ -218,32 +218,14 @@ MorphContent {
         width: menu.contentWidth
         spacing: Theme.sectionSpacing
 
-        Item {
-            width: parent.width
-            height: 20
-
-            Row {
-                spacing: 6
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                BackButton { onClicked: menu.back() }
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Wi-Fi"
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize
-                    font.bold: true
-                    color: Theme.text
-                }
-            }
+        PageHeader {
+            title: "Wi-Fi"
+            onBack: menu.back()
             Switch {
-                anchors.right: parent.right
                 checked: menu.wifiOn
                 onToggled: Networking.wifiEnabled = !Networking.wifiEnabled
             }
         }
-
-        Rectangle { width: parent.width; height: 1; color: Theme.separator }
 
         Text {
             visible: !menu.device || !menu.wifiOn
@@ -264,7 +246,7 @@ MorphContent {
             id: list
             visible: !!menu.device && menu.wifiOn && menu.networks.length > 0
             width: parent.width
-            height: Math.min(listColumn.implicitHeight, 8 * (Theme.controlHeight + 10) + 7 * 2)
+            height: Math.min(listColumn.implicitHeight, 8 * 44 + 7 * 6)
             contentHeight: listColumn.implicitHeight
             clip: true
             boundsBehavior: Flickable.StopAtBounds
@@ -272,7 +254,7 @@ MorphContent {
             Column {
                 id: listColumn
                 width: list.width
-                spacing: 2
+                spacing: 6
 
                 Repeater {
                     model: menu.networks
@@ -295,109 +277,43 @@ MorphContent {
                             }
                         }
 
-                        Rectangle {
-                            width: parent.width
-                            height: Theme.controlHeight + 10
-                            radius: Theme.controlRadius
-                            color: entry.modelData.connected ? Theme.selectedFill
-                                : rowArea.containsMouse || entry.asking ? Theme.hoverFill : "transparent"
+                        PageRow {
+                            compact: true
+                            glyph: menu.signalGlyph(entry.modelData)
+                            title: entry.modelData.name
+                            subtitle: menu.statusText(entry.modelData)
+                            subtitleColor: entry.modelData.connected ? Theme.success : Theme.textMuted
+                            active: entry.modelData.connected
+                            selected: entry.modelData.connected || entry.asking
+                            // Saved networks: their details (share, forget)
+                            // -- the Control Center tiles' chevron.
+                            chevron: entry.modelData.known
+                            onMore: menu.openDetail(entry.modelData)
+                            onClicked: entry.asking ? menu.cancelPassword()
+                                : entry.modelData.connected ? menu.openDetail(entry.modelData)
+                                : menu.activate(entry.modelData)
 
-                            MouseArea {
-                                id: rowArea
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: entry.asking ? menu.cancelPassword()
-                                    : entry.modelData.connected ? menu.openDetail(entry.modelData)
-                                    : menu.activate(entry.modelData)
-                            }
-
-                            Text {
-                                id: sig
-                                anchors.left: parent.left
-                                anchors.leftMargin: 10
+                            Rectangle {
+                                visible: entry.modelData.connected
                                 anchors.verticalCenter: parent.verticalCenter
-                                width: 24
-                                text: menu.signalGlyph(entry.modelData)
-                                color: entry.modelData.connected ? Theme.text : Theme.textMuted
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.fontSize + 9
-                            }
-                            Column {
-                                anchors.left: sig.right
-                                anchors.leftMargin: 8
-                                anchors.right: actions.left
-                                anchors.rightMargin: 8
-                                anchors.verticalCenter: parent.verticalCenter
+                                width: discLabel.implicitWidth + 16
+                                height: Theme.controlHeight - 2
+                                radius: Theme.controlRadius
+                                color: discArea.containsMouse ? Theme.hoverFill : Theme.controlFill
                                 Text {
-                                    width: parent.width
-                                    text: entry.modelData.name
-                                    elide: Text.ElideRight
+                                    id: discLabel
+                                    anchors.centerIn: parent
+                                    text: "Disconnect"
                                     color: Theme.text
                                     font.family: Theme.uiFontFamily
-                                    font.pixelSize: Theme.fontSize - 1
-                                    font.bold: entry.modelData.connected
+                                    font.pixelSize: Theme.fontSize - 2
                                 }
-                                Text {
-                                    visible: text !== ""
-                                    width: parent.width
-                                    text: menu.statusText(entry.modelData)
-                                    color: entry.modelData.connected ? Theme.success : Theme.textMuted
-                                    font.family: Theme.uiFontFamily
-                                    font.pixelSize: Theme.fontSize - 3
-                                }
-                            }
-                            Row {
-                                id: actions
-                                anchors.right: parent.right
-                                anchors.rightMargin: 6
-                                anchors.verticalCenter: parent.verticalCenter
-                                spacing: 4
-
-                                Rectangle {
-                                    visible: entry.modelData.connected
-                                    width: discLabel.implicitWidth + 16
-                                    height: Theme.controlHeight - 4
-                                    radius: Theme.controlRadius
-                                    color: discArea.containsMouse ? Theme.hoverFill : Theme.controlFill
-                                    Text {
-                                        id: discLabel
-                                        anchors.centerIn: parent
-                                        text: "Disconnect"
-                                        color: Theme.text
-                                        font.family: Theme.uiFontFamily
-                                        font.pixelSize: Theme.fontSize - 2
-                                    }
-                                    MouseArea {
-                                        id: discArea
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: entry.modelData.disconnect()
-                                    }
-                                }
-                                // Saved networks: their details (share,
-                                // forget) -- the Control Center tiles' chevron.
-                                Rectangle {
-                                    visible: entry.modelData.known
-                                    width: 26
-                                    height: Theme.controlHeight - 4
-                                    radius: Theme.controlRadius
-                                    color: moreArea.containsMouse ? Theme.hoverFill : "transparent"
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: "\u{f054}" // nf-fa-chevron_right
-                                        color: moreArea.containsMouse ? Theme.text : Theme.textMuted
-                                        font.family: Theme.fontFamily
-                                        font.pixelSize: Theme.fontSize - 3
-                                    }
-                                    MouseArea {
-                                        id: moreArea
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: menu.openDetail(entry.modelData)
-                                    }
+                                MouseArea {
+                                    id: discArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: entry.modelData.disconnect()
                                 }
                             }
                         }
@@ -514,59 +430,40 @@ MorphContent {
         anchors.bottomMargin: Theme.surfacePadding
         anchors.horizontalCenter: parent.horizontalCenter
         width: menu.contentWidth
-        spacing: Theme.sectionSpacing
-
-        Rectangle { width: parent.width; height: 1; color: Theme.separator }
+        spacing: 6
 
         // Hotspot and DNS live here (they used to be Control Center tiles):
         // both are about this Wi-Fi connection.
-        SettingRow {
+        PageRow {
             glyph: Hotspot.active ? "\u{f0003}" : "\u{f1511}" // access_point_network / _off
-            label: "Hotspot"
+            title: "Hotspot"
+            active: Hotspot.active
+            busy: Hotspot.busy
             // Never the password: this is on screen for anyone to read (its
             // page has Copy password).
-            status: Hotspot.pending === "off" ? "Stopping…" : Hotspot.busy ? "Starting…"
+            subtitle: Hotspot.pending === "off" ? "Stopping…" : Hotspot.busy ? "Starting…"
                 : Hotspot.active ? (Hotspot.clients > 0 ? Hotspot.ssid + " · " + Hotspot.clients + (Hotspot.clients === 1 ? " device" : " devices") : Hotspot.ssid)
                 : Hotspot.armed ? "Switch again: turns Wi-Fi off"
                 : Hotspot.error || (Hotspot.canShare ? "Off · would share " + Hotspot.wifiName : "Off")
-            Row {
-                spacing: 4
-                anchors.verticalCenter: parent.verticalCenter
-                Switch {
-                    checked: Hotspot.active || Hotspot.starting
-                    opacity: Hotspot.busy ? 0.5 : 1
-                    onToggled: Hotspot.toggle()
-                }
-                Rectangle {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 24
-                    height: 24
-                    radius: Theme.controlRadius
-                    color: hotspotMore.containsMouse ? Theme.hoverFill : "transparent"
-                    Text {
-                        anchors.centerIn: parent
-                        text: "\u{f0142}" // nf-md-chevron_right
-                        color: hotspotMore.containsMouse ? Theme.text : Theme.textMuted
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize + 1
-                    }
-                    MouseArea {
-                        id: hotspotMore
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            ShellState.activePopupScreen = menu.screenName
-                            ShellState.activePopup = "qs-hotspot"
-                        }
-                    }
-                }
+            chevron: true
+            onClicked: more()
+            onMore: {
+                ShellState.activePopupScreen = menu.screenName
+                ShellState.activePopup = "qs-hotspot"
+            }
+            Switch {
+                checked: Hotspot.active || Hotspot.starting
+                opacity: Hotspot.busy ? 0.5 : 1
+                onToggled: Hotspot.toggle()
             }
         }
-        SettingRow {
+        PageRow {
             glyph: "\u{f0b8c}"
-            label: "DNS"
-            status: DnsSettings.busy ? "Switching…" : DnsSettings.error || DnsSettings.desc
+            title: "DNS"
+            clickable: false
+            active: DnsSettings.current !== "auto"
+            busy: DnsSettings.busy
+            subtitle: DnsSettings.busy ? "Switching…" : DnsSettings.error || DnsSettings.desc
             Row {
                 spacing: 2
                 anchors.verticalCenter: parent.verticalCenter
@@ -602,40 +499,20 @@ MorphContent {
             }
         }
 
-        Rectangle { width: parent.width; height: 1; color: Theme.separator }
-
-        Rectangle {
-            width: parent.width
-            height: Theme.controlHeight + 8
-            radius: Theme.controlRadius
-            color: settingsArea.containsMouse ? Theme.hoverFill : "transparent"
-            Text {
-                anchors.left: parent.left
-                anchors.leftMargin: 10
-                anchors.verticalCenter: parent.verticalCenter
-                text: "Network settings"
-                color: Theme.text
-                font.family: Theme.uiFontFamily
-                font.pixelSize: Theme.fontSize - 1
+        PageRow {
+            glyph: "\u{f0493}" // nf-md-cog
+            title: "Network settings"
+            subtitle: "VPN, proxy, wired and saved connections"
+            onClicked: {
+                ShellState.activePopup = ""
+                Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/quickshell/scripts/wlctl-toggle.sh"])
             }
             Text {
-                anchors.right: parent.right
-                anchors.rightMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
                 text: "\u{f03cc}" // nf-md-open_in_new
                 color: Theme.textMuted
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize - 2
-            }
-            MouseArea {
-                id: settingsArea
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    ShellState.activePopup = ""
-                    Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/quickshell/scripts/wlctl-toggle.sh"])
-                }
             }
         }
     }
@@ -652,32 +529,22 @@ MorphContent {
         readonly property var n: menu.detail
         readonly property bool secured: !!n && n.security !== WifiSecurityType.Open && n.security !== WifiSecurityType.Owe
 
-        Item {
-            width: parent.width
-            height: 20
-            Row {
-                spacing: 6
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                BackButton { id: detailBack; onClicked: menu.closeDetail() }
-                Text {
-                    width: parent.width - detailBack.width - 6
-                    anchors.verticalCenter: parent.verticalCenter
-                    elide: Text.ElideRight
-                    text: detailColumn.n ? detailColumn.n.name : ""
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize
-                    font.bold: true
-                    color: Theme.text
-                }
-            }
+        PageHeader {
+            title: detailColumn.n ? detailColumn.n.name : ""
+            onBack: menu.closeDetail()
         }
 
-        Rectangle { width: parent.width; height: 1; color: Theme.separator }
-
-        Column {
+        // The facts as one filled card, like the hub's own cards.
+        Rectangle {
             width: parent.width
+            height: factsColumn.implicitHeight + 12
+            radius: Theme.controlRadius
+            color: Theme.controlFill
+        Column {
+            id: factsColumn
+            x: 6
+            y: 6
+            width: parent.width - 12
             spacing: 2
             DetailRow {
                 visible: detailColumn.secured
@@ -705,6 +572,7 @@ MorphContent {
                 label: "IP address"
                 value: NetInfo.ipv4
             }
+        }
         }
 
         // QR code to join, on request: black on white with a quiet zone,
@@ -756,8 +624,6 @@ MorphContent {
                 font.pixelSize: Theme.fontSize - 3
             }
         }
-
-        Rectangle { width: parent.width; height: 1; color: Theme.separator }
 
         Row {
             width: parent.width
@@ -845,7 +711,7 @@ MorphContent {
         property string label: ""
         property bool danger: false
         signal clicked()
-        height: Theme.controlHeight
+        height: Theme.controlHeight + 4
         radius: Theme.controlRadius
         color: dbArea.containsMouse ? Theme.hoverFill : Theme.controlFill
         Text {
@@ -861,63 +727,6 @@ MorphContent {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: db.clicked()
-        }
-    }
-
-    // One setting under the network list: icon, name, a status line, and its
-    // controls (children) on the right.
-    component SettingRow: Item {
-        id: sr
-        property string glyph: ""
-        property string label: ""
-        property string status: ""
-        default property alias controls: srControls.data
-        width: parent ? parent.width : 0
-        height: 40
-
-        Text {
-            id: srGlyph
-            x: 4
-            width: 22
-            anchors.verticalCenter: parent.verticalCenter
-            horizontalAlignment: Text.AlignHCenter
-            text: sr.glyph
-            color: Theme.textMuted
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 4
-        }
-        Column {
-            anchors.left: srGlyph.right
-            anchors.leftMargin: 10
-            anchors.right: srControls.left
-            anchors.rightMargin: 10
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 1
-            Text {
-                width: parent.width
-                text: sr.label
-                elide: Text.ElideRight
-                color: Theme.text
-                font.family: Theme.uiFontFamily
-                font.pixelSize: Theme.fontSize - 1
-                font.bold: true
-            }
-            Text {
-                width: parent.width
-                visible: text !== ""
-                text: sr.status
-                elide: Text.ElideRight
-                color: Theme.textDim
-                font.family: Theme.uiFontFamily
-                font.pixelSize: Theme.fontSize - 3
-            }
-        }
-        Item {
-            id: srControls
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            width: childrenRect.width
-            height: parent.height
         }
     }
 }

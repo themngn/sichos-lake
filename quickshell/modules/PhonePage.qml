@@ -64,46 +64,24 @@ MorphContent {
         spacing: Theme.sectionSpacing
 
         // Header: back, title, and the daemon's on/off switch.
-        Item {
-            width: parent.width
-            height: 20
-
-            Row {
-                spacing: 6
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                BackButton { onClicked: page.back() }
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Phone"
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize
-                    font.bold: true
-                    color: Theme.text
-                }
-            }
-            Row {
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 8
+        PageHeader {
+            title: "Phone"
+            onBack: page.back()
+            Text {
                 visible: Sichlink.installed
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Phone Link"
-                    color: Theme.textMuted
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 2
-                }
-                Switch {
-                    anchors.verticalCenter: parent.verticalCenter
-                    // Follows the request right away while systemctl works.
-                    checked: Sichlink.busy ? Sichlink._wantOn : Sichlink.running
-                    onToggled: Sichlink.setEnabled(!checked)
-                }
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Phone Link"
+                color: Theme.textMuted
+                font.family: Theme.uiFontFamily
+                font.pixelSize: Theme.fontSize - 2
+            }
+            Switch {
+                visible: Sichlink.installed
+                // Follows the request right away while systemctl works.
+                checked: Sichlink.busy ? Sichlink._wantOn : Sichlink.running
+                onToggled: Sichlink.setEnabled(!checked)
             }
         }
-
-        Rectangle { width: parent.width; height: 1; color: Theme.separator }
 
         // No paired phone to show: why (the mirror below still works over USB).
         Text {
@@ -278,7 +256,7 @@ MorphContent {
         // there -- it works over USB without Phone Link.
         Column {
             width: parent.width
-            spacing: 2
+            spacing: 6
 
             SectionLabel {
                 text: "Mirror" + (PhoneMirrorState.loading ? " · Starting…"
@@ -293,7 +271,6 @@ MorphContent {
             Row {
                 width: parent.width
                 spacing: 6
-                bottomPadding: 6
 
                 BigButton {
                     visible: !PhoneMirrorState.open
@@ -338,7 +315,6 @@ MorphContent {
             }
             SettingRow {
                 label: PhoneMirrorState.pinSaved ? "PIN saved" : "No PIN saved"
-                minHeight: Theme.controlHeight + 10
                 PageButton {
                     anchors.verticalCenter: parent.verticalCenter
                     visible: !page.pinEditing
@@ -420,8 +396,8 @@ MorphContent {
             }
             SettingRow {
                 label: "Dock side"
-                minHeight: Theme.controlHeight + 10
                 Segmented {
+                    width: page.sideControlWidth
                     anchors.verticalCenter: parent.verticalCenter
                     options: [{ value: "left", label: "Left" }, { value: "right", label: "Right" }]
                     current: PhoneMirrorState.side
@@ -436,7 +412,7 @@ MorphContent {
         Column {
             visible: !!page.phone && Sichlink.running
             width: parent.width
-            spacing: 2
+            spacing: 6
 
             SectionLabel {
                 text: "Display" + (Sichlink.displayOn ? " · On"
@@ -479,7 +455,7 @@ MorphContent {
         Column {
             visible: !!page.phone && Sichlink.running
             width: parent.width
-            spacing: 2
+            spacing: 6
 
             SectionLabel {
                 text: "Drive" + (Sichlink.driveBusy ? (Sichlink.drivePath ? " · Unmounting…" : " · Mounting…")
@@ -540,7 +516,7 @@ MorphContent {
         Column {
             visible: !!page.phone && Sichlink.running
             width: parent.width
-            spacing: 2
+            spacing: 6
 
             SectionLabel {
                 text: "Notifications" + (!Sichlink.notifOn ? " · Off"
@@ -639,7 +615,7 @@ MorphContent {
         Column {
             visible: Sichlink.others.length > 0
             width: parent.width
-            spacing: 2
+            spacing: 6
 
             SectionLabel { text: page.phone ? "Other phones" : "Phones" }
 
@@ -718,12 +694,19 @@ MorphContent {
         width: column.width
         // Rows with large controls raise this (the control Row is anchored
         // to the row's height, so it can't size the row itself).
-        property real minHeight: Theme.controlHeight
-        height: Math.max(sr.minHeight, srText.implicitHeight + 8)
+        property real minHeight: 44
+        height: Math.max(sr.minHeight, srText.implicitHeight + 16)
 
+        // Filled like the other Control Center pages' rows.
+        Rectangle {
+            anchors.fill: parent
+            radius: Theme.controlRadius
+            color: Theme.controlFill
+        }
         Column {
             id: srText
             anchors.left: parent.left
+            anchors.leftMargin: 10
             anchors.right: controlRow.left
             anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
@@ -735,6 +718,7 @@ MorphContent {
                 color: Theme.text
                 font.family: Theme.uiFontFamily
                 font.pixelSize: Theme.fontSize - 1
+                font.bold: true
             }
             Text {
                 visible: sr.caption !== ""
@@ -743,12 +727,13 @@ MorphContent {
                 elide: Text.ElideRight
                 color: Theme.textMuted
                 font.family: Theme.uiFontFamily
-                font.pixelSize: Theme.fontSize - 3
+                font.pixelSize: Theme.fontSize - 2
             }
         }
         Row {
             id: controlRow
             anchors.right: parent.right
+            anchors.rightMargin: 8
             anchors.top: parent.top
             anchors.bottom: parent.bottom
             spacing: 6
@@ -784,61 +769,6 @@ MorphContent {
         }
     }
 
-    // Segmented control: one track, equal segments, the selection a pill
-    // that slides to the picked one.
-    component Segmented: Rectangle {
-        id: seg
-        property var options: []  // [{value, label}]
-        property string current: ""
-        signal picked(string value)
-        readonly property int index: seg.options.findIndex(o => o.value === seg.current)
-        width: page.sideControlWidth
-        readonly property real segWidth: (seg.width - 4) / Math.max(1, seg.options.length)
-        height: Theme.controlHeight + 4
-        radius: Theme.controlRadius
-        color: Theme.controlFill
-
-        Rectangle {
-            visible: seg.index >= 0
-            x: 2 + Math.max(0, seg.index) * seg.segWidth
-            y: 2
-            width: seg.segWidth
-            height: parent.height - 4
-            radius: Theme.controlRadius - 2
-            color: Theme.accent
-            Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-        }
-        Row {
-            x: 2
-            Repeater {
-                model: seg.options
-                Item {
-                    required property var modelData
-                    required property int index
-                    width: seg.segWidth
-                    height: seg.height
-                    Text {
-                        anchors.centerIn: parent
-                        text: modelData.label
-                        color: index === seg.index ? Theme.textOnLight
-                            : segArea.containsMouse ? Theme.text : Theme.textMuted
-                        Behavior on color { ColorAnimation { duration: 180 } }
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 1
-                        font.bold: index === seg.index
-                    }
-                    MouseArea {
-                        id: segArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: index === seg.index ? Qt.ArrowCursor : Qt.PointingHandCursor
-                        onClicked: seg.picked(modelData.value)
-                    }
-                }
-            }
-        }
-    }
-
     // Full-size action button: glyph + label, centered.
     component BigButton: Rectangle {
         id: bb
@@ -851,7 +781,7 @@ MorphContent {
         radius: Theme.controlRadius
         opacity: bb.busy ? 0.6 : 1
         color: bb.accent ? (bbArea.containsMouse ? Theme.accentHover : Theme.accent)
-            : bbArea.containsMouse ? Theme.hoverFill : Theme.surfaceRaised
+            : bbArea.containsMouse ? Theme.hoverFill : Theme.controlFill
         Row {
             anchors.centerIn: parent
             spacing: 8
@@ -894,7 +824,7 @@ MorphContent {
         height: pb.large ? Theme.controlHeight + 4 : Theme.controlHeight - 4
         radius: Theme.controlRadius
         color: pb.accent ? (pbArea.containsMouse ? Theme.accentHover : Theme.accent)
-            : pbArea.containsMouse ? Theme.hoverFill : Theme.surfaceRaised
+            : pbArea.containsMouse ? Theme.hoverFill : Theme.controlFill
         Text {
             id: pbLabel
             anchors.centerIn: parent

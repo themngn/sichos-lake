@@ -25,6 +25,13 @@ PopupWindow {
     required property var bar
 
     readonly property Item slot: card
+    // Above the card and not clipped by it: for things drawn past its edge
+    // (CardTooltip under the Control Center's footer). An item of this
+    // window from the start -- parenting one to a window's contentItem by
+    // way of QsWindow from a content still owned by the bar left it on the
+    // bar's window ("Cannot use same item on different windows") and
+    // crashed the render thread.
+    readonly property Item overlay: overlayLayer
 
     // Popup contents parented into the card (anything with `shown` and
     // `anchorItem`).
@@ -80,7 +87,10 @@ PopupWindow {
     anchor.gravity: Edges.Bottom | Edges.Right
 
     implicitWidth: host.bar.width
-    implicitHeight: card.y + host._maxContentHeight + 8
+    // + room under the card for a CardTooltip hanging below a control at
+    // its bottom edge (the Control Center's footer switches). The input
+    // region is the card alone (mask below), so the strip is click-through.
+    implicitHeight: card.y + host._maxContentHeight + 8 + 44
     color: "transparent"
     // Applied a tick after activeContent changes, not bound to it: mapping
     // the window can synchronously change hover state, which feeds back into
@@ -175,5 +185,11 @@ PopupWindow {
             enabled: host._morph
             NumberAnimation { duration: Theme.morphDuration; easing.type: Easing.OutCubic }
         }
+    }
+
+    Item {
+        id: overlayLayer
+        anchors.fill: parent
+        z: 100
     }
 }

@@ -34,145 +34,47 @@ MorphContent {
             anchors.centerIn: parent
             spacing: Theme.sectionSpacing
 
-            Item {
+            PageHeader {
                 width: popup.contentWidth
-                height: 20
-
-                PinButton {
-                    toggleId: "gamefocus"
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-
-                Row {
-                    spacing: 6
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    BackButton {
-                        visible: popup.backPopupId !== ""
-                        onClicked: ShellState.activePopup = popup.backPopupId
-                    }
-                    HeaderIcon {
-                        glyph: "󰊴"
-                        color: Theme.accent
-                    }
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "Gaming Focus"
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize
-                        font.bold: true
-                        color: Theme.text
-                    }
+                title: "Game Focus"
+                showBack: popup.backPopupId !== ""
+                onBack: ShellState.activePopup = popup.backPopupId
+                Switch {
+                    checked: GameFocus.enabled
+                    onToggled: GameFocus.enabled = !GameFocus.enabled
                 }
             }
 
-            Row {
+            PageRow {
                 width: popup.contentWidth
-                spacing: 6
-
-                Repeater {
-                    model: [
-                        { on: true, label: "On" },
-                        { on: false, label: "Off" }
-                    ]
-                    delegate: Rectangle {
-                        id: modeButton
-                        required property var modelData
-                        readonly property bool active: GameFocus.enabled === modelData.on
-                        width: (popup.contentWidth - 6) / 2
-                        height: Theme.controlHeight
-                        radius: Theme.controlRadius
-                        color: modeButton.active ? Theme.selectedFill : modeArea.containsMouse ? Theme.hoverFill : Theme.controlFill
-                        border.color: modeButton.active ? Theme.accent : Theme.surfaceBorder
-                        border.width: 1
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: modeButton.modelData.label
-                            font.family: Theme.uiFontFamily
-                            font.pixelSize: Theme.fontSize - 1
-                            color: modeButton.active ? Theme.text : Theme.textMuted
-                        }
-
-                        MouseArea {
-                            id: modeArea
-                            hoverEnabled: true
-                            anchors.fill: parent
-                            onClicked: GameFocus.enabled = modeButton.modelData.on
-                        }
-                    }
-                }
+                clickable: false
+                glyph: "\u{f02b4}"
+                glyphInkWidth: 24
+                active: GameFocus.enabled
+                title: !GameFocus.enabled ? "Off" : GameFocus.dimming ? "Game focused" : "Waiting for a game"
+                subtitle: !GameFocus.enabled ? "Dims the other screens while a game has focus"
+                    : GameFocus.dimming ? "On " + GameFocus.gameMonitor + " · other screens dimmed"
+                    : "Other screens dim once a fullscreen game has focus"
             }
 
             // Dim amount, 5% steps. Takes effect live on any currently
             // dimmed screen (the overlay binds straight to dimAmount).
             Column {
                 width: popup.contentWidth
-                spacing: 4
-
-                Item {
-                    width: parent.width
-                    height: 14
-                    Text {
-                        anchors.left: parent.left
-                        text: "Dim other screens"
-                        color: Theme.textMuted
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 1
-                    }
-                    Text {
-                        anchors.right: parent.right
-                        text: Math.round(GameFocus.dimAmount * 100) + "%"
-                        color: GameFocus.enabled ? Theme.accent : Theme.textDim
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 1
-                    }
+                spacing: 2
+                SectionLabel {
+                    text: "Dim other screens"
                 }
-
-                Rectangle {
-                    id: track
+                SliderRow {
                     width: parent.width
-                    height: Theme.trackHeight
-                    radius: Theme.trackRadius
-                    color: Theme.track
-                    opacity: GameFocus.enabled ? 1 : 0.5
-
-                    readonly property real fraction: (GameFocus.dimAmount - GameFocus.minDim) / (GameFocus.maxDim - GameFocus.minDim)
-
-                    Rectangle {
-                        width: track.width * track.fraction
-                        height: parent.height
-                        radius: Theme.trackRadius
-                        color: Theme.accent
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onPositionChanged: (mouse) => {
-                            if (pressed) GameFocus.setDimAmount(popup._dimAt(mouse.x))
-                        }
-                        onPressed: (mouse) => GameFocus.setDimAmount(popup._dimAt(mouse.x))
-                        onWheel: (wheel) => GameFocus.setDimAmount(GameFocus.dimAmount + (wheel.angleDelta.y > 0 ? 0.05 : -0.05))
-                    }
+                    glyph: "\u{f00de}" // nf-md-brightness_4
+                    hasMore: false
+                    dim: !GameFocus.enabled
+                    value: (GameFocus.dimAmount - GameFocus.minDim) / (GameFocus.maxDim - GameFocus.minDim)
+                    valueText: Math.round(GameFocus.dimAmount * 100) + "%"
+                    onMoved: (v) => GameFocus.setDimAmount(GameFocus.minDim + v * (GameFocus.maxDim - GameFocus.minDim))
                 }
-            }
-
-            Text {
-                width: popup.contentWidth
-                wrapMode: Text.WordWrap
-                text: !GameFocus.enabled ? "Off"
-                    : GameFocus.dimming ? "Game focused on " + GameFocus.gameMonitor
-                    : "Waiting for a focused game"
-                color: Theme.textDim
-                font.family: Theme.uiFontFamily
-                font.pixelSize: Theme.fontSize - 2
             }
         }
-    }
-
-    function _dimAt(x) {
-        const fraction = Math.max(0, Math.min(1, x / track.width))
-        return GameFocus.minDim + fraction * (GameFocus.maxDim - GameFocus.minDim)
     }
 }

@@ -315,44 +315,15 @@ Pill {
                 }
                 spacing: Theme.sectionSpacing
 
-                // Header
-                Item {
-                    width: parent.width
-                    height: 20
-
-                    Row {
-                        spacing: 6
-                        anchors.left: parent.left
-                        anchors.verticalCenter: parent.verticalCenter
-                        BackButton {
-                            visible: root.backPopupId !== ""
-                            onClicked: ShellState.activePopup = root.backPopupId
-                        }
-                        HeaderIcon {
-                            glyph: "\uf293" // nf-fa-bluetooth
-                            color: Theme.accent
-                        }
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "Bluetooth"
-                            font.family: Theme.uiFontFamily
-                            font.pixelSize: Theme.fontSize
-                            font.bold: true
-                            color: Theme.text
-                        }
-                    }
+                PageHeader {
+                    title: "Bluetooth"
+                    showBack: root.backPopupId !== ""
+                    onBack: ShellState.activePopup = root.backPopupId
                     Switch {
-                        anchors.right: parent.right
                         visible: !!root.adapter
                         checked: root.btEnabled
                         onToggled: ShellState.setBluetooth(!root.adapter.enabled)
                     }
-                }
-
-                Rectangle {
-                    width: parent.width
-                    height: 1
-                    color: Theme.separator
                 }
 
                 // Pairing prompt from BluetoothAgent
@@ -470,22 +441,27 @@ Pill {
                 }
 
                 // This PC: visible to phones looking for it.
-                SettingRow {
+                PageRow {
                     visible: root.btEnabled
                     width: parent.width
+                    glyph: "\u{f0208}" // nf-md-eye
+                    active: root.visibleOn
                     title: "Visible to nearby devices"
                     subtitle: !root.adapter ? ""
                         : root.visibleOn ? "As \u201c" + root.adapter.name + "\u201d"
                             + (root.visibleRemaining > 0 ? " · " + root.clock(root.visibleRemaining) + " left" : "")
                         : "Lets a phone find this PC as \u201c" + root.adapter.name + "\u201d"
-                    checked: root.visibleOn
-                    onToggled: root.setVisible(!root.visibleOn)
+                    onClicked: root.setVisible(!root.visibleOn)
+                    Switch {
+                        checked: root.visibleOn
+                        onToggled: root.setVisible(!root.visibleOn)
+                    }
                 }
 
                 Column {
                     visible: root.btEnabled && root.pairedDevices.length > 0
                     width: parent.width
-                    spacing: 2
+                    spacing: 6
 
                     SectionLabel { text: "My devices" }
                     Repeater {
@@ -501,7 +477,7 @@ Pill {
                 Column {
                     visible: root.btEnabled
                     width: parent.width
-                    spacing: 2
+                    spacing: 6
 
                     Item {
                         width: parent.width
@@ -589,57 +565,6 @@ Pill {
 
     // Title + muted subtitle on the left, a switch on the right; the whole
     // row toggles.
-    component SettingRow: Rectangle {
-        id: sr
-        property string title: ""
-        property string subtitle: ""
-        property bool checked: false
-        signal toggled()
-        height: srText.implicitHeight + 16
-        radius: Theme.controlRadius
-        color: srArea.containsMouse ? Theme.hoverFill : "transparent"
-        MouseArea {
-            id: srArea
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: sr.toggled()
-        }
-        Column {
-            id: srText
-            anchors.left: parent.left
-            anchors.leftMargin: 10
-            anchors.right: srSwitch.left
-            anchors.rightMargin: 10
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 1
-            Text {
-                width: parent.width
-                text: sr.title
-                elide: Text.ElideRight
-                color: Theme.text
-                font.family: Theme.uiFontFamily
-                font.pixelSize: Theme.fontSize - 1
-            }
-            Text {
-                visible: text !== ""
-                width: parent.width
-                text: sr.subtitle
-                elide: Text.ElideRight
-                color: Theme.textMuted
-                font.family: Theme.uiFontFamily
-                font.pixelSize: Theme.fontSize - 3
-            }
-        }
-        Switch {
-            id: srSwitch
-            anchors.right: parent.right
-            anchors.rightMargin: 10
-            checked: sr.checked
-            onToggled: sr.toggled()
-        }
-    }
-
     // Small rotating arc for "Searching".
     component Spinner: Item {
         id: sp
@@ -686,119 +611,77 @@ Pill {
         property bool confirmForget: false
         onExpandedChanged: entry.confirmForget = false
         Timer { running: entry.confirmForget; interval: 4000; onTriggered: entry.confirmForget = false }
-        spacing: 2
+        spacing: 4
 
-        Rectangle {
+        PageRow {
             id: row
-            readonly property bool hovering: rowArea.containsMouse || gearArea.containsMouse
-            width: parent.width
-            height: Theme.controlHeight + 14
-            radius: Theme.controlRadius
-            color: entry.device && entry.device.connected ? Theme.selectedFill
-                : row.hovering || entry.expanded ? Theme.hoverFill : "transparent"
-
-            MouseArea {
-                id: rowArea
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                // A connected device's row opens its details rather than
-                // disconnecting it -- a stray click used to drop headphones
-                // mid-call. Disconnect is in the details.
-                onClicked: {
-                    if (entry.device.connected) root.expandedDevice = entry.expanded ? "" : entry.device.address
-                    else root.activate(entry.device)
-                }
+            readonly property bool hovering: row.hovered
+            compact: true
+            glyph: entry.device ? root.deviceGlyph(entry.device) : ""
+            title: entry.device ? (entry.device.name || entry.device.deviceName) : ""
+            subtitle: entry.device ? root.statusFor(entry.device) : ""
+            subtitleColor: entry.device && entry.device.connected ? Theme.success : entry.busy ? Theme.accent : Theme.textMuted
+            active: !!entry.device && entry.device.connected
+            selected: (!!entry.device && entry.device.connected) || entry.expanded
+            busy: entry.busy
+            // A connected device's row opens its details rather than
+            // disconnecting it -- a stray click used to drop headphones
+            // mid-call. Disconnect is in the details.
+            onClicked: {
+                if (entry.device.connected) root.expandedDevice = entry.expanded ? "" : entry.device.address
+                else root.activate(entry.device)
             }
 
             Text {
-                id: devGlyph
-                anchors.left: parent.left
-                anchors.leftMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
-                width: 22
-                text: entry.device ? root.deviceGlyph(entry.device) : ""
-                color: entry.device && entry.device.connected ? Theme.text : Theme.textMuted
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize + 5
+                visible: row.hovering || entry.busy
+                text: !entry.device ? ""
+                    : entry.device.pairing ? "Cancel"
+                    : entry.device.connected || entry.busy ? ""
+                    : root.isMine(entry.device) ? "Connect" : "Pair"
+                color: Theme.accent
+                font.family: Theme.uiFontFamily
+                font.pixelSize: Theme.fontSize - 2
             }
-            Column {
-                anchors.left: devGlyph.right
-                anchors.leftMargin: 8
-                anchors.right: rowActions.left
-                anchors.rightMargin: 8
+            Rectangle {
+                visible: !!entry.device && root.isMine(entry.device)
                 anchors.verticalCenter: parent.verticalCenter
+                width: Theme.controlHeight
+                height: Theme.controlHeight
+                radius: Theme.controlRadius
+                color: gearArea.containsMouse ? Theme.hoverFill : "transparent"
                 Text {
-                    width: parent.width
-                    text: entry.device ? (entry.device.name || entry.device.deviceName) : ""
-                    elide: Text.ElideRight
-                    color: Theme.text
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 1
-                    font.bold: !!entry.device && entry.device.connected
+                    anchors.centerIn: parent
+                    text: "\u{f0493}" // nf-md-cog
+                    color: gearArea.containsMouse || entry.expanded ? Theme.text : Theme.textMuted
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontSize + 3
                 }
-                Text {
-                    visible: text !== ""
-                    width: parent.width
-                    text: entry.device ? root.statusFor(entry.device) : ""
-                    elide: Text.ElideRight
-                    color: entry.device && entry.device.connected ? Theme.success : entry.busy ? Theme.accent : Theme.textMuted
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 3
-                }
-            }
-            Row {
-                id: rowActions
-                anchors.right: parent.right
-                anchors.rightMargin: 6
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 4
-
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: row.hovering || entry.busy
-                    rightPadding: 4
-                    text: !entry.device ? ""
-                        : entry.device.pairing ? "Cancel"
-                        : entry.device.connected || entry.busy ? ""
-                        : root.isMine(entry.device) ? "Connect" : "Pair"
-                    color: Theme.accent
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 2
-                }
-                Rectangle {
-                    visible: !!entry.device && root.isMine(entry.device)
-                    width: Theme.controlHeight - 4
-                    height: Theme.controlHeight - 4
-                    radius: Theme.controlRadius
-                    color: gearArea.containsMouse ? Theme.hoverFill : entry.expanded ? Theme.controlFill : "transparent"
-                    Text {
-                        anchors.centerIn: parent
-                        text: "\u{f0493}" // nf-md-cog
-                        color: gearArea.containsMouse || entry.expanded ? Theme.text : Theme.textMuted
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize + 3
-                    }
-                    MouseArea {
-                        id: gearArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.expandedDevice = entry.expanded ? "" : entry.device.address
-                    }
+                MouseArea {
+                    id: gearArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.expandedDevice = entry.expanded ? "" : entry.device.address
                 }
             }
         }
 
-        // Details
-        Column {
+        // Details, a filled card under the row.
+        Rectangle {
             visible: entry.expanded
+            width: parent.width
+            height: details.implicitHeight
+            radius: Theme.controlRadius
+            color: Theme.controlFill
+        Column {
+            id: details
             width: parent.width
             leftPadding: 10
             rightPadding: 10
-            topPadding: 4
-            bottomPadding: 6
-            spacing: 6
+            topPadding: 8
+            bottomPadding: 10
+            spacing: 8
 
             Text {
                 width: parent.width - 20
@@ -844,6 +727,7 @@ Pill {
                     }
                 }
             }
+        }
         }
     }
 }

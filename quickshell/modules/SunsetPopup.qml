@@ -2,10 +2,11 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// Warm Light / Night Light popup panel for SunsetToggle.qml.
-// Hover-driven with persistent hover: allows smooth interaction with the
-// On/Off force switch, the independent "Follow schedule" checkbox, the
-// 100K warmth slider, and the schedule time editor without focus grabs.
+// Night Light popup panel for SunsetToggle.qml (and the Control Center's
+// Night Light page): the force on/off switch in the header, the
+// independent "Follow schedule" switch, the 100K warmth slider, and the
+// schedule times (±15 min, saved by themselves).
+// Hover-driven with persistent hover, no focus grabs.
 MorphContent {
     id: popup
     // Set when the Control Center embeds this as one of its pages: the
@@ -27,7 +28,7 @@ MorphContent {
     // HoverHandler rather than a background MouseArea: a MouseArea only reports
     // containsMouse while it's the topmost hover-accepting item, so it goes false
     // the moment the cursor is over a descendant control that sets hoverEnabled
-    // itself (Save button, TimeSpinner arrows) — closing the popup mid-interaction.
+    // itself (the step buttons, a switch) — closing the popup mid-interaction.
     // HoverHandler tracks its own item's bounds independently of what's on top.
     readonly property bool popupHovered: popupHoverHandler.hovered
 
@@ -81,6 +82,23 @@ MorphContent {
         popup.scheduleSaved()
     }
 
+    // Times apply by themselves a moment after the last step (a save
+    // restarts hyprsunset) -- there used to be a "Save schedule" button.
+    Timer {
+        id: saveTimer
+        interval: 700
+        onTriggered: popup.saveTimes()
+    }
+
+    // ±15 min, wrapping round midnight; an off-grid time (hand-edited
+    // conf) snaps to the grid on its first step.
+    function stepTime(h, m, dir) {
+        const t = h * 60 + m
+        const next = dir > 0 ? Math.floor(t / 15) * 15 + 15 : Math.ceil(t / 15) * 15 - 15
+        const w = (next + 1440) % 1440
+        return [Math.floor(w / 60), w % 60]
+    }
+
     Item {
         id: bg
         anchors.fill: parent
@@ -94,272 +112,113 @@ MorphContent {
             anchors.centerIn: parent
             spacing: Theme.sectionSpacing
 
-            // Menu Title Header
-            Item {
+            PageHeader {
                 width: popup.contentWidth
-                height: 20
-
-                PinButton {
-                    toggleId: "sunset"
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-
-                Row {
-                    spacing: 6
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    BackButton {
-                        visible: popup.backPopupId !== ""
-                        onClicked: ShellState.activePopup = popup.backPopupId
-                    }
-                    HeaderIcon {
-                        glyph: "\udb81\udd94"
-                        color: Theme.accent
-                    }
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "Warm Light"
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize
-                        font.bold: true
-                        color: Theme.text
-                    }
+                title: "Night Light"
+                showBack: popup.backPopupId !== ""
+                onBack: ShellState.activePopup = popup.backPopupId
+                // Forces it on/off -- never touches Follow schedule below.
+                Switch {
+                    checked: popup.active
+                    onToggled: popup.setWarm(!popup.active)
                 }
             }
 
-            // Force on/off switch -- always reflects/sets popup.active
-            // directly. Fully independent of the "Follow schedule" switch
-            // below: clicking either of these never touches scheduleFollow.
-            Row {
+            // Independent of the switch above, and stored as its own
+            // property rather than a shared mode enum. Changing it never
+            // changes popup.active/the light itself (see
+            // ShellState.setScheduleFollow) -- it only changes who gets to
+            // decide going forward, so forcing on/off never knocks this off
+            // the way an earlier version did.
+            PageRow {
                 width: popup.contentWidth
-                spacing: 6
-
-                Repeater {
-                    model: [
-                        { on: true, label: "On" },
-                        { on: false, label: "Off" }
-                    ]
-                    delegate: Rectangle {
-                        id: modeButton
-                        required property var modelData
-                        readonly property bool active: popup.active === modelData.on
-                        width: (popup.contentWidth - 6) / 2
-                        height: Theme.controlHeight
-                        radius: Theme.controlRadius
-                        color: modeButton.active ? Theme.selectedFill : modeArea.containsMouse ? Theme.hoverFill : Theme.controlFill
-                        border.color: modeButton.active ? Theme.accent : Theme.surfaceBorder
-                        border.width: 1
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: modeButton.modelData.label
-                            font.family: Theme.uiFontFamily
-                            font.pixelSize: Theme.fontSize - 1
-                            color: modeButton.active ? Theme.text : Theme.textMuted
-                        }
-
-                        MouseArea {
-                            id: modeArea
-                            hoverEnabled: true
-                            anchors.fill: parent
-                            onClicked: popup.setWarm(modeButton.modelData.on)
-                        }
-                    }
+                glyph: "\u{f0150}"
+                active: popup.scheduleFollow
+                title: "Follow schedule"
+                subtitle: "Warm from " + popup.pad2(popup.nightHour) + ":" + popup.pad2(popup.nightMinute)
+                    + " to " + popup.pad2(popup.dayHour) + ":" + popup.pad2(popup.dayMinute)
+                onClicked: popup.setScheduleFollow(!popup.scheduleFollow)
+                Switch {
+                    checked: popup.scheduleFollow
+                    onToggled: popup.setScheduleFollow(!popup.scheduleFollow)
                 }
             }
 
-            // Independent "Follow schedule" switch -- deliberately not a
-            // third option in the On/Off row above, and stored as its own
-            // property rather than a shared mode enum. Checking or
-            // unchecking it never changes popup.active/the light itself
-            // (see ShellState.setScheduleFollow) -- it only changes who
-            // gets to decide going forward, so forcing on/off here never
-            // knocks this switch off the way an earlier version did.
-            Item {
-                width: popup.contentWidth
-                height: scheduleText.implicitHeight
-
-                Text {
-                    id: scheduleText
-                    text: (popup.scheduleFollow ? "󰄲  " : "󰄱  ") + "Follow schedule"
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 1
-                    color: scheduleArea.containsMouse ? Theme.text : Theme.textMuted
-                }
-                MouseArea {
-                    id: scheduleArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    onClicked: popup.setScheduleFollow(!popup.scheduleFollow)
-                }
-            }
-
-            // Warmth slider in increments of 100K
+            // Warmth in steps of 100K.
             Column {
                 width: popup.contentWidth
-                spacing: 4
-
-                Item {
+                spacing: 2
+                SectionLabel {
+                    text: "Warmth"
+                }
+                SliderRow {
                     width: parent.width
-                    height: 14
-                    Text {
-                        anchors.left: parent.left
-                        text: "Warmth"
-                        color: Theme.textMuted
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 1
-                    }
-                    Text {
-                        anchors.right: parent.right
-                        text: popup.kelvin + "K"
-                        color: popup.active && !popup.scheduleFollow ? Theme.accent : Theme.textDim
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 1
-                    }
-                }
-
-                Rectangle {
-                    id: track
-                    width: parent.width
-                    height: Theme.trackHeight
-                    radius: Theme.trackRadius
-                    color: Theme.track
-                    opacity: popup.active && !popup.scheduleFollow ? 1 : 0.5
-
-                    readonly property real fraction: (popup.kelvin - popup.minKelvin) / (popup.maxKelvin - popup.minKelvin)
-
-                    Rectangle {
-                        width: track.width * track.fraction
-                        height: parent.height
-                        radius: Theme.trackRadius
-                        color: Theme.accent
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onPositionChanged: (mouse) => {
-                            if (pressed) popup.setTemperature(popup._kelvinAt(mouse.x))
-                        }
-                        onPressed: (mouse) => popup.setTemperature(popup._kelvinAt(mouse.x))
-                        onWheel: (wheel) => {
-                            const delta = wheel.angleDelta.y > 0 ? 100 : -100
-                            const newKelvin = Math.max(popup.minKelvin, Math.min(popup.maxKelvin, Math.round(popup.kelvin / 100) * 100 + delta))
-                            popup.setTemperature(newKelvin)
-                        }
-                    }
+                    glyph: "\u{f0594}"
+                    hasMore: false
+                    dim: !popup.active || popup.scheduleFollow
+                    // Same direction as the Night Light tile's slider.
+                    value: (popup.kelvin - popup.minKelvin) / (popup.maxKelvin - popup.minKelvin)
+                    valueText: popup.kelvin + "K"
+                    onMoved: (v) => popup.setTemperature(Math.round((popup.minKelvin + v * (popup.maxKelvin - popup.minKelvin)) / 100) * 100)
                 }
             }
 
-            Rectangle {
+            Column {
                 width: popup.contentWidth
-                height: 1
-                color: Theme.separator
-            }
-
-            SectionLabel {
-                text: "Schedule times"
-            }
-
-            Row {
-                width: popup.contentWidth
-                height: 22
                 spacing: 6
-
-                Text {
-                    width: 40
-                    height: parent.height
-                    verticalAlignment: Text.AlignVCenter
-                    text: "Day"
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 1
-                    color: Theme.textMuted
+                SectionLabel {
+                    text: "Schedule"
                 }
-                TimeSpinner {
-                    value: popup.dayHour
-                    max: 23
-                    onChanged: (v) => popup.dayHour = v
+                TimeRow {
+                    glyph: "\u{f0594}"
+                    title: "Night starts"
+                    hour: popup.nightHour
+                    minute: popup.nightMinute
+                    onStep: (dir) => {
+                        const t = popup.stepTime(popup.nightHour, popup.nightMinute, dir)
+                        popup.nightHour = t[0]; popup.nightMinute = t[1]
+                        saveTimer.restart()
+                    }
                 }
-                Text {
-                    height: 22
-                    verticalAlignment: Text.AlignVCenter
-                    text: ":"
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize - 1
-                    color: Theme.textMuted
-                }
-                TimeSpinner {
-                    value: popup.dayMinute
-                    max: 59
-                    onChanged: (v) => popup.dayMinute = v
-                }
-            }
-
-            Row {
-                width: popup.contentWidth
-                height: 22
-                spacing: 6
-
-                Text {
-                    width: 40
-                    height: parent.height
-                    verticalAlignment: Text.AlignVCenter
-                    text: "Night"
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 1
-                    color: Theme.textMuted
-                }
-                TimeSpinner {
-                    value: popup.nightHour
-                    max: 23
-                    onChanged: (v) => popup.nightHour = v
-                }
-                Text {
-                    height: 22
-                    verticalAlignment: Text.AlignVCenter
-                    text: ":"
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSize - 1
-                    color: Theme.textMuted
-                }
-                TimeSpinner {
-                    value: popup.nightMinute
-                    max: 59
-                    onChanged: (v) => popup.nightMinute = v
-                }
-            }
-
-            Item {
-                id: saveEntry
-                width: popup.contentWidth
-                height: Theme.controlHeight
-
-                Rectangle {
-                    anchors.fill: parent
-                    radius: Theme.controlRadius
-                    color: saveArea.containsMouse ? Theme.hoverFill : Theme.controlFill
-                }
-                Text {
-                    id: saveLabel
-                    anchors.centerIn: parent
-                    text: "Save schedule"
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 1
-                    color: Theme.accent
-                }
-                MouseArea {
-                    id: saveArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    onClicked: popup.saveTimes()
+                TimeRow {
+                    glyph: "\u{f0599}" // nf-md-weather_sunny
+                    title: "Day starts"
+                    hour: popup.dayHour
+                    minute: popup.dayMinute
+                    onStep: (dir) => {
+                        const t = popup.stepTime(popup.dayHour, popup.dayMinute, dir)
+                        popup.dayHour = t[0]; popup.dayMinute = t[1]
+                        saveTimer.restart()
+                    }
                 }
             }
         }
     }
 
-    function _kelvinAt(x) {
-        const fraction = Math.max(0, Math.min(1, x / popup.contentWidth))
-        const raw = popup.minKelvin + fraction * (popup.maxKelvin - popup.minKelvin)
-        return Math.round(raw / 100) * 100
+    component TimeRow: PageRow {
+        id: tr
+        property int hour: 0
+        property int minute: 0
+        signal step(int dir)
+        width: popup.contentWidth
+        clickable: false
+        Text {
+            anchors.verticalCenter: parent.verticalCenter
+            rightPadding: 4
+            text: popup.pad2(tr.hour) + ":" + popup.pad2(tr.minute)
+            color: Theme.text
+            font.family: Theme.uiFontFamily
+            font.pixelSize: Theme.fontSize + 1
+            font.bold: true
+            font.features: { "tnum": 1 }
+        }
+        StepButton {
+            glyph: "\u{f0374}"
+            onClicked: tr.step(-1)
+        }
+        StepButton {
+            glyph: "\u{f0415}"
+            onClicked: tr.step(1)
+        }
     }
 }

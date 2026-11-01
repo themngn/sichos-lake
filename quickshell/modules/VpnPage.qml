@@ -113,39 +113,21 @@ MorphContent {
         width: page.contentWidth
         spacing: Theme.sectionSpacing
 
-        // Header: back, title, on/off.
-        Item {
-            width: parent.width
-            height: 20
-            Row {
-                spacing: 6
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                BackButton { onClicked: page.back() }
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Proton VPN"
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize
-                    font.bold: true
-                    color: Theme.text
-                }
-            }
+        PageHeader {
+            title: "Proton VPN"
+            onBack: page.back()
             Switch {
-                anchors.right: parent.right
                 checked: VpnStatus.connected || VpnStatus.connecting
                 onToggled: VpnStatus.toggle()
             }
         }
-
-        Rectangle { width: parent.width; height: 1; color: Theme.separator }
 
         // Status card.
         Rectangle {
             width: parent.width
             height: statusCol.implicitHeight + 20
             radius: Theme.controlRadius
-            color: VpnStatus.connected ? Theme.selectedFill : Theme.surfaceRaised
+            color: VpnStatus.connected ? Theme.selectedFill : Theme.controlFill
             Text {
                 id: bigFlag
                 anchors.left: parent.left
@@ -264,7 +246,7 @@ MorphContent {
         Column {
             visible: VpnStatus.favorites.length > 0
             width: parent.width
-            spacing: 2
+            spacing: 6
             SectionLabel { text: "Favorites" }
             Repeater {
                 model: VpnStatus.favorites
@@ -288,7 +270,7 @@ MorphContent {
             readonly property var items: (VpnStatus.recent || []).filter(r => r.name !== VpnStatus.server).slice(0, 3)
             visible: items.length > 0
             width: parent.width
-            spacing: 2
+            spacing: 6
             SectionLabel { text: "Recent" }
             Repeater {
                 model: parent.items
@@ -452,7 +434,7 @@ MorphContent {
                     Column {
                         id: listColumn
                         width: list.width
-                        spacing: 2
+                        spacing: 6
 
                         Text {
                             visible: !VpnStatus.loadingCountries && page.filtered.length === 0
@@ -578,8 +560,6 @@ MorphContent {
             }
         }
 
-        Rectangle { width: parent.width; height: 1; color: Theme.separator }
-
         // Settings: what `protonvpn config set` can change, read back from
         // the app's settings.json (shared with the app).
         Column {
@@ -587,17 +567,34 @@ MorphContent {
 
             Rectangle {
                 width: parent.width
-                height: Theme.controlHeight + 8
+                height: 52
                 radius: Theme.controlRadius
-                color: settingsArea.containsMouse ? Theme.hoverFill : "transparent"
+                color: page.settingsOpen ? Theme.selectedFill : settingsArea.containsMouse ? Theme.hoverFill : Theme.controlFill
+                Rectangle {
+                    id: settingsBadge
+                    x: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 32
+                    height: 32
+                    radius: 16
+                    color: Qt.rgba(1, 1, 1, 0.08)
+                    HeaderIcon {
+                        anchors.centerIn: parent
+                        glyph: "\u{f0493}" // nf-md-cog
+                        inkHeight: 15
+                        inkWidth: 19
+                        color: Theme.textMuted
+                    }
+                }
                 Text {
-                    anchors.left: parent.left
+                    anchors.left: settingsBadge.right
                     anchors.leftMargin: 10
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Settings"
                     color: Theme.text
                     font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 1
+                    font.pixelSize: Theme.fontSize
+                    font.bold: true
                 }
                 Text {
                     anchors.right: parent.right
@@ -645,8 +642,8 @@ MorphContent {
                 SettingRow {
                     label: "NetShield"
                     caption: ["DNS filtering, off", "Blocks malware", "Blocks malware, ads, trackers"][VpnStatus.netShieldLevel] || ""
-                    minHeight: Theme.controlHeight + 4
                     Segmented {
+                        width: 180
                         anchors.verticalCenter: parent.verticalCenter
                         options: [{ value: "off", label: "Off" }, { value: "malware-only", label: "Malware" },
                             { value: "malware-ads-trackers", label: "+ Ads" }]
@@ -699,35 +696,17 @@ MorphContent {
         }
 
         // The app itself (sign-in, protocol, split tunneling, account).
-        Rectangle {
-            width: parent.width
-            height: Theme.controlHeight + 8
-            radius: Theme.controlRadius
-            color: appArea.containsMouse ? Theme.hoverFill : "transparent"
+        PageRow {
+            glyph: "\u{f0565}" // nf-md-shield_check
+            title: "Open Proton VPN"
+            subtitle: "Sign-in, protocol, split tunneling"
+            onClicked: { ShellState.activePopup = ""; VpnStatus.openApp() }
             Text {
-                anchors.left: parent.left
-                anchors.leftMargin: 10
-                anchors.verticalCenter: parent.verticalCenter
-                text: "Open Proton VPN"
-                color: Theme.text
-                font.family: Theme.uiFontFamily
-                font.pixelSize: Theme.fontSize - 1
-            }
-            Text {
-                anchors.right: parent.right
-                anchors.rightMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
                 text: "\u{f03cc}" // nf-md-open_in_new
                 color: Theme.textMuted
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSize - 2
-            }
-            MouseArea {
-                id: appArea
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: { ShellState.activePopup = ""; VpnStatus.openApp() }
             }
         }
     }
@@ -775,9 +754,9 @@ MorphContent {
         signal expandClicked()
         signal favoriteClicked()
         width: parent ? parent.width : 0
-        height: Theme.controlHeight + 12
+        height: 44
         radius: Theme.controlRadius
-        color: lr.selected ? Theme.selectedFill : lrArea.containsMouse ? Theme.hoverFill : "transparent"
+        color: lr.selected ? Theme.selectedFill : lrArea.containsMouse ? Theme.hoverFill : Theme.controlFill
         MouseArea {
             id: lrArea
             anchors.fill: parent
@@ -785,20 +764,26 @@ MorphContent {
             cursorShape: Qt.PointingHandCursor
             onClicked: lr.clicked()
         }
-        Text {
+        // The flag in the page rows' round badge.
+        Rectangle {
             id: lrFlag
-            anchors.left: parent.left
-            anchors.leftMargin: 8
+            x: 10
             anchors.verticalCenter: parent.verticalCenter
-            width: 26
-            text: lr.flag || "\u{f0565}"
-            color: Theme.textMuted
-            font.family: lr.flag ? Theme.uiFontFamily : Theme.fontFamily
-            font.pixelSize: Theme.fontSize + 5
+            width: 28
+            height: 28
+            radius: 14
+            color: lr.selected ? Theme.accent : Qt.rgba(1, 1, 1, 0.08)
+            Text {
+                anchors.centerIn: parent
+                text: lr.flag || "\u{f0565}"
+                color: Theme.textMuted
+                font.family: lr.flag ? Theme.uiFontFamily : Theme.fontFamily
+                font.pixelSize: Theme.fontSize + 2
+            }
         }
         Column {
             anchors.left: lrFlag.right
-            anchors.leftMargin: 6
+            anchors.leftMargin: 10
             anchors.right: lrStar.left
             anchors.rightMargin: 6
             anchors.verticalCenter: parent.verticalCenter
@@ -809,7 +794,7 @@ MorphContent {
                 color: Theme.text
                 font.family: Theme.uiFontFamily
                 font.pixelSize: Theme.fontSize - 1
-                font.bold: lr.selected
+                font.bold: true
             }
             Text {
                 visible: lr.subtitle !== ""
@@ -818,7 +803,7 @@ MorphContent {
                 elide: Text.ElideRight
                 color: Theme.textMuted
                 font.family: Theme.uiFontFamily
-                font.pixelSize: Theme.fontSize - 3
+                font.pixelSize: Theme.fontSize - 2
             }
         }
         StarButton {
@@ -977,9 +962,14 @@ MorphContent {
         property string label: ""
         property string caption: ""
         default property alias controls: srControls.data
-        property real minHeight: Theme.controlHeight
+        property real minHeight: 44
         width: column.width
-        height: Math.max(sr.minHeight, srText.implicitHeight + 8)
+        height: Math.max(sr.minHeight, srText.implicitHeight + 16)
+        Rectangle {
+            anchors.fill: parent
+            radius: Theme.controlRadius
+            color: Theme.controlFill
+        }
         Column {
             id: srText
             anchors.left: parent.left
@@ -995,6 +985,7 @@ MorphContent {
                 color: Theme.text
                 font.family: Theme.uiFontFamily
                 font.pixelSize: Theme.fontSize - 1
+                font.bold: true
             }
             Text {
                 visible: sr.caption !== ""
@@ -1003,68 +994,16 @@ MorphContent {
                 elide: Text.ElideRight
                 color: Theme.textMuted
                 font.family: Theme.uiFontFamily
-                font.pixelSize: Theme.fontSize - 3
+                font.pixelSize: Theme.fontSize - 2
             }
         }
         Row {
             id: srControls
             anchors.right: parent.right
-            anchors.rightMargin: 4
+            anchors.rightMargin: 10
             anchors.top: parent.top
             anchors.bottom: parent.bottom
             spacing: 6
-        }
-    }
-
-    // Segmented control, as on the Phone page.
-    component Segmented: Rectangle {
-        id: seg
-        property var options: []  // [{value, label}]
-        property string current: ""
-        signal picked(string value)
-        readonly property int index: seg.options.findIndex(o => o.value === seg.current)
-        width: 180
-        readonly property real segWidth: (seg.width - 4) / Math.max(1, seg.options.length)
-        height: Theme.controlHeight + 4
-        radius: Theme.controlRadius
-        color: Theme.controlFill
-        Rectangle {
-            visible: seg.index >= 0
-            x: 2 + Math.max(0, seg.index) * seg.segWidth
-            y: 2
-            width: seg.segWidth
-            height: parent.height - 4
-            radius: Theme.controlRadius - 2
-            color: Theme.accent
-            Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-        }
-        Row {
-            x: 2
-            Repeater {
-                model: seg.options
-                Item {
-                    required property var modelData
-                    required property int index
-                    width: seg.segWidth
-                    height: seg.height
-                    Text {
-                        anchors.centerIn: parent
-                        text: modelData.label
-                        color: index === seg.index ? Theme.textOnLight
-                            : segArea.containsMouse ? Theme.text : Theme.textMuted
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 2
-                        font.bold: index === seg.index
-                    }
-                    MouseArea {
-                        id: segArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: index === seg.index ? Qt.ArrowCursor : Qt.PointingHandCursor
-                        onClicked: seg.picked(modelData.value)
-                    }
-                }
-            }
         }
     }
 

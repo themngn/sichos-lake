@@ -286,12 +286,30 @@ Pill {
 
 
 
+                // What's on it, one window title per line (the icons alone
+                // don't tell two browser windows apart).
+                BarTooltip {
+                    id: wsTip
+                    target: wsItem
+                    hovered: wsMouse.containsMouse
+                    text: wsItem.windows.length === 0 ? "Empty"
+                        : wsItem.windows.map(t => {
+                            // The Wayland toplevel's title: HyprlandToplevel's
+                            // own lagged behind (two Firefox windows both
+                            // read "Mozilla Firefox" while hyprctl had the
+                            // page title for one).
+                            const title = (t.wayland && t.wayland.title) || t.title || ""
+                            return title.length > 60 ? title.slice(0, 59) + "…" : title
+                        }).filter(t => t).join("\n")
+                }
+
                 MouseArea {
                     id: wsMouse
                     anchors.fill: parent
                     hoverEnabled: true
                     acceptedButtons: Qt.LeftButton | Qt.RightButton
                     onClicked: mouse => {
+                        wsTip.hide()
                         if (mouse.button === Qt.RightButton) {
                             // Fresh model names for the menu's monitor labels.
                             Hyprland.refreshMonitors()

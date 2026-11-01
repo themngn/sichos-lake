@@ -21,6 +21,11 @@ Pill {
 
     onClicked: if (root.hub) root.hub.toggle()
 
+    // The full date (the bar shows "Sat 31"), and the conditions behind
+    // the weather glyph.
+    tooltipText: Qt.formatDate(root.now, "dddd, d MMMM yyyy")
+        + (root._haveWeather ? " · " + root.weather.textFor(root.weather.code) : "")
+
     // The bar's Weather pill (hidden, kept as the data source -- see
     // Bar.qml): its conditions ride along after the time, so date, time and
     // weather are one pill and one click away from the hub's forecast.

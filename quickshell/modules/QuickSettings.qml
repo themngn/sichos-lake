@@ -32,6 +32,8 @@ Pill {
     property string screenName: ""
     // Set by Bar.qml: the bar's MorphPopup card (see MorphContent.qml).
     property Item popupHost: null
+    // MorphPopup.overlay (Bar.qml): where the footer tooltips are drawn.
+    property Item popupOverlay: null
     // Where the Phone page renders, if not popupHost: the hub's
     // notifications column (Bar.qml), so it opens there from the hub's phone
     // card while this card's main page stays up beside it.
@@ -73,11 +75,15 @@ Pill {
     // Only ever a local file:// cover: a remote https art URL loaded by an
     // Image in every bar's card is the crash NowPlayingState.artPath exists
     // to avoid. Spotify's gets downloaded there; browsers already hand out
-    // file:// URLs; anything else shows the music glyph instead.
+    // file:// URLs, and Telegram embeds its cover as a data: URL (no
+    // network reply either; NowPlayingState.localArt turns it into a file);
+    // anything else shows the music glyph instead.
     function artFor(p) {
         if (!p) return ""
         if (p === NowPlayingState.spotify) return NowPlayingState.artPath
-        return (p.trackArtUrl || "").startsWith("file://") ? p.trackArtUrl : ""
+        const u = p.trackArtUrl || ""
+        if (u.startsWith("data:image/")) return NowPlayingState.localArt(u)
+        return u.startsWith("file://") ? u : ""
     }
 
     // --- Bar icons: network and battery; everything else lives in the card ---
@@ -201,7 +207,17 @@ Pill {
         // makes Hyprland clear the grab, and onCleared closed the whole card
         // the moment the field opened. Re-armed when the field lets go.
         active: root.grabbing && !root.typing && !ShellState.popupRemapping
-        onCleared: if (root.anyOpen && !root.typing && !ShellState.popupRemapping) ShellState.activePopup = ""
+        // Not while the pointer is over the card: a click on the footer's
+        // switches cleared the grab (every one of them closed the card,
+        // reported 2026-10-31) though it landed inside -- re-armed instead.
+        onCleared: {
+            if (cardHover.hovered && root.anyOpen) {
+                root.grabbing = false
+                grabTimer.restart()
+                return
+            }
+            if (root.anyOpen && !root.typing && !ShellState.popupRemapping) ShellState.activePopup = ""
+        }
     }
 
     function nodeName(n) {
@@ -226,6 +242,19 @@ Pill {
 
         // The tiles' data sources poll only while the card is open.
         Binding { target: NetInfo; property: "active"; value: panel.shown }
+
+        // Tooltips for the icon-only controls (footer switches, power
+        // profile, edit / power buttons), drawn in the card.
+        CardTooltip {
+            id: cardTip
+            // In the popup window itself, not the card: it hangs below
+            // the hovered control, and the footer's is past the card's
+            // bottom edge (MorphPopup leaves room there).
+            parent: root.popupOverlay || panel
+        }
+        // Whether the pointer is on the Control Center column (see the
+        // focus grab's onCleared).
+        HoverHandler { id: cardHover }
         Binding { target: PowerInfo; property: "active"; value: panel.shown }
         Binding { target: Displays; property: "active"; value: panel.shown }
         Binding { target: AudioInfo; property: "active"; value: panel.shown }
@@ -303,7 +332,10 @@ Pill {
         // reorder, drag an edge/corner to resize, remove, add spare ones.
         // Layout lives in ControlCenterTiles.
         property bool editing: false
-        onShownChanged: if (!panel.shown) panel.editing = false
+        onShownChanged: if (!panel.shown) {
+            panel.editing = false
+            cardTip.hover(cardTip.target, false)
+        }
 
         readonly property bool airplane: !Networking.wifiEnabled && !(root.adapter && root.adapter.enabled)
 
@@ -1062,14 +1094,15 @@ Pill {
                             spacing: 2
                             Repeater {
                                 model: [
-                                    { profile: UP.PowerProfile.PowerSaver, glyph: "\u{f032a}" },  // nf-md-leaf
-                                    { profile: UP.PowerProfile.Balanced, glyph: "\u{f05d1}" },    // nf-md-scale_balance
-                                    { profile: UP.PowerProfile.Performance, glyph: "\u{f04c5}" }  // nf-md-speedometer
+                                    { profile: UP.PowerProfile.PowerSaver, glyph: "\u{f032a}", name: "Power saver" },  // nf-md-leaf
+                                    { profile: UP.PowerProfile.Balanced, glyph: "\u{f05d1}", name: "Balanced" },       // nf-md-scale_balance
+                                    { profile: UP.PowerProfile.Performance, glyph: "\u{f04c5}", name: "Performance" }  // nf-md-speedometer
                                 ]
                                 delegate: Rectangle {
                                     id: profileSeg
                                     required property var modelData
                                     readonly property bool current: UP.PowerProfiles.profile === profileSeg.modelData.profile
+                                    readonly property string tipText: profileSeg.modelData.name + (profileSeg.current ? " · current" : "")
                                     width: 30
                                     height: 24
                                     radius: 12
@@ -1088,6 +1121,7 @@ Pill {
                                         id: profileArea
                                         anchors.fill: parent
                                         hoverEnabled: true
+                                        onContainsMouseChanged: cardTip.hover(profileSeg, containsMouse)
                                         cursorShape: Qt.PointingHandCursor
                                         onClicked: UP.PowerProfiles.profile = profileSeg.modelData.profile
                                     }
@@ -1123,6 +1157,8 @@ Pill {
                         HeaderButton {
                             visible: !panel.editing
                             round: true
+                            tooltip: cardTip
+                            tipText: "Edit tiles"
                             glyph: "\u{f03eb}" // nf-md-pencil
                             onClicked: panel.editing = true
                         }
@@ -2144,6 +2180,7 @@ Pill {
                             model: ["micmute", "nightlight", "hdr", "opaque", "gamefocus", "awake", "lid"]
                             delegate: FooterToggle {
                                 required property string modelData
+                                tooltip: cardTip
                                 info: panel.tileInfo(modelData)
                                 onToggle: panel.tileToggle(modelData)
                                 onMore: if (info.more) root.openPopup(info.more)
@@ -2157,6 +2194,8 @@ Pill {
                         spacing: 6
                         HeaderButton {
                             round: true
+                            tooltip: cardTip
+                            tipText: "Power menu"
                             glyph: "\u{f0425}" // nf-md-power
                             onClicked: {
                                 ShellState.activePopup = ""
@@ -2272,29 +2311,10 @@ Pill {
                 width: root.cardWidth
                 spacing: Theme.sectionSpacing
 
-                // Header, back arrow like BluetoothIndicator/DisplaySettings'.
-                Item {
-                    width: parent.width
-                    height: 20
-
-                    Row {
-                        spacing: 6
-                        anchors.left: parent.left
-                        anchors.verticalCenter: parent.verticalCenter
-                        BackButton {
-                            onClicked: root.openPopup(root.popupId)
-                        }
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "Sound"
-                            font.family: Theme.uiFontFamily
-                            font.pixelSize: Theme.fontSize
-                            font.bold: true
-                            color: Theme.text
-                        }
-                    }
+                PageHeader {
+                    title: "Sound"
+                    onBack: root.openPopup(root.popupId)
                     Text {
-                        anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
                         text: "Mixer"
                         color: mixerArea.containsMouse ? Theme.accentHover : Theme.accent
@@ -2315,13 +2335,12 @@ Pill {
                     }
                 }
 
-                Rectangle { width: parent.width; height: 1; color: Theme.separator }
-
                 SectionLabel {
                     text: "Output"
                 }
                 SliderRow {
                     width: parent.width
+                    hasMore: false
                     glyph: vol.icon()
                     glyphScale: vol.iconScale()
                     dim: !!(root.sink && root.sink.audio && root.sink.audio.muted)
@@ -2331,10 +2350,11 @@ Pill {
                 }
                 Column {
                     width: parent.width
-                    spacing: 2
+                    spacing: 6
                     Repeater {
                         model: root.sinks
                         delegate: DeviceRow {
+                            input: false
                             required property var modelData
                             width: audioColumn.width
                             label: root.nodeName(modelData)
@@ -2349,6 +2369,7 @@ Pill {
                 }
                 SliderRow {
                     width: parent.width
+                    hasMore: false
                     glyph: root.source && root.source.audio && root.source.audio.muted ? "\u{f036d}" : "\u{f036c}"
                     dim: !!(root.source && root.source.audio && root.source.audio.muted)
                     value: root.source && root.source.audio ? root.source.audio.volume : 0
@@ -2357,10 +2378,11 @@ Pill {
                 }
                 Column {
                     width: parent.width
-                    spacing: 2
+                    spacing: 6
                     Repeater {
                         model: root.sources
                         delegate: DeviceRow {
+                            input: true
                             required property var modelData
                             width: audioColumn.width
                             label: root.nodeName(modelData)
@@ -2392,7 +2414,9 @@ Pill {
         // Same colour pick as PlayerHero's tint.
         ColorQuantizer {
             id: rowQuant
-            source: mediaCard.artSource
+            // Not a data: URL (it can't load one) -- the file follows, see
+            // NowPlayingState.localArt.
+            source: mediaCard.artSource.startsWith("data:") ? "" : mediaCard.artSource
             depth: 3
             rescaleSize: 64
         }
@@ -2613,7 +2637,9 @@ Pill {
         // pinned to a dark lightness so the white text always reads on it.
         ColorQuantizer {
             id: quant
-            source: hero.artSource !== "" ? hero.artSource : ""
+            // Not a data: URL (it can't load one) -- the file follows, see
+            // NowPlayingState.localArt.
+            source: hero.artSource.startsWith("data:") ? "" : hero.artSource
             depth: 3
             rescaleSize: 64
         }
@@ -2928,11 +2954,13 @@ Pill {
         Text {
             id: mbGlyph
             // Centered by hand on whole pixels: anchors.centerIn put the
-            // small play glyph a pixel left in its disc. The play triangle
-            // also gets nudged right -- its ink box is centered in the glyph,
-            // but a triangle's visual middle sits a third of the way in from
-            // its flat side, so a centered one reads as off to the left.
-            readonly property real nudge: mb.glyph === "\u{f040a}" ? font.pixelSize * 0.2 : 0
+            // small play glyph a pixel left in its disc. Inside the disc the
+            // play triangle also gets nudged right -- its ink box is centered
+            // in the glyph, but against a circle its visual middle (a third of
+            // the way in from the flat side) reads as off to the left. A plain
+            // one stays box-centered: nudged, it sat ~3px out of step with
+            // prev/next beside it.
+            readonly property real nudge: mb.filled && mb.glyph === "\u{f040a}" ? font.pixelSize * 0.2 : 0
             x: Math.round((parent.width - width) / 2 + nudge)
             y: Math.round((parent.height - height) / 2)
             text: mb.glyph
@@ -2968,127 +2996,16 @@ Pill {
     }
 
     // Icon + track + percentage; the track takes clicks, drags and wheel.
-    component SliderRow: Item {
-        id: slider
-        property string glyph: ""
-        property real glyphScale: 1
-        property bool dim: false
-        property real value: 0
-        signal moved(real v)
-        signal glyphClicked()
-        // Connected = shows a chevron at the end that opens a page.
-        signal more()
-        property bool hasMore: true
-
-        height: Theme.controlHeight + 4
-
-        function valueAt(x) { return Math.max(0, Math.min(1, x / track.width)) }
-
-        Item {
-            id: glyphBox
-            width: 24
-            height: parent.height
-            Text {
-                // Left-aligned like Volume.qml: the volume glyphs differ in
-                // width, centering would wobble the speaker side to side.
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                text: slider.glyph
-                color: slider.dim ? Theme.textDim : glyphArea.containsMouse ? Theme.accent : Theme.text
-                font.family: Theme.fontFamily
-                font.pixelSize: (Theme.fontSize + 3) * slider.glyphScale
-            }
-            MouseArea {
-                id: glyphArea
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: slider.glyphClicked()
-            }
-        }
-
-        Rectangle {
-            id: track
-            anchors.left: glyphBox.right
-            anchors.leftMargin: 6
-            anchors.right: pct.left
-            anchors.rightMargin: 10
-            anchors.verticalCenter: parent.verticalCenter
-            height: Theme.trackHeight - 2
-            radius: Theme.trackRadius
-            color: Theme.track
-            opacity: slider.dim ? 0.5 : 1
-
-            Rectangle {
-                width: track.width * Math.max(0, Math.min(1, slider.value))
-                height: parent.height
-                radius: Theme.trackRadius
-                color: Theme.text
-            }
-            Rectangle {
-                x: track.width * Math.max(0, Math.min(1, slider.value)) - width / 2
-                anchors.verticalCenter: parent.verticalCenter
-                width: 14
-                height: 14
-                radius: 7
-                color: "white"
-            }
-
-            MouseArea {
-                // Taller than the track so it's easy to grab.
-                anchors.fill: parent
-                anchors.topMargin: -8
-                anchors.bottomMargin: -8
-                cursorShape: Qt.PointingHandCursor
-                onPressed: (mouse) => slider.moved(slider.valueAt(mouse.x))
-                onPositionChanged: (mouse) => { if (pressed) slider.moved(slider.valueAt(mouse.x)) }
-                onWheel: (wheel) => slider.moved(Math.max(0, Math.min(1, slider.value + (wheel.angleDelta.y > 0 ? 0.05 : -0.05))))
-            }
-        }
-
-        Rectangle {
-            id: sliderMore
-            visible: slider.hasMore
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            width: slider.hasMore ? 24 : 0
-            height: 24
-            radius: Theme.controlRadius
-            color: sliderMoreArea.containsMouse ? Theme.hoverFill : "transparent"
-            Text {
-                anchors.centerIn: parent
-                text: "\u{f0142}" // nf-md-chevron_right
-                color: sliderMoreArea.containsMouse ? Theme.text : Theme.textMuted
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize + 1
-            }
-            MouseArea {
-                id: sliderMoreArea
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: slider.more()
-            }
-        }
-        Text {
-            id: pct
-            anchors.right: sliderMore.left
-            anchors.rightMargin: 2
-            anchors.verticalCenter: parent.verticalCenter
-            width: 40
-            horizontalAlignment: Text.AlignRight
-            text: Math.round(slider.value * 100) + "%"
-            color: Theme.textMuted
-            font.family: Theme.uiFontFamily
-            font.pixelSize: Theme.fontSize - 2
-        }
-    }
-
     // Icon-only switch in the footer: the lighter accent with a dark glyph
     // while on (accent + light glyph was too faint, a white disc too bright).
     component FooterToggle: Rectangle {
         id: ft
         property var info: ({})
+        // A CardTooltip: name and state (the switch is only a glyph), read
+        // live so a click updates it under the pointer.
+        property Item tooltip: null
+        readonly property string tipText: (ft.info.label || "") + (ft.info.sub ? " · " + ft.info.sub : "")
+        readonly property string tipHint: ft.info.more ? "Right-click for settings" : ""
         signal toggle()
         signal more()
         anchors.verticalCenter: parent ? parent.verticalCenter : undefined
@@ -3108,6 +3025,7 @@ Pill {
             id: ftArea
             anchors.fill: parent
             hoverEnabled: true
+            onContainsMouseChanged: if (ft.tooltip) ft.tooltip.hover(ft, containsMouse)
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             cursorShape: Qt.PointingHandCursor
             pressAndHoldInterval: 450
@@ -3237,46 +3155,29 @@ Pill {
         }
     }
 
-    // Selectable audio device; the current default gets a check.
-    component DeviceRow: Rectangle {
+    // Selectable audio device, a page row: the current default is filled
+    // and checked. The glyph is guessed from the device's name -- PipeWire
+    // has a form factor property, but most ALSA cards leave it unset.
+    component DeviceRow: PageRow {
         id: dev
         property string label: ""
         property bool current: false
-        signal clicked()
-
-        height: Theme.controlHeight + 6
-        radius: Theme.controlRadius
-        color: dev.current ? Theme.selectedFill : devArea.containsMouse ? Theme.hoverFill : "transparent"
-
+        property bool input: false
+        compact: true
+        selected: dev.current
+        active: dev.current
+        title: dev.label
+        glyph: dev.input ? "\u{f036c}"
+            : /headset|headphone|hyperx|airpods|buds|cloud/i.test(dev.label) ? "\u{f02cb}"
+            : /hdmi|displayport|digital/i.test(dev.label) ? "\u{f0379}"
+            : "\u{f04c3}"
         Text {
-            anchors.left: parent.left
-            anchors.leftMargin: 10
-            anchors.right: check.left
-            anchors.rightMargin: 8
-            anchors.verticalCenter: parent.verticalCenter
-            text: dev.label
-            elide: Text.ElideRight
-            color: dev.current ? Theme.text : Theme.textMuted
-            font.family: Theme.uiFontFamily
-            font.pixelSize: Theme.fontSize - 1
-        }
-        Text {
-            id: check
-            anchors.right: parent.right
-            anchors.rightMargin: 10
-            anchors.verticalCenter: parent.verticalCenter
             visible: dev.current
-            text: "" // nf-fa-check
-            color: Theme.accent
+            anchors.verticalCenter: parent.verticalCenter
+            text: "\u{f00c}" // nf-fa-check
+            color: Theme.text
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontSize - 1
-        }
-        MouseArea {
-            id: devArea
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: dev.clicked()
         }
     }
 
@@ -3316,6 +3217,9 @@ Pill {
         // Glyph-only as a 28px circle (the footer's edit / lock / power, to
         // match its icon switches).
         property bool round: false
+        // A CardTooltip and its text (glyph-only buttons).
+        property Item tooltip: null
+        property string tipText: ""
         signal clicked()
         anchors.verticalCenter: parent ? parent.verticalCenter : undefined
         width: hb.round ? 28 : hb.label !== "" ? hbText.implicitWidth + 18 : Theme.controlHeight
@@ -3336,6 +3240,7 @@ Pill {
             id: hbArea
             anchors.fill: parent
             hoverEnabled: true
+            onContainsMouseChanged: if (hb.tooltip && hb.tipText !== "") hb.tooltip.hover(hb, containsMouse)
             cursorShape: Qt.PointingHandCursor
             onClicked: hb.clicked()
         }

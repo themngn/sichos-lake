@@ -1255,17 +1255,25 @@ MorphContent {
         // The next five days, range bars on one shared scale (like the
         // Weather popup's week), a dot for now on today's.
         Column {
+            id: days
             visible: ws.ready && ws.weather.daily.length > 0
             width: parent.width
             spacing: 2
+            readonly property var shown: ws.ready ? ws.weather.daily.slice(0, 5) : []
+            // The scale spans just these days (and now, for today's dot) --
+            // Weather's weekMin/weekMax cover all seven, so with the week's
+            // extremes on a day not listed here no bar reached either end.
+            readonly property var _now: ws.ready && ws.weather.tempC !== null ? [ws.weather.tempC] : []
+            readonly property real lo: days.shown.length ? Math.min(...days.shown.map(d => d.tempMin), ...days._now) : 0
+            readonly property real hi: days.shown.length ? Math.max(...days.shown.map(d => d.tempMax), ...days._now) : 1
             Repeater {
-                model: ws.ready ? ws.weather.daily.slice(0, 5) : []
+                model: days.shown
                 delegate: Item {
                     id: dayRow
                     required property var modelData
                     required property int index
-                    readonly property real lo: ws.weather.weekMin
-                    readonly property real span: Math.max(1, ws.weather.weekMax - ws.weather.weekMin)
+                    readonly property real lo: days.lo
+                    readonly property real span: Math.max(1, days.hi - days.lo)
                     width: ws.width
                     height: 30
                     Text {

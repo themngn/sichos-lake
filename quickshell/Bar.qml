@@ -202,7 +202,38 @@ PanelWindow {
         }
         spacing: 4
 
-        Workspaces {}
+        // Workspaces, swapped for the Spotify "now playing" line for a few
+        // seconds after a track change (NowPlayingState.visible). Cross-fade,
+        // with the slot's width easing between the two so Submap beside it
+        // slides rather than jumps. Only this section changes -- the rest of
+        // the bar stays as it is.
+        Item {
+            id: leftSwap
+            readonly property bool playing: NowPlayingState.visible
+            implicitHeight: Theme.barHeight
+            implicitWidth: playing ? nowPlaying.implicitWidth : workspaces.implicitWidth
+            Behavior on implicitWidth {
+                NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+            }
+            clip: true
+
+            Workspaces {
+                id: workspaces
+                anchors.verticalCenter: parent.verticalCenter
+                opacity: leftSwap.playing ? 0 : 1
+                visible: opacity > 0
+                Behavior on opacity { NumberAnimation { duration: 150 } }
+            }
+            NowPlaying {
+                id: nowPlaying
+                anchors.verticalCenter: parent.verticalCenter
+                // Up to just short of the clock, which sits at true center.
+                maxWidth: Math.max(120, clock.x - 8 - 48)
+                opacity: leftSwap.playing ? 1 : 0
+                visible: opacity > 0
+                Behavior on opacity { NumberAnimation { duration: 150 } }
+            }
+        }
         Submap {}
     }
 
@@ -294,6 +325,7 @@ PanelWindow {
         visible: false
         screenName: bar.screen.name
         popupHost: hub.controlsSlot
+        popupOverlay: barMorph.overlay
         phoneHost: hub.phoneSlot
     }
 

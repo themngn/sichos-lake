@@ -3,10 +3,7 @@ import Quickshell
 
 // Flat, background-less module container matching waybar's `#module { padding }` styling
 // (no pill background/border/radius — waybar modules carry no chrome besides padding).
-//
-// Tooltips use a Quickshell PopupWindow rather than QtQuick.Controls ToolTip: a
-// layer-shell PanelWindow has no QQuickOverlay for Controls popups to parent into,
-// so the stock ToolTip attached property silently never shows anything on this bar.
+// `tooltipText`: a BarTooltip under the pill on hover (see there).
 Item {
     id: root
 
@@ -43,57 +40,16 @@ Item {
         hoverEnabled: true
         acceptedButtons: Qt.AllButtons
         onClicked: (mouse) => {
-            tooltipDelay.stop()
-            tooltipPopup.visible = false
+            tooltip.hide()
             root.clicked(mouse)
         }
         onWheel: (event) => root.wheel(event)
-        onContainsMouseChanged: {
-            if (mouseArea.containsMouse && root.tooltipText.length > 0) {
-                tooltipDelay.restart()
-            } else {
-                tooltipDelay.stop()
-                tooltipPopup.visible = false
-            }
-        }
     }
 
-    onTooltipTextChanged: if (root.tooltipText.length === 0) tooltipPopup.visible = false
-
-    Timer {
-        id: tooltipDelay
-        interval: 400
-        onTriggered: tooltipPopup.visible = true
-    }
-
-    PopupWindow {
-        id: tooltipPopup
-        anchor.item: root
-        anchor.edges: Edges.Bottom
-        anchor.gravity: Edges.Bottom
-        anchor.margins.top: 4
-        color: "transparent"
-        visible: false
-        implicitWidth: tooltipBg.implicitWidth
-        implicitHeight: tooltipBg.implicitHeight
-
-        Rectangle {
-            id: tooltipBg
-            implicitWidth: tooltipLabel.implicitWidth + 16
-            implicitHeight: tooltipLabel.implicitHeight + 10
-            color: Theme.surfaceFor(tooltipPopup.screen)
-            border.color: Theme.surfaceBorder
-            border.width: Theme.surfaceBorderWidth
-            radius: Theme.controlRadius
-
-            Text {
-                id: tooltipLabel
-                anchors.centerIn: parent
-                text: root.tooltipText
-                font.family: Theme.uiFontFamily
-                font.pixelSize: Theme.fontSize - 1
-                color: Theme.text
-            }
-        }
+    BarTooltip {
+        id: tooltip
+        target: root
+        hovered: mouseArea.containsMouse
+        text: root.tooltipText
     }
 }

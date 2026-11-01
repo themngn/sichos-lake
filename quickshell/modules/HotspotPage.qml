@@ -41,29 +41,10 @@ MorphContent {
         width: page.contentWidth
         spacing: Theme.sectionSpacing
 
-        Item {
-            width: parent.width
-            height: 20
-            Row {
-                spacing: 6
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                BackButton { onClicked: page.back() }
-                HeaderIcon {
-                    glyph: Hotspot.active ? "\u{f0003}" : "\u{f1511}"
-                    color: Theme.accent
-                }
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Hotspot"
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize
-                    font.bold: true
-                    color: Theme.text
-                }
-            }
+        PageHeader {
+            title: "Hotspot"
+            onBack: page.back()
             Switch {
-                anchors.right: parent.right
                 // Follows the request right away while nmcli works.
                 checked: Hotspot.pending === "on" || (Hotspot.active && Hotspot.pending !== "off") || Hotspot.starting
                 onToggled: {
@@ -74,18 +55,19 @@ MorphContent {
             }
         }
 
-        Text {
-            width: parent.width
-            wrapMode: Text.WordWrap
-            text: Hotspot.error !== "" ? Hotspot.error
+        PageRow {
+            clickable: false
+            glyph: Hotspot.active ? "\u{f0003}" : "\u{f1511}"
+            active: Hotspot.active
+            busy: Hotspot.busy
+            title: Hotspot.active ? Hotspot.ssid : "Hotspot"
+            subtitle: Hotspot.error !== "" ? Hotspot.error
                 : Hotspot.pending === "on" || Hotspot.starting ? "Starting…"
                 : Hotspot.pending === "off" ? "Stopping…"
-                : Hotspot.active ? (Hotspot.mode === "shared" ? "Sharing " + Hotspot.wifiName
-                    : "On instead of Wi-Fi — devices get internet only if this PC is online another way")
+                : Hotspot.active ? (Hotspot.mode === "shared" ? "Sharing " + Hotspot.wifiName + " · " + page.clientsText(Hotspot.clients)
+                    : "Instead of Wi-Fi · " + page.clientsText(Hotspot.clients))
                 : "Off"
-            color: Hotspot.error !== "" ? Theme.danger : Theme.textMuted
-            font.family: Theme.uiFontFamily
-            font.pixelSize: Theme.fontSize - 1
+            subtitleColor: Hotspot.error !== "" ? Theme.danger : Theme.textMuted
         }
 
         // --- How it runs ---
@@ -95,23 +77,13 @@ MorphContent {
             SectionLabel {
                 text: "Internet"
             }
-            Row {
+            Segmented {
                 width: parent.width
-                spacing: 6
-                PageButton {
-                    width: (parent.width - 6) / 2
-                    label: "Share Wi-Fi"
-                    selected: page.mode === "shared"
-                    available: !Hotspot.active && Hotspot.canShare
-                    onClicked: page.picked = "shared"
-                }
-                PageButton {
-                    width: (parent.width - 6) / 2
-                    label: "Without Wi-Fi"
-                    selected: page.mode === "standalone"
-                    available: !Hotspot.active
-                    onClicked: page.picked = "standalone"
-                }
+                options: [{ value: "shared", label: "Share Wi-Fi" }, { value: "standalone", label: "Without Wi-Fi" }]
+                current: page.mode
+                // Fixed while it runs (the caption says so).
+                busy: Hotspot.active
+                onPicked: (v) => { if (v !== "shared" || Hotspot.canShare) page.picked = v }
             }
             Text {
                 width: parent.width
@@ -129,10 +101,21 @@ MorphContent {
         // --- Network ---
         Column {
             width: parent.width
-            spacing: 4
+            spacing: 2
             SectionLabel {
                 text: "Network"
             }
+            // One filled card, like the hub's own.
+            Rectangle {
+                width: parent.width
+                height: infoColumn.implicitHeight + 12
+                radius: Theme.controlRadius
+                color: Theme.controlFill
+            Column {
+                id: infoColumn
+                x: 10
+                y: 6
+                width: parent.width - 20
             InfoRow { label: "Name"; value: Hotspot.ssid || "…" }
             InfoRow {
                 label: "Password"
@@ -151,6 +134,8 @@ MorphContent {
                 visible: Hotspot.active
                 label: "Connected"
                 value: page.clientsText(Hotspot.clients)
+            }
+            }
             }
         }
 
@@ -217,11 +202,9 @@ MorphContent {
         property bool selected: false
         property bool available: true
         signal clicked()
-        height: Theme.controlHeight
+        height: Theme.controlHeight + 4
         radius: Theme.controlRadius
         color: pb.selected ? Theme.selectedFill : pbArea.containsMouse && pb.available ? Theme.hoverFill : Theme.controlFill
-        border.color: pb.selected ? Theme.accent : Theme.surfaceBorder
-        border.width: 1
         opacity: pb.available || pb.selected ? 1 : 0.45
         Text {
             anchors.centerIn: parent
@@ -246,7 +229,7 @@ MorphContent {
         property string value: ""
         default property alias buttons: irButtons.data
         width: parent ? parent.width : 0
-        height: 26
+        height: 30
         Text {
             id: irLabel
             width: 90

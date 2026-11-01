@@ -2,9 +2,10 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// Idle timeout settings popup panel for IdleToggle.qml.
-// Hover-driven with persistent hover: allows adjusting lock, dim, and screen-off
-// timers and Never toggles smoothly without focus grabs.
+// Idle timeout settings popup panel for IdleToggle.qml (and the Control
+// Center's Stay Awake page): the Stay Awake switch, then lock, dim and
+// screen-off timers stepped with − / + (Never past the longest), written
+// to hypridle.conf by themselves. Hover-driven with persistent hover.
 MorphContent {
     id: popup
     // Set when the Control Center embeds this as one of its pages: the
@@ -21,7 +22,7 @@ MorphContent {
     // HoverHandler rather than a background MouseArea: a MouseArea only reports
     // containsMouse while it's the topmost hover-accepting item, so it goes false
     // the moment the cursor is over a descendant control that sets hoverEnabled
-    // itself (Save button, Never checkboxes, TimeSpinner arrows) — closing the
+    // itself (the step buttons) — closing the
     // popup mid-interaction. HoverHandler tracks its own item's bounds
     // independently of what's on top.
     readonly property bool popupHovered: popupHoverHandler.hovered
@@ -108,6 +109,35 @@ MorphContent {
         popup.settingsSaved()
     }
 
+    // Changes apply by themselves a moment after the last step (each save
+    // restarts hypridle, so not one per click) -- the page used to need a
+    // Save button, the only page in the Control Center that did.
+    Timer {
+        id: saveTimer
+        interval: 700
+        onTriggered: popup.saveSettings()
+    }
+    function changed() { saveTimer.restart() }
+
+    // The steps a duration row walks through, minutes (or seconds for
+    // dim), with whatever is configured now slotted in if it isn't one --
+    // a hand-edited hypridle.conf keeps its exact value until stepped.
+    readonly property var minuteSteps: [1, 2, 3, 5, 10, 15, 20, 30, 45, 60, 90, 120, 180]
+    readonly property var secondSteps: [5, 10, 15, 20, 30, 45]
+    function stepsWith(list, cur) {
+        return list.includes(cur) ? list : list.concat([cur]).sort((x, y) => x - y)
+    }
+    function minutesText(m) {
+        if (m < 60) return m + " min"
+        const h = Math.floor(m / 60), r = m % 60
+        return h + " h" + (r ? " " + r + " min" : "")
+    }
+
+    readonly property int lockTotal: popup.lockHours * 60 + popup.lockMinutes
+    readonly property int offTotal: popup.offHours * 60 + popup.offMinutes
+    function setLock(m) { popup.lockHours = Math.floor(m / 60); popup.lockMinutes = m % 60 }
+    function setOff(m) { popup.offHours = Math.floor(m / 60); popup.offMinutes = m % 60 }
+
     Item {
         id: bg
         anchors.fill: parent
@@ -121,240 +151,92 @@ MorphContent {
             anchors.centerIn: parent
             spacing: Theme.sectionSpacing
 
-            // Menu Title Header
-            Item {
+            PageHeader {
                 width: popup.contentWidth
-                height: 20
-
+                title: "Stay Awake"
+                showBack: popup.backPopupId !== ""
+                onBack: ShellState.activePopup = popup.backPopupId
                 PinButton {
                     toggleId: "idle"
-                    anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                 }
-
-                Row {
-                    spacing: 6
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    BackButton {
-                        visible: popup.backPopupId !== ""
-                        onClicked: ShellState.activePopup = popup.backPopupId
-                    }
-                    HeaderIcon {
-                        glyph: "\udb80\udd76"
-                        color: popup.active ? Theme.accent : Theme.textDim
-                    }
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "Stay Awake"
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize
-                        font.bold: true
-                        color: Theme.text
-                    }
+                Switch {
+                    checked: popup.active
+                    onToggled: ShellState.setIdleActive(!ShellState.idleActive, 0)
                 }
             }
 
-            // Lock
+            PageRow {
+                width: popup.contentWidth
+                clickable: false
+                glyph: "\u{f0176}"
+                active: popup.active
+                title: popup.active ? "Staying awake" : "Off"
+                subtitle: popup.active ? "No lock, dimming or screen off until switched off"
+                    : "The timers below apply when idle"
+            }
+
             Column {
                 width: popup.contentWidth
-                spacing: 4
-
-                Row {
-                    width: popup.contentWidth
-                    height: 22
-                    spacing: 6
-                    opacity: popup.lockNever ? 0.4 : 1
-
-                    Text {
-                        width: 66
-                        height: parent.height
-                        verticalAlignment: Text.AlignVCenter
-                        text: "Lock after"
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 1
-                        color: Theme.textMuted
-                    }
-                    TimeSpinner {
-                        value: popup.lockHours
-                        max: 23
-                        onChanged: (v) => popup.lockHours = v
-                    }
-                    Text {
-                        height: 22
-                        verticalAlignment: Text.AlignVCenter
-                        text: "h"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize - 1
-                        color: Theme.textMuted
-                    }
-                    TimeSpinner {
-                        value: popup.lockMinutes
-                        max: 59
-                        onChanged: (v) => popup.lockMinutes = v
-                    }
-                    Text {
-                        height: 22
-                        verticalAlignment: Text.AlignVCenter
-                        text: "min"
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 1
-                        color: Theme.textMuted
-                    }
+                spacing: 6
+                SectionLabel {
+                    text: "When idle"
                 }
-
-                NeverCheckbox {
-                    checked: popup.lockNever
-                    onToggled: popup.lockNever = !popup.lockNever
+                StepRow {
+                    glyph: "\u{f033e}"
+                    title: "Lock"
+                    never: popup.lockNever
+                    valueText: popup.minutesText(popup.lockTotal)
+                    steps: popup.stepsWith(popup.minuteSteps, popup.lockTotal)
+                    current: popup.lockTotal
+                    onPick: (v) => { popup.lockNever = v < 0; if (v >= 0) popup.setLock(v); popup.changed() }
                 }
-            }
-
-            // Dim before lock
-            Column {
-                width: popup.contentWidth
-                spacing: 4
-                opacity: popup.lockNever ? 0.4 : 1
-
-                Row {
-                    width: popup.contentWidth
-                    height: 22
-                    spacing: 6
-                    opacity: popup.dimNever ? 0.4 : 1
-
-                    Text {
-                        width: 130
-                        height: parent.height
-                        verticalAlignment: Text.AlignVCenter
-                        text: "Dim before lock"
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 1
-                        color: Theme.textMuted
-                    }
-                    TimeSpinner {
-                        value: popup.dimSeconds
-                        max: 59
-                        onChanged: (v) => popup.dimSeconds = v
-                    }
-                    Text {
-                        height: 22
-                        verticalAlignment: Text.AlignVCenter
-                        text: "sec"
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 1
-                        color: Theme.textMuted
-                    }
+                StepRow {
+                    glyph: "\u{f00de}"
+                    title: "Dim first"
+                    // Lead time before the lock, so nothing without one.
+                    available: !popup.lockNever
+                    never: popup.dimNever
+                    valueText: popup.dimSeconds + " s before"
+                    steps: popup.stepsWith(popup.secondSteps, popup.dimSeconds)
+                    current: popup.dimSeconds
+                    onPick: (v) => { popup.dimNever = v < 0; if (v >= 0) popup.dimSeconds = v; popup.changed() }
                 }
-
-                NeverCheckbox {
-                    label: "No dim"
-                    checked: popup.dimNever
-                    onToggled: popup.dimNever = !popup.dimNever
-                }
-            }
-
-            // Screen off
-            Column {
-                width: popup.contentWidth
-                spacing: 4
-
-                Row {
-                    width: popup.contentWidth
-                    height: 22
-                    spacing: 6
-                    opacity: popup.offNever ? 0.4 : 1
-
-                    Text {
-                        width: 66
-                        height: parent.height
-                        verticalAlignment: Text.AlignVCenter
-                        text: "Screen off"
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 1
-                        color: Theme.textMuted
-                    }
-                    TimeSpinner {
-                        value: popup.offHours
-                        max: 23
-                        onChanged: (v) => popup.offHours = v
-                    }
-                    Text {
-                        height: 22
-                        verticalAlignment: Text.AlignVCenter
-                        text: "h"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSize - 1
-                        color: Theme.textMuted
-                    }
-                    TimeSpinner {
-                        value: popup.offMinutes
-                        max: 59
-                        onChanged: (v) => popup.offMinutes = v
-                    }
-                    Text {
-                        height: 22
-                        verticalAlignment: Text.AlignVCenter
-                        text: "min"
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 1
-                        color: Theme.textMuted
-                    }
-                }
-
-                NeverCheckbox {
-                    checked: popup.offNever
-                    onToggled: popup.offNever = !popup.offNever
-                }
-            }
-
-            Item {
-                id: saveEntry
-                width: popup.contentWidth
-                height: Theme.controlHeight
-
-                Rectangle {
-                    anchors.fill: parent
-                    radius: Theme.controlRadius
-                    color: saveArea.containsMouse ? Theme.hoverFill : Theme.controlFill
-                }
-                Text {
-                    id: saveLabel
-                    anchors.centerIn: parent
-                    text: "Save"
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 1
-                    color: Theme.accent
-                }
-                MouseArea {
-                    id: saveArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    onClicked: popup.saveSettings()
+                StepRow {
+                    glyph: "\u{f0e51}"
+                    title: "Screen off"
+                    never: popup.offNever
+                    valueText: popup.minutesText(popup.offTotal)
+                    steps: popup.stepsWith(popup.minuteSteps, popup.offTotal)
+                    current: popup.offTotal
+                    onPick: (v) => { popup.offNever = v < 0; if (v >= 0) popup.setOff(v); popup.changed() }
                 }
             }
         }
     }
 
-    component NeverCheckbox: Item {
-        id: checkbox
-        property bool checked: false
-        property string label: "Never"
-        signal toggled()
-
-        width: checkText.implicitWidth
-        height: checkText.implicitHeight
-
-        Text {
-            id: checkText
-            text: (checkbox.checked ? "󰄲  " : "󰄱  ") + checkbox.label
-            font.family: Theme.uiFontFamily
-            font.pixelSize: Theme.fontSize - 1
-            color: checkArea.containsMouse ? Theme.text : Theme.textMuted
+    // A timer as a page row: its value under the title, − / + walking the
+    // steps, "Never" past the last one (− from Never comes back to it).
+    component StepRow: PageRow {
+        id: sr
+        property bool never: false
+        property string valueText: ""
+        property var steps: []
+        property int current: 0
+        signal pick(int value) // -1 = never
+        readonly property int index: sr.steps.indexOf(sr.current)
+        clickable: false
+        active: !sr.never && sr.available
+        subtitle: sr.never ? "Never" : sr.valueText
+        StepButton {
+            glyph: "\u{f0374}" // nf-md-minus
+            enabled: sr.never || sr.index > 0
+            onClicked: sr.pick(sr.never ? sr.steps[sr.steps.length - 1] : sr.steps[sr.index - 1])
         }
-        MouseArea {
-            id: checkArea
-            anchors.fill: parent
-            hoverEnabled: true
-            onClicked: checkbox.toggled()
+        StepButton {
+            glyph: "\u{f0415}" // nf-md-plus
+            enabled: !sr.never
+            onClicked: sr.pick(sr.index >= sr.steps.length - 1 ? -1 : sr.steps[sr.index + 1])
         }
     }
 }
