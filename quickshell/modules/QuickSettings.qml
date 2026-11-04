@@ -16,7 +16,7 @@ import Quickshell.Services.UPower as UP
 // Phone Mirror widgets, with a hover card holding all of them plus the
 // toggle row's switches (Night Light, Silence, Mic, Stay Awake, Game Focus,
 // HDR, Opaque -- the row next to the clock stays too; both drive the same
-// ShellState/HdrSettings/GameFocus state), a media player and sliders.
+// ShellState/HdrSettings/GameFocus state), the media list and sliders.
 //
 // The bar icons are the standalone widgets themselves, `interactive: false`
 // so their own MouseAreas (tooltips, clicks) stay out of the way and this
@@ -55,7 +55,7 @@ Pill {
     }
 
     // Every MPRIS player with something loaded, playing ones first (then
-    // Spotify, NowPlayingState's) -- one card each, up to three.
+    // Spotify, NowPlayingState's) -- one card each; the list scrolls.
     // playerctld (playerctl's daemon) is itself an MPRIS player mirroring
     // whichever one is active, so it showed every track twice.
     readonly property var players: Mpris.players.values
@@ -71,7 +71,12 @@ Pill {
             if (a.isPlaying !== b.isPlaying) return a.isPlaying ? -1 : 1
             return (b === NowPlayingState.spotify) - (a === NowPlayingState.spotify)
         })
-        .slice(0, 3)
+    // Apps playing with no player to go with them (a game, a call), after the
+    // players. Names, not AudioInfo's group objects: those are rebuilt on every
+    // stream change, and the Repeater would rebuild a card under a fader's drag.
+    readonly property var streamOnlyNames: AudioInfo.outputStreams
+        .filter(a => !root.players.some(p => { const g = AudioInfo.appForPlayer(p); return g && g.name === a.name }))
+        .map(a => a.name)
     // Only ever a local file:// cover: a remote https art URL loaded by an
     // Image in every bar's card is the crash NowPlayingState.artPath exists
     // to avoid. Spotify's gets downloaded there; browsers already hand out
@@ -1939,165 +1944,84 @@ Pill {
                         }
                     }
 
-                    // Media: every player with something loaded (root.players,
-                    // playing ones first) at once -- the first as a large card
-                    // with its playhead, the others as one-line rows.
-                    Column {
-                        visible: root.players.length > 0
+                    // Everything making sound, as one list: each player and
+                    // each app with a stream, one card with its own fader,
+                    // the first as a banner when it has a cover. Fixed height,
+                    // room for a banner and two cards, so a source starting
+                    // or stopping never resizes the hub; more scroll.
+                    Item {
                         width: parent.width
-                        spacing: 6
+                        readonly property int listHeight: 203 + 2 * (72 + 6)
+                        height: nowPlayingLabel.implicitHeight + 6 + listHeight
+                        readonly property int sourceCount: root.players.length + root.streamOnlyNames.length
 
-                        Item {
-                            width: parent.width
-                            height: nowPlayingLabel.implicitHeight
-                            SectionLabel {
-                                id: nowPlayingLabel
-                                text: root.players.length > 1 ? "Now playing · " + root.players.length + " sources" : "Now playing"
-                            }
-                            Text {
-                                id: pauseAll
-                                readonly property var playing: root.players.filter(p => p.isPlaying)
-                                visible: pauseAll.playing.length > 1
-                                anchors.right: parent.right
-                                text: "Pause all"
-                                font.family: Theme.uiFontFamily
-                                font.pixelSize: Theme.fontSize - 2
-                                color: pauseAllArea.containsMouse ? Theme.text : Theme.accent
-                                MouseArea {
-                                    id: pauseAllArea
-                                    anchors.fill: parent
-                                    anchors.margins: -4
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: { for (const p of pauseAll.playing) if (p.canPause) p.pause() }
-                                }
+                        SectionLabel {
+                            id: nowPlayingLabel
+                            text: parent.sourceCount > 1 ? "Now playing · " + parent.sourceCount + " sources" : "Now playing"
+                        }
+                        Text {
+                            id: pauseAll
+                            readonly property var playing: root.players.filter(p => p.isPlaying)
+                            visible: pauseAll.playing.length > 1
+                            anchors.right: parent.right
+                            text: "Pause all"
+                            font.family: Theme.uiFontFamily
+                            font.pixelSize: Theme.fontSize - 2
+                            color: pauseAllArea.containsMouse ? Theme.text : Theme.accent
+                            MouseArea {
+                                id: pauseAllArea
+                                anchors.fill: parent
+                                anchors.margins: -4
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: { for (const p of pauseAll.playing) if (p.canPause) p.pause() }
                             }
                         }
-                        // One card per source for its whole life (the
-                        // Repeater runs on Mpris.players, an object model, so
-                        // a source's delegate survives reorders), placed by its
-                        // rank in root.players: when the order changes the
-                        // cards slide past each other -- the new lead moving
-                        // up while growing into the large card, the old one
-                        // moving down while shrinking into a row. Rebuilt rows
-                        // (a Repeater over the players array) used to get stuck
-                        // invisible when a fade-in was cut short.
-                        Item {
-                            id: mediaStack
+                        Text {
+                            visible: parent.sourceCount === 0
+                            y: nowPlayingLabel.implicitHeight + 6
+                            text: "No apps are playing"
+                            color: Theme.textDim
+                            font.family: Theme.uiFontFamily
+                            font.pixelSize: Theme.fontSize - 1
+                        }
+
+                        Flickable {
+                            y: nowPlayingLabel.implicitHeight + 6
                             width: parent.width
-                            readonly property int rowHeight: 56
-                            readonly property int gap: 6
-                            // The lead card's current height, from its delegate.
-                            property real heroHeight: 0
-                            height: root.players.length === 0 ? 0
-                                : heroHeight + (root.players.length - 1) * (rowHeight + gap)
+                            height: parent.listHeight
+                            contentHeight: mediaStack.height
+                            interactive: contentHeight > height
+                            clip: true
+                            boundsBehavior: Flickable.StopAtBounds
 
-                            Repeater {
-                                model: Mpris.players
-                                delegate: Item {
-                                    id: source
-                                    required property var modelData
-                                    readonly property int rank: root.players.indexOf(source.modelData)
-                                    readonly property bool lead: source.rank === 0
-                                    visible: source.rank >= 0
-                                    width: mediaStack.width
-                                    height: source.lead ? sourceHero.height : mediaStack.rowHeight
-                                    y: source.rank <= 0 ? 0
-                                        : mediaStack.heroHeight + mediaStack.gap + (source.rank - 1) * (mediaStack.rowHeight + mediaStack.gap)
-                                    // The lead slides over the others while they pass under it.
-                                    z: source.lead ? 1 : 0
-                                    clip: true
-                                    Behavior on y { NumberAnimation { duration: 520; easing.type: Easing.OutCubic } }
-                                    Behavior on height { NumberAnimation { duration: 520; easing.type: Easing.OutCubic } }
+                            Item {
+                                id: mediaStack
+                                width: parent.width
+                                // The lead's current height, from its slot.
+                                property real leadHeight: 72
+                                readonly property int count: root.players.length + root.streamOnlyNames.length
+                                height: count === 0 ? 0 : leadHeight + (count - 1) * (72 + 6)
 
-                                    // The swap in 3D: on its way up a card tips
-                                    // its top edge toward you and lifts (grows),
-                                    // on its way down it tips away and sinks
-                                    // (shrinks, darkens) -- they pass like two
-                                    // cards being shuffled rather than sliding
-                                    // flat. Rotation about X is perspective-
-                                    // projected, so the tilt reads as depth.
-                                    transform: [
-                                        Rotation {
-                                            id: tilt
-                                            axis { x: 1; y: 0; z: 0 }
-                                            origin.x: source.width / 2
-                                            origin.y: source.height / 2
-                                            angle: 0
-                                        },
-                                        Scale {
-                                            id: depth
-                                            origin.x: source.width / 2
-                                            origin.y: source.height / 2
-                                        }
-                                    ]
-                                    property int _prevRank: -1
-                                    onRankChanged: {
-                                        if (source._prevRank >= 0 && source.rank >= 0 && source.rank !== source._prevRank)
-                                            (source.rank < source._prevRank ? riseAnim : sinkAnim).restart()
-                                        source._prevRank = source.rank
+                                Repeater {
+                                    model: Mpris.players
+                                    delegate: MediaSourceSlot {
+                                        required property var modelData
+                                        stack: mediaStack
+                                        player: modelData
+                                        app: AudioInfo.appForPlayer(modelData)
+                                        rank: root.players.indexOf(modelData)
+                                        artSource: rank >= 0 ? root.artFor(modelData) : ""
                                     }
-                                    Component.onCompleted: source._prevRank = source.rank
-                                    SequentialAnimation {
-                                        id: riseAnim
-                                        ParallelAnimation {
-                                            NumberAnimation { target: tilt; property: "angle"; to: -18; duration: 220; easing.type: Easing.OutQuad }
-                                            NumberAnimation { target: depth; properties: "xScale,yScale"; to: 1.05; duration: 220; easing.type: Easing.OutQuad }
-                                        }
-                                        ParallelAnimation {
-                                            NumberAnimation { target: tilt; property: "angle"; to: 0; duration: 420; easing.type: Easing.OutBack }
-                                            NumberAnimation { target: depth; properties: "xScale,yScale"; to: 1; duration: 420; easing.type: Easing.OutCubic }
-                                        }
-                                    }
-                                    SequentialAnimation {
-                                        id: sinkAnim
-                                        ParallelAnimation {
-                                            NumberAnimation { target: tilt; property: "angle"; to: 18; duration: 220; easing.type: Easing.OutQuad }
-                                            NumberAnimation { target: depth; properties: "xScale,yScale"; to: 0.9; duration: 220; easing.type: Easing.OutQuad }
-                                            NumberAnimation { target: shade; property: "opacity"; to: 0.45; duration: 220; easing.type: Easing.OutQuad }
-                                        }
-                                        ParallelAnimation {
-                                            NumberAnimation { target: tilt; property: "angle"; to: 0; duration: 420; easing.type: Easing.OutBack }
-                                            NumberAnimation { target: depth; properties: "xScale,yScale"; to: 1; duration: 420; easing.type: Easing.OutCubic }
-                                            NumberAnimation { target: shade; property: "opacity"; to: 0; duration: 420; easing.type: Easing.OutCubic }
-                                        }
-                                    }
-
-                                    Binding {
-                                        target: mediaStack
-                                        property: "heroHeight"
-                                        value: sourceHero.height
-                                        when: source.lead
-                                        // The old lead letting go mustn't put back
-                                        // its stale value over the new lead's.
-                                        restoreMode: Binding.RestoreNone
-                                    }
-
-                                    PlayerHero {
-                                        id: sourceHero
-                                        width: parent.width
-                                        player: source.modelData
-                                        artSource: source.rank >= 0 ? root.artFor(source.modelData) : ""
-                                        opacity: source.lead ? 1 : 0
-                                        visible: opacity > 0
-                                        Behavior on opacity { NumberAnimation { duration: 420; easing.type: Easing.InOutQuad } }
-                                    }
-                                    PlayerRow {
-                                        width: parent.width
-                                        player: source.modelData
-                                        artSource: source.rank >= 0 ? root.artFor(source.modelData) : ""
-                                        opacity: source.lead ? 0 : 1
-                                        visible: opacity > 0
-                                        Behavior on opacity { NumberAnimation { duration: 420; easing.type: Easing.InOutQuad } }
-                                    }
-                                    // Darkens the card while it sinks (sinkAnim).
-                                    Rectangle {
-                                        id: shade
-                                        anchors.fill: parent
-                                        radius: Theme.controlRadius
-                                        color: "black"
-                                        opacity: 0
-                                        visible: opacity > 0
+                                }
+                                Repeater {
+                                    model: ScriptModel { values: root.streamOnlyNames }
+                                    delegate: MediaSourceSlot {
+                                        required property string modelData
+                                        required property int index
+                                        stack: mediaStack
+                                        app: AudioInfo.outputGroups.find(g => g.name === modelData) || null
+                                        rank: root.players.length + index
                                     }
                                 }
                             }
@@ -2302,11 +2226,7 @@ Pill {
 
 
         implicitWidth: root.cardWidth + 2 * Theme.surfacePadding
-        // Room for two apps whatever is playing, so an app starting or
-        // stopping never resizes the hub (it sizes itself to its tallest
-        // page). mixerList takes what's left of the column, and scrolls.
-        readonly property real mixerReserve: 2 * 68 + 6
-        implicitHeight: mixerList.y + audioPanel.mixerReserve + 2 * Theme.surfacePadding
+        implicitHeight: audioColumn.implicitHeight + 2 * Theme.surfacePadding
         // Only `height`, as on the Wi-Fi page: doesn't feed back into the hub.
         height: parent ? Math.max(implicitHeight, parent.height) : implicitHeight
 
@@ -2404,644 +2324,11 @@ Pill {
                     }
                 }
 
-                SectionLabel {
-                    text: "Mixer"
-                }
-                Flickable {
-                    id: mixerList
-                    width: parent.width
-                    height: Math.max(audioPanel.mixerReserve, audioPanel.height - 2 * Theme.surfacePadding - y)
-                    contentHeight: mixerColumn.implicitHeight
-                    interactive: contentHeight > height
-                    clip: true
-                    boundsBehavior: Flickable.StopAtBounds
-
-                    Text {
-                        visible: AudioInfo.outputStreams.length === 0
-                        text: "No apps are playing"
-                        color: Theme.textDim
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 1
-                    }
-                    Column {
-                        id: mixerColumn
-                        width: mixerList.width
-                        spacing: 6
-                        Repeater {
-                            model: AudioInfo.outputStreams
-                            delegate: MixerRow {
-                                required property var modelData
-                                width: mixerColumn.width
-                                app: modelData
-                            }
-                        }
-                    }
-                }
             }
         }
     }
 
-    // A media player as one compact row (the second and third players):
-    // the large card's look in small -- the cover filling the row's height
-    // at its own shape (square up to 16:9), fading into a gradient of its
-    // colour. ClippingRectangle so the cover follows the corners.
-    component PlayerRow: ClippingRectangle {
-        id: mediaCard
-        property var player: null
-        // root.artFor(player), set where it is used.
-        property string artSource: ""
-        readonly property bool hasArt: mediaCard.artSource !== "" && rowArt.status === Image.Ready
-        readonly property real artRatio: mediaCard.hasArt && rowArt.implicitHeight > 0
-            ? Math.max(1, Math.min(16 / 9, rowArt.implicitWidth / rowArt.implicitHeight)) : 1
-        height: 56
-        radius: Theme.controlRadius
-        color: Theme.controlFill
-
-        // Same colour pick as PlayerHero's tint.
-        ColorQuantizer {
-            id: rowQuant
-            // Not a data: URL (it can't load one) -- the file follows, see
-            // NowPlayingState.localArt.
-            source: mediaCard.artSource.startsWith("data:") ? "" : mediaCard.artSource
-            depth: 3
-            rescaleSize: 64
-        }
-        property color tint: {
-            const cs = rowQuant.colors || []
-            let best = null, score = -1
-            for (const c of cs) {
-                const sc = c.hslSaturation * (1 - Math.abs(c.hslLightness - 0.5))
-                if (sc > score) { score = sc; best = c }
-            }
-            if (!best || !mediaCard.hasArt) return Theme.controlFill
-            return Qt.hsla(Math.max(0, best.hslHue), Math.min(best.hslSaturation, 0.55), 0.22, 1)
-        }
-        readonly property color tintDeep: mediaCard.hasArt
-            ? Qt.hsla(Math.max(0, mediaCard.tint.hslHue), mediaCard.tint.hslSaturation * 0.8, 0.12, 1) : Theme.controlFill
-        Behavior on tint { ColorAnimation { duration: 400 } }
-
-        Rectangle {
-            anchors.fill: parent
-            visible: mediaCard.hasArt
-            gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0; color: mediaCard.tint }
-                GradientStop { position: mediaCard.width > 0 ? art.width / mediaCard.width : 0; color: mediaCard.tint }
-                GradientStop { position: 1; color: mediaCard.tintDeep }
-            }
-        }
-
-        Item {
-            id: art
-            width: Math.round(mediaCard.height * mediaCard.artRatio)
-            height: parent.height
-            Behavior on width { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
-
-            Text {
-                visible: !mediaCard.hasArt
-                anchors.centerIn: parent
-                text: "\u{f075a}" // nf-md-music_note
-                color: Theme.textMuted
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize + 10
-            }
-            Image {
-                id: rowArt
-                visible: mediaCard.artSource !== ""
-                anchors.fill: parent
-                source: mediaCard.artSource
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: false
-                // Height only, so implicitWidth keeps the aspect.
-                sourceSize.height: 112
-            }
-            // The cover's right edge dissolving into the tint.
-            Rectangle {
-                visible: mediaCard.hasArt
-                anchors.right: parent.right
-                width: 16
-                height: parent.height
-                gradient: Gradient {
-                    orientation: Gradient.Horizontal
-                    GradientStop { position: 0; color: Qt.rgba(mediaCard.tint.r, mediaCard.tint.g, mediaCard.tint.b, 0) }
-                    GradientStop { position: 1; color: mediaCard.tint }
-                }
-            }
-        }
-
-        // Clicking the row (not its buttons, declared after so they stay on
-        // top) makes it the large card and plays it alone: it becomes
-        // NowPlayingState's lastActive, which leads the order -- the same
-        // swap as a source starting to play.
-        MouseArea {
-            id: rowArea
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            // Resumes it too if it's paused (a paused source can only be the
-            // large card while nothing plays, see root.players) and pauses
-            // every other source: switching to it, not mixing it in.
-            onClicked: {
-                const p = mediaCard.player
-                if (!p) return
-                NowPlayingState.lastActive = p
-                for (const o of Mpris.players.values)
-                    if (o !== p && o.isPlaying && o.canPause && !NowPlayingState.isProxy(o)) o.pause()
-                if (!p.isPlaying && p.canPlay) p.play()
-            }
-        }
-        Rectangle {
-            anchors.fill: parent
-            color: Theme.hoverFill
-            opacity: rowArea.containsMouse ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 120 } }
-        }
-
-        // Title / artist / app. The title gets the full width;
-        // the buttons only sit beside the two smaller lines.
-        // Right margin and button spacing as in the large card (heroInfo,
-        // heroButtons), so the transport lines up down every card.
-        Column {
-            anchors.left: art.right
-            anchors.leftMargin: 10
-            anchors.right: parent.right
-            anchors.rightMargin: 10
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 2
-            Text {
-                width: parent.width
-                rightPadding: 4
-                text: mediaCard.player ? (mediaCard.player.trackTitle || NowPlayingState.appName(mediaCard.player)) : ""
-                elide: Text.ElideRight
-                color: Theme.text
-                font.family: Theme.uiFontFamily
-                font.pixelSize: Theme.fontSize
-                font.bold: true
-            }
-            Item {
-                width: parent.width
-                // Keeps room for the buttons when the player gives neither line.
-                height: Math.max(lowerLines.height, 24)
-
-                Column {
-                    id: lowerLines
-                    anchors.left: parent.left
-                    anchors.right: mediaButtons.left
-                    anchors.rightMargin: 8
-                    spacing: 2
-                    Text {
-                        width: parent.width
-                        visible: text !== ""
-                        text: mediaCard.player ? (mediaCard.player.trackArtist || "") : ""
-                        elide: Text.ElideRight
-                        color: Theme.textMuted
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 2
-                    }
-                    Text {
-                        width: parent.width
-                        visible: text !== ""
-                        text: mediaCard.player ? (NowPlayingState.appName(mediaCard.player)) : ""
-                        elide: Text.ElideRight
-                        color: Theme.textDim
-                        font.family: Theme.uiFontFamily
-                        font.pixelSize: Theme.fontSize - 3
-                    }
-                }
-
-                Row {
-                    id: mediaButtons
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 2
-
-                    MediaButton {
-                        glyph: "\u{f04ae}" // nf-md-skip_previous
-                        enabledState: !!mediaCard.player && mediaCard.player.canGoPrevious
-                        onClicked: mediaCard.player.previous()
-                    }
-                    MediaButton {
-                        anchors.verticalCenter: parent.verticalCenter
-                        // Plain like its neighbours, the same in every card.
-                        glyph: mediaCard.player && mediaCard.player.isPlaying ? "\u{f03e4}" : "\u{f040a}" // pause / play
-                        enabledState: !!mediaCard.player && mediaCard.player.canTogglePlaying
-                        onClicked: mediaCard.player.togglePlaying()
-                    }
-                    MediaButton {
-                        glyph: "\u{f04ad}" // nf-md-skip_next
-                        enabledState: !!mediaCard.player && mediaCard.player.canGoNext
-                        onClicked: mediaCard.player.next()
-                    }
-                }
-            }
-        }
-
-        // The border on top, so the cover doesn't paint over it.
-        Rectangle {
-            anchors.fill: parent
-            radius: mediaCard.radius
-            color: "transparent"
-            border.color: Theme.surfaceBorder
-            border.width: 1
-        }
-    }
-
-    // The first media player, large: the cover filling the card's height on
-    // the left, fading into a gradient of its own colour that carries the
-    // title/artist, source + transport and the playhead (seekable when the
-    // player allows it). ClippingRectangle so the cover follows the corners.
-    component PlayerHero: ClippingRectangle {
-        id: hero
-        property var player: null
-        // root.artFor(player), set where it is used.
-        property string artSource: ""
-        readonly property bool hasLength: !!hero.player && hero.player.lengthSupported && hero.player.length > 0
-        readonly property bool hasArt: hero.artSource !== "" && heroArt.status === Image.Ready
-        function fmt(secs) {
-            const t = Math.max(0, Math.floor(secs))
-            const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60
-            const ss = (sec < 10 ? "0" : "") + sec
-            return h > 0 ? h + ":" + (m < 10 ? "0" : "") + m + ":" + ss : m + ":" + ss
-        }
-
-        // The cover's own shape, square up to 16:9 (browsers hand out video
-        // thumbnails, YouTube's 16:9, which a square box cropped to their
-        // middle), but never more than half the card so the text keeps
-        // room; past that it crops. Taller-than-square covers crop too.
-        readonly property real artRatio: hero.hasArt && heroArt.implicitHeight > 0
-            ? Math.max(1, Math.min(16 / 9, heroArt.implicitWidth / heroArt.implicitHeight)) : 1
-        readonly property int coverWidth: hero.wide ? hero.width : Math.round(Math.min(hero.height * hero.artRatio, hero.width * 0.5))
-        // A wide cover (a video thumbnail) can't sit beside the text whole --
-        // at the card's height a 16:9 one needs ~260 of its 360px, and capped
-        // at half the width it got its sides cut. So it becomes a full-width
-        // banner at its own ratio, the text over a scrim fading up from the
-        // bottom.
-        readonly property bool wide: hero.hasArt && hero.artRatio > 1.2
-
-        // The card's colour: the most saturated of the cover's eight
-        // quantized colours (the average of a cover is mostly grey-brown),
-        // pinned to a dark lightness so the white text always reads on it.
-        ColorQuantizer {
-            id: quant
-            // Not a data: URL (it can't load one) -- the file follows, see
-            // NowPlayingState.localArt.
-            source: hero.artSource.startsWith("data:") ? "" : hero.artSource
-            depth: 3
-            rescaleSize: 64
-        }
-        // Not readonly: the Behavior below animates it.
-        property color tint: {
-            const cs = quant.colors || []
-            let best = null, score = -1
-            for (const c of cs) {
-                const s = c.hslSaturation * (1 - Math.abs(c.hslLightness - 0.5))
-                if (s > score) { score = s; best = c }
-            }
-            if (!best || !hero.hasArt) return Theme.controlFill
-            return Qt.hsla(Math.max(0, best.hslHue), Math.min(best.hslSaturation, 0.55), 0.22, 1)
-        }
-        readonly property color tintDeep: hero.hasArt
-            ? Qt.hsla(Math.max(0, hero.tint.hslHue), hero.tint.hslSaturation * 0.8, 0.12, 1) : Theme.controlFill
-        Behavior on tint { ColorAnimation { duration: 400 } }
-        property string _lastArt: ""
-        // A new track's title/artist fade in rather than snapping over.
-        readonly property string _title: hero.player ? (hero.player.trackTitle || "") : ""
-        on_TitleChanged: textFade.restart()
-        NumberAnimation { id: textFade; target: heroText; property: "opacity"; from: 0; to: 1; duration: 300; easing.type: Easing.OutCubic }
-        onArtSourceChanged: {
-            if (hero._lastArt !== "" && hero.artSource !== "") {
-                heroArtOld.source = hero._lastArt
-                oldFade.restart()
-            }
-            hero._lastArt = hero.artSource
-        }
-
-        height: hero.wide ? Math.max(Math.round(hero.width / hero.artRatio), heroInfo.implicitHeight + 56)
-            : Math.max(112, heroInfo.implicitHeight + 20)
-        // Square <-> banner (switching between Spotify and a video) and a
-        // title going from one line to two resize instead of jumping.
-        Behavior on height { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
-        radius: Theme.controlRadius
-        color: Theme.controlFill
-
-        // MprisPlayer.position isn't pushed while a track plays -- it's only
-        // re-read when positionChanged() is emitted.
-        Timer {
-            interval: 1000
-            repeat: true
-            running: hero.visible && !!hero.player && hero.player.isPlaying && hero.player.positionSupported
-            onTriggered: hero.player.positionChanged()
-        }
-
-        // Background: the tint where the cover ends, deepening to the right.
-        Rectangle {
-            anchors.fill: parent
-            visible: hero.hasArt && !hero.wide
-            gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0; color: hero.tint }
-                GradientStop { position: hero.width > 0 ? hero.coverWidth / hero.width : 0; color: hero.tint }
-                GradientStop { position: 1; color: hero.tintDeep }
-            }
-        }
-        Item {
-            id: coverBox
-            width: hero.coverWidth
-            height: parent.height
-            Behavior on width { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
-            Image {
-                id: heroArt
-                visible: hero.artSource !== ""
-                anchors.fill: parent
-                source: hero.artSource
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: false
-                // Height only, so implicitWidth keeps the aspect.
-                sourceSize.height: 256
-            }
-            // The previous cover, fading out over the new one on a track
-            // change (a local file, loaded synchronously like heroArt).
-            Image {
-                id: heroArtOld
-                anchors.fill: parent
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: false
-                sourceSize.height: 256
-                opacity: 0
-                NumberAnimation on opacity { id: oldFade; running: false; from: 1; to: 0; duration: 350; easing.type: Easing.InOutQuad }
-            }
-            // The cover's right edge dissolving into the tint -- only its
-            // last few pixels, a wider fade read as the cover cut off.
-            Rectangle {
-                visible: hero.hasArt && !hero.wide
-                anchors.right: parent.right
-                width: 24
-                height: parent.height
-                gradient: Gradient {
-                    orientation: Gradient.Horizontal
-                    GradientStop { position: 0; color: Qt.rgba(hero.tint.r, hero.tint.g, hero.tint.b, 0) }
-                    GradientStop { position: 1; color: hero.tint }
-                }
-            }
-            Text {
-                visible: !hero.hasArt
-                anchors.centerIn: parent
-                text: "\u{f075a}" // nf-md-music_note
-                color: Theme.textMuted
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize + 20
-            }
-        }
-
-        // Wide covers: clear on top, the tint rising behind the text --
-        // light where the title starts, so the banner stays visible. Its own
-        // height and fixed stops: stop positions bound to heroInfo.y didn't
-        // follow it, and the scrim stayed spread over the whole banner.
-        Rectangle {
-            visible: hero.wide
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            height: Math.min(parent.height, heroInfo.height + 50)
-            gradient: Gradient {
-                GradientStop { position: 0; color: "transparent" }
-                GradientStop { position: 0.4; color: Qt.rgba(hero.tint.r, hero.tint.g, hero.tint.b, 0.8) }
-                GradientStop { position: 1; color: Qt.rgba(hero.tintDeep.r, hero.tintDeep.g, hero.tintDeep.b, 0.92) }
-            }
-        }
-
-        // Positioned by hand rather than a Column: on a wide cover the
-        // playhead moves up beside the transport (and the app name into the
-        // artist line), so the text takes as little of the banner as it can.
-        Item {
-            id: heroInfo
-            anchors.left: hero.wide ? parent.left : coverBox.right
-            anchors.leftMargin: 10
-            anchors.right: parent.right
-            anchors.rightMargin: 10
-            // Low on a wide cover: as little of the banner under text as possible.
-            y: hero.wide ? parent.height - height - 4 : Math.round((parent.height - height) / 2)
-            height: implicitHeight
-            implicitHeight: controlsRow.y + controlsRow.height
-                + (!hero.wide && hero.hasLength ? 4 + playhead.height : 0)
-
-            Column {
-                id: heroText
-                width: parent.width
-                spacing: 1
-                Text {
-                    width: parent.width
-                    text: hero.player ? (hero.player.trackTitle || NowPlayingState.appName(hero.player)) : ""
-                    // Two lines: video titles are long, and the narrow
-                    // column beside a cover cut them after a few words.
-                    wrapMode: Text.Wrap
-                    maximumLineCount: 2
-                    elide: Text.ElideRight
-                    lineHeight: 0.95
-                    color: Theme.text
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize + 1
-                    font.bold: true
-                }
-                Text {
-                    width: parent.width
-                    visible: text !== ""
-                    text: hero.player ? [hero.player.trackArtist || "", hero.player.trackAlbum || "",
-                        hero.wide ? (NowPlayingState.appName(hero.player)) : ""].filter(s => s !== "").join(" · ") : ""
-                    elide: Text.ElideRight
-                    color: Theme.textMuted
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 1
-                }
-            }
-
-            // The source app (side layout only), left of the transport.
-            Item {
-                id: controlsRow
-                y: heroText.height + 2
-                width: parent.width
-                height: heroButtons.height
-                Text {
-                    visible: !hero.wide
-                    anchors.left: parent.left
-                    anchors.right: heroButtons.left
-                    anchors.rightMargin: 6
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: hero.player ? (NowPlayingState.appName(hero.player)) : ""
-                    elide: Text.ElideRight
-                    color: Theme.textMuted
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 3
-                }
-                Row {
-                    id: heroButtons
-                    anchors.right: parent.right
-                    spacing: 2
-                    MediaButton {
-                        anchors.verticalCenter: parent.verticalCenter
-                        glyph: "\u{f04ae}" // nf-md-skip_previous
-                        enabledState: !!hero.player && hero.player.canGoPrevious
-                        onClicked: hero.player.previous()
-                    }
-                    MediaButton {
-                        anchors.verticalCenter: parent.verticalCenter
-                        // Plain like its neighbours, the same in every card.
-                        glyph: hero.player && hero.player.isPlaying ? "\u{f03e4}" : "\u{f040a}" // pause / play
-                        enabledState: !!hero.player && hero.player.canTogglePlaying
-                        onClicked: hero.player.togglePlaying()
-                    }
-                    MediaButton {
-                        anchors.verticalCenter: parent.verticalCenter
-                        glyph: "\u{f04ad}" // nf-md-skip_next
-                        enabledState: !!hero.player && hero.player.canGoNext
-                        onClicked: hero.player.next()
-                    }
-                }
-            }
-
-            // Playhead, only when the player reports a length:
-            // position | track | length on one line -- under the transport,
-            // or on a wide cover beside it.
-            Item {
-                id: playhead
-                visible: hero.hasLength
-                x: 0
-                width: hero.wide ? parent.width - heroButtons.width - 10 : parent.width
-                height: Math.max(posText.implicitHeight, 16)
-                y: hero.wide ? controlsRow.y + Math.round((controlsRow.height - height) / 2)
-                    : controlsRow.y + controlsRow.height + 4
-                Text {
-                    id: posText
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: Math.max(implicitWidth, lenText.implicitWidth)
-                    text: hero.hasLength ? hero.fmt(hero.player.position) : ""
-                    color: Theme.textMuted
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 3
-                    font.features: { "tnum": 1 }
-                }
-                Text {
-                    id: lenText
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    horizontalAlignment: Text.AlignRight
-                    width: Math.max(implicitWidth, posText.implicitWidth)
-                    text: hero.hasLength ? hero.fmt(hero.player.length) : ""
-                    color: Theme.textMuted
-                    font.family: Theme.uiFontFamily
-                    font.pixelSize: Theme.fontSize - 3
-                    font.features: { "tnum": 1 }
-                }
-                Rectangle {
-                    id: heroTrack
-                    anchors.left: posText.right
-                    anchors.right: lenText.left
-                    anchors.leftMargin: 8
-                    anchors.rightMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    height: 4
-                    radius: 2
-                    color: Qt.rgba(1, 1, 1, 0.18)
-                    Rectangle {
-                        height: parent.height
-                        radius: 2
-                        color: Theme.text
-                        width: hero.hasLength ? parent.width * Math.max(0, Math.min(1, hero.player.position / hero.player.length)) : 0
-                        // Glides between the once-a-second position reads
-                        // while playing, rather than ticking.
-                        Behavior on width {
-                            enabled: !!hero.player && hero.player.isPlaying
-                            NumberAnimation { duration: 1000; easing.type: Easing.Linear }
-                        }
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        anchors.topMargin: -6
-                        anchors.bottomMargin: -6
-                        enabled: hero.hasLength && hero.player.canSeek
-                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                        onClicked: (mouse) => hero.player.position = hero.player.length * Math.max(0, Math.min(1, mouse.x / heroTrack.width))
-                    }
-                }
-            }
-        }
-
-        // The border on top, so the cover doesn't paint over it.
-        Rectangle {
-            anchors.fill: parent
-            radius: hero.radius
-            color: "transparent"
-            border.color: Theme.surfaceBorder
-            border.width: 1
-        }
-    }
-
-    component MediaButton: Item {
-        id: mb
-        property string glyph: ""
-        property bool big: false
-        // A white disc with a dark glyph (the large card's play/pause).
-        property bool filled: false
-        property bool enabledState: true
-        signal clicked()
-
-        width: mb.filled ? 28 : 34
-        height: mb.filled ? 28 : 34
-        Rectangle {
-            anchors.fill: parent
-            radius: width / 2
-            color: mb.filled ? (mbArea.containsMouse ? "white" : Theme.text)
-                : mbArea.containsMouse && mb.enabledState ? Theme.hoverFill : "transparent"
-            scale: mbArea.pressed ? 0.88 : 1
-            Behavior on color { ColorAnimation { duration: 120 } }
-            Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-        }
-        Text {
-            id: mbGlyph
-            // Centered by hand on whole pixels: anchors.centerIn put the
-            // small play glyph a pixel left in its disc. Inside the disc the
-            // play triangle also gets nudged right -- its ink box is centered
-            // in the glyph, but against a circle its visual middle (a third of
-            // the way in from the flat side) reads as off to the left. A plain
-            // one stays box-centered: nudged, it sat ~3px out of step with
-            // prev/next beside it.
-            readonly property real nudge: mb.filled && mb.glyph === "\u{f040a}" ? font.pixelSize * 0.2 : 0
-            x: Math.round((parent.width - width) / 2 + nudge)
-            y: Math.round((parent.height - height) / 2)
-            text: mb.glyph
-            color: mb.filled ? Theme.textOnLight : mb.enabledState ? Theme.text : Theme.textDim
-            font.family: Theme.fontFamily
-            font.pixelSize: mb.filled ? Theme.fontSize - 1 : mb.big ? Theme.fontSize + 11 : Theme.fontSize + 5
-            scale: mbArea.pressed ? 0.88 : 1
-            Behavior on color { ColorAnimation { duration: 120 } }
-            Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-            transform: Scale { id: swapScale; origin.x: mbGlyph.width / 2; origin.y: mbGlyph.height / 2 }
-        }
-        // Play <-> pause: the new glyph fades and grows in instead of
-        // swapping in one frame. A separate Scale transform, so it doesn't
-        // fight the pressed scale above.
-        property string _shown: ""
-        onGlyphChanged: {
-            if (mb._shown !== "" && mb._shown !== mb.glyph) swapAnim.restart()
-            mb._shown = mb.glyph
-        }
-        ParallelAnimation {
-            id: swapAnim
-            NumberAnimation { target: mbGlyph; property: "opacity"; from: 0; to: 1; duration: 180; easing.type: Easing.OutCubic }
-            NumberAnimation { target: swapScale; properties: "xScale,yScale"; from: 0.5; to: 1; duration: 220; easing.type: Easing.OutBack }
-        }
-        MouseArea {
-            id: mbArea
-            anchors.fill: parent
-            hoverEnabled: true
-            enabled: mb.enabledState
-            cursorShape: Qt.PointingHandCursor
-            onClicked: mb.clicked()
-        }
-    }
-
-    // Icon + track + percentage; the track takes clicks, drags and wheel.
+        // Icon + track + percentage; the track takes clicks, drags and wheel.
     // Icon-only switch in the footer: the lighter accent with a dark glyph
     // while on (accent + light glyph was too faint, a white disc too bright).
     component FooterToggle: Rectangle {
@@ -3204,64 +2491,6 @@ Pill {
     // Selectable audio device, a page row: the current default is filled
     // and checked. The glyph is guessed from the device's name -- PipeWire
     // has a form factor property, but most ALSA cards leave it unset.
-    // One app on the Sound page's mixer (an entry of AudioInfo.outputStreams):
-    // its icon and name over the same slider as the device's above.
-    component MixerRow: Rectangle {
-        id: mixRow
-        property var app: null
-        readonly property var audio: mixRow.app && mixRow.app.node ? mixRow.app.node.audio : null
-        readonly property bool muted: !!(mixRow.audio && mixRow.audio.muted)
-        height: 68
-        radius: Theme.controlRadius
-        color: Theme.controlFill
-
-        Rectangle {
-            x: 10
-            anchors.verticalCenter: parent.verticalCenter
-            width: 32
-            height: 32
-            radius: width / 2
-            color: Qt.rgba(1, 1, 1, 0.08)
-            IconImage {
-                visible: !!mixRow.app && mixRow.app.icon !== ""
-                anchors.centerIn: parent
-                implicitSize: 22
-                source: mixRow.app ? mixRow.app.icon : ""
-            }
-            Text {
-                visible: !mixRow.app || mixRow.app.icon === ""
-                anchors.centerIn: parent
-                text: "\u{f075a}" // nf-md-music_note
-                color: Theme.text
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSize + 1
-            }
-        }
-        Text {
-            x: 52
-            y: 9
-            width: parent.width - x - 10
-            text: mixRow.app ? mixRow.app.name : ""
-            elide: Text.ElideRight
-            color: Theme.text
-            font.family: Theme.uiFontFamily
-            font.pixelSize: Theme.fontSize - 1
-            font.bold: true
-        }
-        SliderRow {
-            x: 52
-            y: 28
-            width: parent.width - x - 10
-            hasMore: false
-            maxValue: 1.5
-            glyph: mixRow.muted ? "\u{f0581}" : "\u{f057e}" // nf-md-volume_off / volume_high
-            dim: mixRow.muted
-            value: mixRow.audio ? mixRow.audio.volume : 0
-            onGlyphClicked: if (mixRow.app) AudioInfo.setAppMuted(mixRow.app, !mixRow.muted)
-            onMoved: (v) => { if (mixRow.app) AudioInfo.setAppVolume(mixRow.app, v) }
-        }
-    }
-
     component DeviceRow: PageRow {
         id: dev
         property string label: ""

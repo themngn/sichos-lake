@@ -30,8 +30,11 @@ Item {
     // Connected = shows a chevron at the end that opens a page.
     signal more()
     property bool hasMore: true
+    // The Control Center's source cards: shorter and with a narrower glyph
+    // and percentage, so the track keeps its length in a card's text column.
+    property bool compact: false
 
-    height: Theme.controlHeight + 4
+    height: slider.compact ? 22 : Theme.controlHeight + 4
 
     function snapped(v) {
         const c = Math.max(0, Math.min(slider.rangeMax, v))
@@ -41,7 +44,7 @@ Item {
 
     Item {
         id: glyphBox
-        width: 24
+        width: slider.compact ? 20 : 24
         height: parent.height
         Text {
             // Left-aligned like Volume.qml: the volume glyphs differ in
@@ -51,7 +54,7 @@ Item {
             text: slider.glyph
             color: slider.dim ? Theme.textDim : glyphArea.containsMouse ? Theme.accent : Theme.text
             font.family: Theme.fontFamily
-            font.pixelSize: (Theme.fontSize + 3) * slider.glyphScale
+            font.pixelSize: (slider.compact ? Theme.fontSize + 1 : Theme.fontSize + 3) * slider.glyphScale
         }
         MouseArea {
             id: glyphArea
@@ -65,9 +68,9 @@ Item {
     Rectangle {
         id: track
         anchors.left: glyphBox.right
-        anchors.leftMargin: 6
+        anchors.leftMargin: slider.compact ? 2 : 6
         anchors.right: pct.left
-        anchors.rightMargin: 10
+        anchors.rightMargin: slider.compact ? 8 : 10
         anchors.verticalCenter: parent.verticalCenter
         height: Theme.trackHeight - 2
         radius: Theme.trackRadius
@@ -155,9 +158,9 @@ Item {
     Text {
         id: pct
         anchors.right: sliderMore.left
-        anchors.rightMargin: 2
+        anchors.rightMargin: slider.compact ? 0 : 2
         anchors.verticalCenter: parent.verticalCenter
-        width: 40
+        width: slider.compact ? 34 : 40
         horizontalAlignment: Text.AlignRight
         text: slider.valueText !== "" ? slider.valueText : Math.round(slider.value * 100) + "%"
         color: Theme.textMuted

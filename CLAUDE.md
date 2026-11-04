@@ -231,7 +231,7 @@ own files.
   items, so a nested pill swallows the outer one's hover). Its Bluetooth/Display submenus are hidden
   BluetoothIndicator/DisplaySettings instances with their own `popupId` (`qs-bluetooth`/`qs-display`),
   `popupAnchor` and `backPopupId`; its Sound page (`qs-audio`) is a second MorphContent in the same
-  file (Output and Input up to 150%, plus a Mixer list of the apps playing, one fader per app over all its streams, which scrolls so the card keeps its size), its Wi-Fi page (`qs-wifi`) is `WifiMenu.qml` -- the network list on top,
+  file (Output and Input up to 150%, with their devices), its Wi-Fi page (`qs-wifi`) is `WifiMenu.qml` -- the network list on top,
   and pinned to the column's bottom edge (the page takes its host's full height, sized from
   implicitHeight so it doesn't feed back) the Hotspot row (switch + chevron to `qs-hotspot`, whose
   back arrow returns to Wi-Fi), DNS (Default / Mullvad Base) and Network settings; neither is a
@@ -264,7 +264,7 @@ own files.
   is 0..1, not a percentage. Its main page is laid out like the hub mockup: two even columns of
   2x1 tiles (round icon badge, name, status, chevron; `ControlCenterTiles.uniform` forces every tile
   to 2x1 and hides inline controls on one-row tiles -- saved per-tile sizes stay in the JSON, unused),
-  volume/brightness sliders whose chevrons open Sound/Display, the media players, and a footer
+  volume/brightness sliders whose chevrons open Sound/Display, the media list, and a footer
   pinned to the column's bottom edge (the page takes its host's full height): the version line
   (hash, branch, `SichosVersion.flags`), with the battery chip (`batteryShort()`) at its right end, above the power button; then icon-only circle
   switches for Mic / Night Light / HDR / Opaque / Game Focus / Stay Awake / Lid (`FooterToggle`:
@@ -278,7 +278,7 @@ own files.
   tile 2+ wide shows the band, "Wi-Fi 5 GHz", from `NetInfo`, so the SSID keeps the status line).
   `~/Documents/sichos/control-center-tiles.html` is a sheet of every tile at every size, rendered
   offscreen from the deployed config by `~/Documents/sichos/tiles-gen/gen.sh` (deploy first) --
-  regenerate it after every Control Center change. SUPER+N toggles it on the
+  regenerate it after every Control Center change. The media list ("Now playing", fixed height so a source starting or stopping never resizes the hub; more scroll) is everything making sound, one `MediaSourceSlot` per source: MPRIS players, then apps with a live stream and no player. `MediaSource` joins the two (`AudioInfo.appForPlayer`: the desktop entry's Name against `application.name`, else a stream's `media.name` starting with the title; they share no other key), with one fader per source over all of an app's streams. The lead with a cover is a `MediaSourceBanner`, the rest `MediaSourceCard`s, the fader at the same x on both. A wide cover fills the slot; a 1:1 one is a sleeve with a `MediaRecord` that spins while playing and slides behind it on pause; no cover is the app's icon, which slides aside for the buttons. Transport (`MediaCoverControls`) sits on the cover, only while it's hovered. A Steam game is named from its process's `SteamAppId` (`scripts/steam-game.py`, by PID or, for a stream through pipewire-pulse, via its client; `scripts/icon-file.py` gives ColorQuantizer a file for a theme icon). SUPER+N toggles it on the
   focused monitor (`quickshell ipc call controlcenter toggle`). The toggle-row popups (HDR, Night Light,
   Stay Awake, Game Focus) and System Update are also its pages (`qs-hdr` etc.) — its own instances with
   `backPopupId` set. `SystemStats` (CPU/RAM/temp) only polls while its main page is open; `VpnStatus` (Proton VPN) while

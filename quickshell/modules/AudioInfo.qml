@@ -1,6 +1,7 @@
 pragma Singleton
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Quickshell.Services.Pipewire
 
 // Audio devices and the apps using them, for the Control Center's Sound card.
@@ -10,7 +11,7 @@ import Quickshell.Services.Pipewire
 QtObject {
     id: root
 
-    // Bound by the Control Center to "Sound card open".
+    // Bound by the Control Center to "open": its main page lists every app.
     property bool active: false
     // The mic level meter: its own toggle on top of `active`, since the peak
     // monitor opens a capture stream (see _peak below).
@@ -41,6 +42,74 @@ QtObject {
         (n.type & PwNodeType.AudioOutStream) === PwNodeType.AudioOutStream
         && !root._isSpeechDispatcher(n))
     readonly property var outputStreams: root._group(root._outputNodes.filter(n => root._isLive(n)), root._outputNodes)
+
+    // Every app with an output stream, paused ones too: a paused player's card
+    // keeps its fader, though nothing of it is live (outputStreams).
+    readonly property var outputGroups: root._group(root._outputNodes, root._outputNodes)
+
+    // The stream group of an MPRIS player. The two share no key: the bus name's
+    // PID doesn't match the stream's (firefox.instance_1_887 vs. 145120 seen),
+    // and Identity isn't the stream's name ("Mozilla firefox-dev" vs.
+    // "Firefox Developer Edition"). The desktop entry's Name is, in the cases
+    // seen; else a stream whose media.name starts with the track's title
+    // (Firefox's are "<title> - YouTube").
+    function appForPlayer(p) {
+        if (!p) return null
+        const names = [NowPlayingState.appName(p), p.identity || ""].map(n => n.toLowerCase()).filter(n => n !== "")
+        const byName = root.outputGroups.find(g => names.includes(g.name.toLowerCase()))
+        if (byName) return byName
+        const title = (p.trackTitle || "").toLowerCase()
+        if (title === "") return null
+        return root.outputGroups.find(g => g.nodes.some(n =>
+            ((n.properties || {})["media.name"] || "").toLowerCase().startsWith(title))) || null
+    }
+
+    // Which Steam game a stream belongs to: {name, art} by the stream's PID,
+    // see scripts/steam-game.py. Asked once per PID, as streams appear.
+    property var _games: ({})
+    property var _gameQueue: []
+    function gameFor(app) {
+        const pid = root._pidOf(app)
+        const g = pid ? root._games[pid] : null
+        return g && g.name ? g : null
+    }
+    // Its PID, or its client's when the node has none (see steam-game.py).
+    function _pidOf(app) {
+        const p = app && app.node ? (app.node.properties || {}) : {}
+        return p["application.process.id"] ? String(p["application.process.id"])
+            : p["client.id"] ? "client:" + p["client.id"] : ""
+    }
+    onOutputStreamsChanged: {
+        for (const a of root.outputStreams) {
+            const pid = root._pidOf(a)
+            if (pid && !(pid in root._games) && !root._gameQueue.includes(pid))
+                root._gameQueue = root._gameQueue.concat([pid])
+        }
+        root._nextGame()
+    }
+    function _nextGame() {
+        if (_gameProc.running || root._gameQueue.length === 0) return
+        _gameProc.pid = root._gameQueue[0]
+        _gameProc.running = true
+    }
+    property Process _gameProc: Process {
+        id: _gameProc
+        property string pid: ""
+        command: ["python3", Quickshell.env("HOME") + "/.config/quickshell/scripts/steam-game.py", _gameProc.pid]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                let g = {}
+                try { g = JSON.parse(text) } catch (e) {}
+                const all = Object.assign({}, root._games)
+                all[_gameProc.pid] = g
+                root._games = all
+            }
+        }
+        onExited: {
+            root._gameQueue = root._gameQueue.filter(p => p !== _gameProc.pid)
+            Qt.callLater(root._nextGame)
+        }
+    }
 
     // Apps capturing from any source, minus our own peak monitor's stream.
     readonly property var _inputNodes: root._streams.filter(n =>
