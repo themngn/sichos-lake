@@ -192,7 +192,8 @@ hl.window_rule({
     -- to Hyprland's own regex matcher, where "-" is a literal character
     -- outside brackets — the "%-" was being read as a literal percent sign
     -- instead, so the title never matched at all.
-    match = { class = "org.mozilla.firefox", title = "^Picture-in-Picture$" },
+    -- "firefox-dev" is the Developer Edition install in ~/.local/opt.
+    match = { class = "^(org\\.mozilla\\.firefox|firefox-dev)$", title = "^Picture-in-Picture$" },
 
     float = true,
     pin   = true,
