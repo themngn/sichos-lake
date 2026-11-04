@@ -120,7 +120,7 @@ PanelWindow {
                 color: Theme.track
 
                 Rectangle {
-                    width: track.width * (osd.sink && osd.sink.audio ? osd.sink.audio.volume : 0)
+                    width: track.width * Math.min(1, osd.sink && osd.sink.audio ? osd.sink.audio.volume : 0)
                     height: track.height
                     radius: Theme.trackRadius
                     color: osd.sink && osd.sink.audio && osd.sink.audio.muted ? Theme.textDim : Theme.accent

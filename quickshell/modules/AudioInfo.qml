@@ -33,17 +33,20 @@ QtObject {
         objects: root.active ? root.audioNodes.concat(root._streams, Pipewire.linkGroups.values) : []
     }
 
-    // Apps playing to any sink, one entry per app: [{name, node}], `node`
-    // being its first active stream (Firefox opens one per tab). Both lists
-    // read empty while !active: untracked links never report Active.
-    readonly property var outputStreams: root._group(root._streams.filter(n =>
+    // Apps playing to any sink, one entry per app: [{name, icon, node, nodes}],
+    // `node` being its first active stream (Firefox opens one per tab) and
+    // `nodes` all of its streams, paused ones too -- see setAppVolume. Both
+    // lists read empty while !active: untracked links never report Active.
+    readonly property var _outputNodes: root._streams.filter(n =>
         (n.type & PwNodeType.AudioOutStream) === PwNodeType.AudioOutStream
-        && !root._isSpeechDispatcher(n) && root._isLive(n)))
+        && !root._isSpeechDispatcher(n))
+    readonly property var outputStreams: root._group(root._outputNodes.filter(n => root._isLive(n)), root._outputNodes)
 
     // Apps capturing from any source, minus our own peak monitor's stream.
-    readonly property var inputStreams: root._group(root._streams.filter(n =>
+    readonly property var _inputNodes: root._streams.filter(n =>
         (n.type & PwNodeType.AudioInStream) === PwNodeType.AudioInStream
-        && !root._isOwn(n) && root._isLive(n)))
+        && !root._isOwn(n))
+    readonly property var inputStreams: root._group(root._inputNodes.filter(n => root._isLive(n)), root._inputNodes)
 
     // speech-dispatcher keeps an always-running (silent) dummy stream open.
     function _isSpeechDispatcher(n) {
@@ -79,16 +82,47 @@ QtObject {
         return p["application.name"] || n.description || n.name || "Unknown"
     }
 
-    function _group(nodes) {
+    // The app's icon, "" if it has none. Streams rarely carry
+    // application.icon-name, so the installed .desktop file with the app's
+    // name comes first, then its binary's -- which alone would give Firefox
+    // Developer Edition ("firefox-bin") plain Firefox. A desktop file's Icon
+    // can be a path (firefox-dev.desktop's is), which iconPath doesn't resolve.
+    function _appIcon(n) {
+        const p = n.properties || {}
+        const app = root._appName(n)
+        const bin = (p["application.process.binary"] || "").replace(/-bin$/, "")
+        const candidates = [DesktopIcons.nameIcons[app.toLowerCase()], DesktopIcons.iconNameForClass(bin),
+            p["application.icon-name"], app.toLowerCase()]
+        for (const name of candidates) {
+            if (!name) continue
+            if (name.startsWith("/")) return "file://" + name
+            const path = Quickshell.iconPath(name, true)
+            if (path) return path
+        }
+        return ""
+    }
+
+    function _group(nodes, pool) {
         const out = []
         const seen = {}
         for (const n of nodes) {
             const name = root._appName(n)
             if (seen[name]) continue
             seen[name] = true
-            out.push({ name: name, node: n })
+            out.push({ name: name, icon: root._appIcon(n), node: n,
+                nodes: pool.filter(o => root._appName(o) === name) })
         }
         return out
+    }
+
+    // An entry of outputStreams/inputStreams as one fader: every stream of the
+    // app, or Firefox's next tab (or a paused one resuming) comes in at its
+    // old volume and the app jumps.
+    function setAppVolume(app, v) {
+        for (const n of app.nodes) if (n.audio) n.audio.volume = v
+    }
+    function setAppMuted(app, muted) {
+        for (const n of app.nodes) if (n.audio) n.audio.muted = muted
     }
 
     // A label short enough for a device chip (~14 chars). Node descriptions

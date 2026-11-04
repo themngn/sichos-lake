@@ -18,6 +18,9 @@ QtObject {
     // "org.telegram.desktop").
     property var wmClassNames: ({})
     property var baseNames: ({})
+    // Lowercased Name= -> Icon=, for what only knows an app by its display
+    // name (a PipeWire stream's application.name, AudioInfo.qml).
+    property var nameIcons: ({})
     property bool ready: false
 
     readonly property string _indexScript: `
@@ -55,6 +58,7 @@ done
         const baseMap = {}
         const wmNames = {}
         const baseNames = {}
+        const nameIcons = {}
         const lines = text.split("\n")
         for (const line of lines) {
             if (!line) continue
@@ -69,6 +73,7 @@ done
                 if (wmclass && !wmNames[wmclass]) wmNames[wmclass] = name
             }
             if (!icon) continue
+            if (name && !nameIcons[name.toLowerCase()]) nameIcons[name.toLowerCase()] = icon
             if (base) baseMap[base] = icon
             if (wmclass) wmMap[wmclass] = icon
         }
@@ -76,6 +81,7 @@ done
         root.baseNameMap = baseMap
         root.wmClassNames = wmNames
         root.baseNames = baseNames
+        root.nameIcons = nameIcons
         root.ready = true
     }
 

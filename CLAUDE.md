@@ -231,7 +231,7 @@ own files.
   items, so a nested pill swallows the outer one's hover). Its Bluetooth/Display submenus are hidden
   BluetoothIndicator/DisplaySettings instances with their own `popupId` (`qs-bluetooth`/`qs-display`),
   `popupAnchor` and `backPopupId`; its Sound page (`qs-audio`) is a second MorphContent in the same
-  file, its Wi-Fi page (`qs-wifi`) is `WifiMenu.qml` -- the network list on top,
+  file (Output and Input up to 150%, plus a Mixer list of the apps playing, one fader per app over all its streams, which scrolls so the card keeps its size), its Wi-Fi page (`qs-wifi`) is `WifiMenu.qml` -- the network list on top,
   and pinned to the column's bottom edge (the page takes its host's full height, sized from
   implicitHeight so it doesn't feed back) the Hotspot row (switch + chevron to `qs-hotspot`, whose
   back arrow returns to Wi-Fi), DNS (Default / Mullvad Base) and Network settings; neither is a

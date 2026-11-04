@@ -257,7 +257,7 @@ Pill {
         HoverHandler { id: cardHover }
         Binding { target: PowerInfo; property: "active"; value: panel.shown }
         Binding { target: Displays; property: "active"; value: panel.shown }
-        Binding { target: AudioInfo; property: "active"; value: panel.shown }
+        Binding { target: AudioInfo; property: "active"; value: panel.shown || root.audioOpen }
 
         // Same sysfs node Backlight.qml/BacklightOSD.qml read.
         readonly property bool hasBacklight: blMax.text().length > 0
@@ -436,7 +436,7 @@ Pill {
             switch (id) {
             case "sound": vol.wheel(wheel); return
             case "micmute":
-                if (root.source && root.source.audio) root.source.audio.volume = Math.max(0, Math.min(1, root.source.audio.volume + step))
+                if (root.source && root.source.audio) root.source.audio.volume = Math.max(0, Math.min(Math.max(1, root.source.audio.volume), root.source.audio.volume + step))
                 return
             }
             wheel.accepted = false
@@ -1919,6 +1919,8 @@ Pill {
 
                         SliderRow {
                             width: parent.width
+                            maxValue: 1.5
+                            rangeFollowsValue: true
                             glyph: vol.icon()
                             glyphScale: vol.iconScale()
                             dim: !!(root.sink && root.sink.audio && root.sink.audio.muted)
@@ -2300,14 +2302,22 @@ Pill {
 
 
         implicitWidth: root.cardWidth + 2 * Theme.surfacePadding
-        implicitHeight: audioColumn.implicitHeight + 2 * Theme.surfacePadding
+        // Room for two apps whatever is playing, so an app starting or
+        // stopping never resizes the hub (it sizes itself to its tallest
+        // page). mixerList takes what's left of the column, and scrolls.
+        readonly property real mixerReserve: 2 * 68 + 6
+        implicitHeight: mixerList.y + audioPanel.mixerReserve + 2 * Theme.surfacePadding
+        // Only `height`, as on the Wi-Fi page: doesn't feed back into the hub.
+        height: parent ? Math.max(implicitHeight, parent.height) : implicitHeight
 
         Item {
             anchors.fill: parent
 
             Column {
                 id: audioColumn
-                anchors.centerIn: parent
+                anchors.top: parent.top
+                anchors.topMargin: Theme.surfacePadding
+                anchors.horizontalCenter: parent.horizontalCenter
                 width: root.cardWidth
                 spacing: Theme.sectionSpacing
 
@@ -2316,7 +2326,7 @@ Pill {
                     onBack: root.openPopup(root.popupId)
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Mixer"
+                        text: "Advanced"
                         color: mixerArea.containsMouse ? Theme.accentHover : Theme.accent
                         font.family: Theme.uiFontFamily
                         font.pixelSize: Theme.fontSize - 1
@@ -2341,6 +2351,7 @@ Pill {
                 SliderRow {
                     width: parent.width
                     hasMore: false
+                    maxValue: 1.5
                     glyph: vol.icon()
                     glyphScale: vol.iconScale()
                     dim: !!(root.sink && root.sink.audio && root.sink.audio.muted)
@@ -2370,6 +2381,7 @@ Pill {
                 SliderRow {
                     width: parent.width
                     hasMore: false
+                    maxValue: 1.5
                     glyph: root.source && root.source.audio && root.source.audio.muted ? "\u{f036d}" : "\u{f036c}"
                     dim: !!(root.source && root.source.audio && root.source.audio.muted)
                     value: root.source && root.source.audio ? root.source.audio.volume : 0
@@ -2388,6 +2400,40 @@ Pill {
                             label: root.nodeName(modelData)
                             current: modelData === root.source
                             onClicked: Pipewire.preferredDefaultAudioSource = modelData
+                        }
+                    }
+                }
+
+                SectionLabel {
+                    text: "Mixer"
+                }
+                Flickable {
+                    id: mixerList
+                    width: parent.width
+                    height: Math.max(audioPanel.mixerReserve, audioPanel.height - 2 * Theme.surfacePadding - y)
+                    contentHeight: mixerColumn.implicitHeight
+                    interactive: contentHeight > height
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    Text {
+                        visible: AudioInfo.outputStreams.length === 0
+                        text: "No apps are playing"
+                        color: Theme.textDim
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 1
+                    }
+                    Column {
+                        id: mixerColumn
+                        width: mixerList.width
+                        spacing: 6
+                        Repeater {
+                            model: AudioInfo.outputStreams
+                            delegate: MixerRow {
+                                required property var modelData
+                                width: mixerColumn.width
+                                app: modelData
+                            }
                         }
                     }
                 }
@@ -3158,6 +3204,64 @@ Pill {
     // Selectable audio device, a page row: the current default is filled
     // and checked. The glyph is guessed from the device's name -- PipeWire
     // has a form factor property, but most ALSA cards leave it unset.
+    // One app on the Sound page's mixer (an entry of AudioInfo.outputStreams):
+    // its icon and name over the same slider as the device's above.
+    component MixerRow: Rectangle {
+        id: mixRow
+        property var app: null
+        readonly property var audio: mixRow.app && mixRow.app.node ? mixRow.app.node.audio : null
+        readonly property bool muted: !!(mixRow.audio && mixRow.audio.muted)
+        height: 68
+        radius: Theme.controlRadius
+        color: Theme.controlFill
+
+        Rectangle {
+            x: 10
+            anchors.verticalCenter: parent.verticalCenter
+            width: 32
+            height: 32
+            radius: width / 2
+            color: Qt.rgba(1, 1, 1, 0.08)
+            IconImage {
+                visible: !!mixRow.app && mixRow.app.icon !== ""
+                anchors.centerIn: parent
+                implicitSize: 22
+                source: mixRow.app ? mixRow.app.icon : ""
+            }
+            Text {
+                visible: !mixRow.app || mixRow.app.icon === ""
+                anchors.centerIn: parent
+                text: "\u{f075a}" // nf-md-music_note
+                color: Theme.text
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSize + 1
+            }
+        }
+        Text {
+            x: 52
+            y: 9
+            width: parent.width - x - 10
+            text: mixRow.app ? mixRow.app.name : ""
+            elide: Text.ElideRight
+            color: Theme.text
+            font.family: Theme.uiFontFamily
+            font.pixelSize: Theme.fontSize - 1
+            font.bold: true
+        }
+        SliderRow {
+            x: 52
+            y: 28
+            width: parent.width - x - 10
+            hasMore: false
+            maxValue: 1.5
+            glyph: mixRow.muted ? "\u{f0581}" : "\u{f057e}" // nf-md-volume_off / volume_high
+            dim: mixRow.muted
+            value: mixRow.audio ? mixRow.audio.volume : 0
+            onGlyphClicked: if (mixRow.app) AudioInfo.setAppMuted(mixRow.app, !mixRow.muted)
+            onMoved: (v) => { if (mixRow.app) AudioInfo.setAppVolume(mixRow.app, v) }
+        }
+    }
+
     component DeviceRow: PageRow {
         id: dev
         property string label: ""

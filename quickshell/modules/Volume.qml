@@ -38,7 +38,9 @@ Pill {
         while (Math.abs(root.wheelAccum) >= 120) {
             const dir = root.wheelAccum > 0 ? -1 : 1
             root.wheelAccum -= (root.wheelAccum > 0 ? 120 : -120)
-            sink.audio.volume = Math.max(0, Math.min(1, sink.audio.volume + dir * step))
+            // Stops at 100%, but from above it (the Sound page goes to 150%)
+            // must not drop back there on the first notch.
+            sink.audio.volume = Math.max(0, Math.min(Math.max(1, sink.audio.volume), sink.audio.volume + dir * step))
         }
     }
 
