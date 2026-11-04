@@ -200,3 +200,18 @@ hl.window_rule({
     move  = "monitor_w-540 40", -- 500 + 40 margin from the right; 40 down from the top
 })
 
+
+-- Zoom's screen-share toolbars (its share bar and the Annotate tools) are plain
+-- XWayland toplevels, titled exactly this (strings in the Flatpak's zoom binary;
+-- class "zoom" per `hyprctl clients -j`), so left alone they tile like a normal
+-- window and reflow the workspace being shared. Pinned so they follow a workspace
+-- switch.
+hl.window_rule({
+    name  = "float-zoom-share-toolbars",
+    match = { class = "^zoom$", title = "^(as_toolbar|annotate_toolbar)$" },
+
+    float     = true,
+    pin       = true,
+    no_shadow = true,
+    no_anim   = true,
+})

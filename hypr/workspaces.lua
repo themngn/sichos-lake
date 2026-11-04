@@ -274,15 +274,19 @@ local function bindMonitor(mon)
         return -- already showing something worth keeping
     end
 
+    -- set_workspace takes a workspace object or a bare selector string;
+    -- Hyprland 0.57 rejects the old { workspace = ... } table ("expected a
+    -- workspace object or selector"). A string also works for an id that
+    -- doesn't exist yet, which get_workspace() would return nil for.
     local tier1 = lowestPoolWorkspace()
     if tier1 then
-        mon:set_workspace({ workspace = tostring(tier1) })
+        mon:set_workspace(tostring(tier1))
         return
     end
 
     local tier2 = highestBackgroundWorkspace()
     if tier2 then
-        mon:set_workspace({ workspace = tostring(tier2) })
+        mon:set_workspace(tostring(tier2))
     end
     -- Neither tier found anything: the Always-Spare Guarantee would be
     -- violated, which shouldn't happen since peak_displays/pool_size is
@@ -478,7 +482,7 @@ function SichosWorkspaces.moveToMonitor(id, target)
 
     if refill then
         local mon = hl.get_monitor(source)
-        if mon then mon:set_workspace({ workspace = tostring(refill) }) end
+        if mon then mon:set_workspace(tostring(refill)) end
     end
 end
 
