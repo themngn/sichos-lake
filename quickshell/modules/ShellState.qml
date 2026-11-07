@@ -396,7 +396,7 @@ QtObject {
     // Last manually-set warmth, shown by the popup's slider regardless of
     // sunsetWarm/sunsetScheduleFollow. Seeded from hyprsunset.conf's night
     // profile at startup (see _loadSunsetKelvin) -- the file is where this
-    // persists, since hyprsunset itself reads it from there.
+    // persists.
     property int sunsetKelvin: 2500
 
     // watchChanges + reload: SunsetPopup (one per bar plus one per Control
@@ -418,8 +418,10 @@ QtObject {
         // "corrected" hyprsunset's own 3500 night switch to 2500 a few seconds
         // later (seen in hyprsunset's journal at 23:00:00 -> 23:00:03). Not
         // mid-drag, where the pending value is newer than the file.
+        onLoadFailed: root._sunsetConfRead()
         onLoaded: {
             root._parseSunsetTimes()
+            root._sunsetConfRead()
             if (root._pendingKelvin < 0) {
                 const before = root.sunsetKelvin
                 root._loadSunsetKelvin()
@@ -500,19 +502,15 @@ QtObject {
         }
     }
 
-    // SunsetPopup's Save (new profile times). hyprsunset only reads its
-    // config at startup -- no live-reload IPC -- so it's restarted (its
-    // systemd --user unit; only under the uwsm session, see autostart.lua),
-    // and a restarted hyprsunset applies whichever profile is current,
-    // dropping any force -- so follow goes back on and the state is synced
-    // to that once it's up again.
-    function restartSunsetSchedule() {
+    // SunsetPopup's Save (new profile times): setting a schedule means
+    // wanting it followed, so follow goes back on and the light moves to
+    // what the new times say. Delayed so _sunsetConf has reloaded the file.
+    function sunsetScheduleSaved() {
         root.sunsetScheduleFollow = true
-        Quickshell.execDetached(["systemctl", "--user", "restart", "hyprsunset.service"])
-        root._resyncAfterRestart.restart()
+        root._resyncAfterSave.restart()
     }
-    property Timer _resyncAfterRestart: Timer {
-        interval: 1500
+    property Timer _resyncAfterSave: Timer {
+        interval: 500
         onTriggered: {
             const isNight = root._computePhaseIsNight()
             root._lastPhase = isNight
@@ -546,20 +544,19 @@ QtObject {
     // until the next explicit force or boundary crossing".
     property bool _lastPhase: false
 
-    // hyprsunset switches profiles by itself at each schedule time. This
-    // used to push the same switch again from here when it noticed the
-    // boundary (up to 30s later), which showed as the light changing twice.
-    // Now a crossing only updates sunsetWarm, and _syncSunset pushes only
-    // where hyprsunset's actual state disagrees -- i.e. Follow schedule is
-    // off and hyprsunset just overrode a forced state, which is put back.
+    // The only thing that switches the light on schedule. hyprsunset's own
+    // profiles are commented out in hyprsunset.conf: it fired them whatever
+    // Follow schedule said, so with follow off the light flashed on at the
+    // night time until this check put it back (journal: 23:00:00 3500K ->
+    // 23:00:01..04 identity, every night), and with follow on both switched.
+    // Runs on the 10s timer, so it also catches up after a suspend.
     function _checkScheduleBoundary() {
         const isNight = root._computePhaseIsNight()
         if (isNight === root._lastPhase) return
         root._lastPhase = isNight
-        if (root.sunsetScheduleFollow) {
-            root.sunsetWarm = isNight
-            _state.sunsetPhase = isNight
-        }
+        if (!root.sunsetScheduleFollow) return
+        root.sunsetWarm = isNight
+        _state.sunsetPhase = isNight
         root._syncSunset()
     }
 
@@ -567,9 +564,21 @@ QtObject {
     // only if no schedule boundary has passed since it was set (same rule as
     // a live one) -- with Follow schedule off it always is. Then hyprsunset
     // is brought in line, which is a no-op after a plain quickshell reload
-    // (hyprsunset kept the light) and puts a force back after a login
-    // (hyprsunset starts on the schedule's profile).
+    // (hyprsunset kept the light) and sets the light after a login (hyprsunset
+    // starts with no profiles, at its default 6000K).
+    // Waits for the conf too: it loads asynchronously, and reading the times
+    // before it has means the built-in 07:00/23:00, so with other times the
+    // light sat in the wrong state until the next boundary check (sandbox:
+    // warm for 10s in the daytime).
+    property bool _sunsetConfHasRead: false
+    property bool _sunsetRestored: false
+    function _sunsetConfRead() {
+        root._sunsetConfHasRead = true
+        if (root.stateLoaded) root._restoreSunset()
+    }
     function _restoreSunset() {
+        if (!root._sunsetConfHasRead || root._sunsetRestored) return
+        root._sunsetRestored = true
         root._loadSunsetKelvin()
         const isNight = root._computePhaseIsNight()
         root._lastPhase = isNight
@@ -581,11 +590,10 @@ QtObject {
         root._syncSunset()
     }
 
-    // Reads hyprsunset's current temperature (identity reads 6000, its
-    // neutral value; the warmth range tops out at 5000) and pushes only on a
-    // mismatch. hyprsunset may not be up yet at login (it's a separate
-    // systemd --user unit) -- hyprctl then prints an error instead of a
-    // number, retried every 2s while _syncSunsetTries lasts.
+    // Waits for hyprsunset to answer, then pushes the current state. It may
+    // not be up yet at login (it's a separate systemd --user unit) -- hyprctl
+    // then prints an error instead of a number, retried every 2s while
+    // _syncSunsetTries lasts.
     property int _syncSunsetTries: 0
     function _syncSunset() {
         if (root._sunsetQuery.running) return
@@ -601,21 +609,16 @@ QtObject {
                     return
                 }
                 root._syncSunsetTries = 0
-                // hyprsunset 0.4.0 keeps reporting the last temperature it
-                // was set to after an `identity` (journal: last command
-                // identity, query still answers 2500), so "warm" can't be
-                // read from t -- only "neutral" can be trusted (6000). A
-                // warm state is therefore always re-sent (re-applying the
-                // same temperature is invisible); otherwise a neutral screen
-                // reporting the stale kelvin would pass as matching and Night
-                // Light would show On over a neutral screen. Off pushes
-                // identity whenever t isn't 6000, which after any warm
-                // stretch is always -- also invisible when already neutral.
-                const warmNow = t < 6000
-                if (root.sunsetWarm || warmNow)
-                    Quickshell.execDetached(root.sunsetWarm
-                        ? ["hyprctl", "hyprsunset", "temperature", String(root.sunsetKelvin)]
-                        : ["hyprctl", "hyprsunset", "identity"])
+                // Always pushed, since the answer can't tell what's on
+                // screen: hyprsunset 0.4.0 keeps reporting the last
+                // temperature after an `identity` (journal: last command
+                // identity, query still answers 2500), and 6000 isn't neutral
+                // either -- with no profile to start on, a fresh hyprsunset
+                // sits at 6000K, a slight tint (CTM 1, 0.965, 0.929), not
+                // identity. Re-applying the current state is invisible.
+                Quickshell.execDetached(root.sunsetWarm
+                    ? ["hyprctl", "hyprsunset", "temperature", String(root.sunsetKelvin)]
+                    : ["hyprctl", "hyprsunset", "identity"])
             }
         }
     }
@@ -624,11 +627,11 @@ QtObject {
         onTriggered: root._syncSunset()
     }
 
-    // Re-checks every 10s so a schedule boundary crossing is caught (and,
-    // with Follow schedule off, a force put back) without needing a click.
+    // Re-checks every 10s so a schedule boundary crossing is caught without
+    // needing a click.
     property Timer _sunsetTimer: Timer {
         interval: 10000
-        running: root.stateLoaded
+        running: root._sunsetRestored
         repeat: true
         onTriggered: root._checkScheduleBoundary()
     }

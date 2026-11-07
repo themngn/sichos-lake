@@ -128,12 +128,13 @@ hl.on("hyprland.start", function ()
   -- tray" flag instead of appearing in front of you — see
   -- quickshell/scripts/autostart-launch.py.
   hl.exec_cmd("python3 \"$HOME/.config/quickshell/scripts/autostart-launch.py\"")
-  -- SichOS Gamepad Overlay Daemon:
-  -- Listens for controller Guide/Home button to toggle the Quickshell launcher
-  -- overlay and navigates apps/folders with D-Pad/stick when active.
-  hl.exec_cmd("sichos-gamepad &")
+  -- SichOS Gamepad Overlay Daemon: disabled for now. It listens for the
+  -- controller's Guide/Home button to toggle the Quickshell launcher overlay
+  -- and navigates apps/folders with D-Pad/stick while it's open; uncomment
+  -- (and re-enable install.sh's sichos-gamepad step) to bring it back.
+  -- hl.exec_cmd("sichos-gamepad &")
   -- Clipboard history listener for SUPER+SHIFT+V (keybindings.lua). Plain
-  -- background process, matching sichos-gamepad above, not a systemd unit.
+  -- background process, not a systemd unit.
   hl.exec_cmd("wl-paste --watch cliphist store &")
   -- USB drive automount + mount/unmount notifications (packages.txt). gvfs
   -- alone only mounts when something asks it to (i.e. with Nautilus open);

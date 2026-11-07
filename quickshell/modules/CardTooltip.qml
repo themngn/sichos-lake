@@ -32,7 +32,10 @@ Rectangle {
         tip.target = item
         const p = item.mapToItem(tip.parent, item.width / 2, item.height)
         tip.x = Math.round(Math.max(4, Math.min(tip.parent.width - tip.width - 4, p.x - tip.width / 2)))
-        tip.y = Math.round(p.y + 8)
+        // Above the control when there's no room below: the hub's card can
+        // reach the bottom of the monitor, and the window ends there.
+        const below = p.y + 8
+        tip.y = Math.round(below + tip.height <= tip.parent.height ? below : p.y - item.height - 8 - tip.height)
         tip.visible = tip.text !== ""
     }
 

@@ -38,6 +38,9 @@ Pill {
     // notifications column (Bar.qml), so it opens there from the hub's phone
     // card while this card's main page stays up beside it.
     property Item phoneHost: null
+    // The tallest the hub's card may get (Hub.maxHeight): the media list
+    // grows the card up to this, then scrolls.
+    property real maxCardHeight: 100000
 
     readonly property real cardWidth: 360
 
@@ -239,11 +242,56 @@ Pill {
 
 
         implicitWidth: root.cardWidth + 2 * Theme.surfacePadding
-        implicitHeight: column.implicitHeight + Theme.sectionSpacing + footerColumn.implicitHeight + 2 * Theme.surfacePadding
+        implicitHeight: panel.mediaChrome + panel.mediaListHeight
         // At least its host's height (the hub's Controls column), so the
         // footer sits at the bottom edge. Only `height`: the hub sizes
         // itself from implicitHeight, so this doesn't feed back into it.
-        height: parent ? Math.max(implicitHeight, parent.height) : implicitHeight
+        // Less the part of the media list still animating in, so the footer
+        // moves with the card's edge instead of jumping past it.
+        height: {
+            const laidOut = implicitHeight - (panel.mediaListHeight - panel.mediaListShown)
+            return parent ? Math.max(laidOut, parent.height) : laidOut
+        }
+
+        // The media list's height: room for a banner and two cards at least,
+        // so one or two sources don't resize the hub, and past that as tall as
+        // its sources need, until the card reaches maxCardHeight (then it
+        // scrolls). It only grows while the hub is open -- a source stopping
+        // doesn't pull the controls out from under the pointer -- and settles
+        // to what's playing once it's closed.
+        readonly property int mediaListMin: 203 + 2 * (72 + 6)
+        property real mediaListHeight: panel.mediaListMin
+        property real mediaListShown: panel.mediaListHeight
+        Behavior on mediaListShown {
+            enabled: root.anyOpen
+            NumberAnimation { duration: Theme.morphDuration; easing.type: Easing.OutCubic }
+        }
+        // Everything on the page but the list, kept from the last time the page
+        // was visible: Column doesn't lay out while hidden, so its implicitHeight
+        // is stale whenever the card is closed, which is when the list has to be
+        // sized for the card to open big enough. (393: the page's usual
+        // value, until a screen's card has been opened once.) The list's top
+        // rather than the Column's height: that lags the list by a frame.
+        property real mediaChrome: 393
+        Binding {
+            target: panel
+            property: "mediaChrome"
+            when: panel.visible
+            restoreMode: Binding.RestoreNone
+            value: mediaSection.parent.y + mediaSection.y + nowPlayingLabel.implicitHeight + 6
+                + Theme.sectionSpacing + footerColumn.implicitHeight + 2 * Theme.surfacePadding
+        }
+        function _fitMediaList() {
+            const room = root.maxCardHeight - panel.mediaChrome
+            const wanted = root.anyOpen ? Math.max(panel.mediaListHeight, mediaStack.height) : mediaStack.height
+            panel.mediaListHeight = Math.max(panel.mediaListMin, Math.min(wanted, room))
+        }
+        onMediaChromeChanged: panel._fitMediaList()
+        Connections {
+            target: root
+            function onAnyOpenChanged() { panel._fitMediaList() }
+            function onMaxCardHeightChanged() { panel._fitMediaList() }
+        }
 
         // The tiles' data sources poll only while the card is open.
         Binding { target: NetInfo; property: "active"; value: panel.shown }
@@ -1946,13 +1994,12 @@ Pill {
 
                     // Everything making sound, as one list: each player and
                     // each app with a stream, one card with its own fader,
-                    // the first as a banner when it has a cover. Fixed height,
-                    // room for a banner and two cards, so a source starting
-                    // or stopping never resizes the hub; more scroll.
+                    // the first as a banner when it has a cover. Its height is
+                    // panel.mediaListHeight; more than fit scroll.
                     Item {
+                        id: mediaSection
                         width: parent.width
-                        readonly property int listHeight: 203 + 2 * (72 + 6)
-                        height: nowPlayingLabel.implicitHeight + 6 + listHeight
+                        height: nowPlayingLabel.implicitHeight + 6 + panel.mediaListHeight
                         readonly property int sourceCount: root.players.length + root.streamOnlyNames.length
 
                         SectionLabel {
@@ -1989,7 +2036,7 @@ Pill {
                         Flickable {
                             y: nowPlayingLabel.implicitHeight + 6
                             width: parent.width
-                            height: parent.listHeight
+                            height: panel.mediaListShown
                             contentHeight: mediaStack.height
                             interactive: contentHeight > height
                             clip: true
@@ -2002,6 +2049,7 @@ Pill {
                                 property real leadHeight: 72
                                 readonly property int count: root.players.length + root.streamOnlyNames.length
                                 height: count === 0 ? 0 : leadHeight + (count - 1) * (72 + 6)
+                                onHeightChanged: panel._fitMediaList()
 
                                 Repeater {
                                     model: Mpris.players
@@ -2159,7 +2207,7 @@ Pill {
         onSetWarm: (warm) => ShellState.forceSunsetWarm(warm)
         onSetTemperature: (k) => ShellState.setSunsetKelvin(k)
         onSetScheduleFollow: (follow) => ShellState.setScheduleFollow(follow)
-        onScheduleSaved: ShellState.restartSunsetSchedule()
+        onScheduleSaved: ShellState.sunsetScheduleSaved()
     }
     readonly property Item _idlePage: IdlePopup {
         contentWidth: root.cardWidth

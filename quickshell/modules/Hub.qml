@@ -36,7 +36,8 @@ MorphContent {
     // The bar window, so a click on the bar (the clock itself) doesn't
     // count as outside for the fallback grab below.
     property var barWindow: null
-    // Cap for the card's height (the screen below the bar).
+    // Cap for the card's height (the screen below the bar): the Control
+    // Center's media list grows the card up to this.
     property real maxHeight: 1000
     // The Control Center's SystemUpdate (QuickSettings.updater), for the
     // system strip's update cell; its page is "qs-update".
@@ -80,6 +81,13 @@ MorphContent {
         + (hub.hasControls ? sep2.width + hub.controlsWidth : hub.pad)
     implicitHeight: Math.min(hub.maxHeight, Math.max(600, hub.controlsHeight,
         today.implicitHeight + 2 * hub.pad + strip.height, hub.phoneHeight + strip.height))
+    // With the card (MorphPopup animates it the same way) when the media list
+    // grows it while open, so the columns' bottom edges don't jump past it.
+    height: implicitHeight
+    Behavior on height {
+        enabled: hub.open
+        NumberAnimation { duration: Theme.morphDuration; easing.type: Easing.OutCubic }
+    }
 
     // --- Fallback close (no Control Center on this bar, see above) ---
     property bool _grabbing: false

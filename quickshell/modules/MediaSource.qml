@@ -49,9 +49,9 @@ QtObject {
     // A stream only has an "is it playing" through its player; a bare stream
     // only shows up here while it's live.
     readonly property bool isPlaying: src.isPlayer ? src.player.isPlaying : true
-    readonly property bool hasLength: src.isPlayer && src.player.lengthSupported && src.player.length > 0
+    readonly property bool hasLength: src.isPlayer && src.length > 0
     readonly property bool canSeek: src.hasLength && src.player.canSeek
-    readonly property real progress: src.hasLength ? Math.max(0, Math.min(1, src.player.position / src.player.length)) : 0
+    readonly property real progress: src.hasLength ? Math.max(0, Math.min(1, src.position / src.length)) : 0
     readonly property bool canSkip: src.isPlayer && (src.player.canGoPrevious || src.player.canGoNext)
 
     // The app's icon, for a source with no cover.
@@ -126,13 +126,59 @@ QtObject {
     readonly property color tintDeep: src.hasTint
         ? Qt.hsla(Math.max(0, src._best.hslHue), Math.min(src._best.hslSaturation, 0.55) * 0.8, 0.12, 1) : Theme.controlFill
 
-    // MprisPlayer.position isn't pushed while a track plays -- it's only
-    // re-read when positionChanged() is emitted.
+    // Firefox only reports a video's time some of the time: on YouTube, seconds
+    // into playing (or after a seek) Position drops to 0 and mpris:length goes
+    // from the metadata, until the next pause brings both back, correct (seen on
+    // the bus). So these keep the last real values for the track and count on
+    // from them while it plays; a seek in the page during such a gap only shows
+    // at the next pause.
+    property real length: 0
+    property real position: 0
+    property real _syncedAt: 0
+    property bool _wasPlaying: false
+    property real _pausedAt: 0
+    readonly property bool _reports: src.isPlayer && src.player.lengthSupported && src.player.length > 0
+    readonly property bool _playing: src.isPlayer && src.player.isPlaying
+    readonly property string _trackKey: src.isPlayer ? src.player.trackTitle + "|" + (src.player.metadata["xesam:url"] || "") : ""
+    on_ReportsChanged: src._sync()
+    on_PlayingChanged: {
+        if (!src._playing) src._pausedAt = Date.now()
+        src._sync()
+    }
+    on_TrackKeyChanged: {
+        src.length = 0
+        src.position = 0
+        src._wasPlaying = false
+        src._sync()
+    }
+    function _sync() {
+        const now = Date.now()
+        // Right after a pause MprisPlayer.position still says where the track
+        // last resumed, until the real one arrives (under a second, checked
+        // live): read then, the time jumps back and forward again on resume.
+        const settling = !src._playing && now - src._pausedAt < 600
+        if (src._reports && !settling) {
+            src.length = src.player.length
+            src.position = src.player.position
+        } else if (src.length > 0 && src._wasPlaying) {
+            src.position = Math.min(src.length, src.position + (now - src._syncedAt) / 1000 * (src.player ? src.player.rate : 1))
+        }
+        src._syncedAt = now
+        src._wasPlaying = src._playing
+    }
+    // Hidden as well, more slowly: a gap can start while the hub is closed. On
+    // screen while paused too, for the real position after a pause or a seek.
     property Timer _poll: Timer {
-        interval: 1000
+        interval: src.shown ? 1000 : 5000
         repeat: true
-        running: src.shown && src.isPlayer && src.player.isPlaying && src.player.positionSupported
-        onTriggered: src.player.positionChanged()
+        running: src.isPlayer && (src._playing || src.shown)
+        onTriggered: src._sync()
+    }
+    function seekTo(fraction) {
+        const target = src.length * Math.max(0, Math.min(1, fraction))
+        src.player.position = target
+        src.position = target
+        src._syncedAt = Date.now()
     }
 
     function setVolume(v) { if (src.app) AudioInfo.setAppVolume(src.app, v) }

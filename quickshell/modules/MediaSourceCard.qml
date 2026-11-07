@@ -180,7 +180,7 @@ ClippingRectangle {
             enabled: card.source.canSeek
             cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
             preventStealing: true
-            function seek(mx) { card.source.player.position = card.source.player.length * Math.max(0, Math.min(1, mx / width)) }
+            function seek(mx) { card.source.seekTo(mx / width) }
             onPressed: (mouse) => seek(mouse.x)
             onPositionChanged: (mouse) => { if (pressed) seek(mouse.x) }
         }

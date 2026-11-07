@@ -90,7 +90,9 @@ PopupWindow {
     // + room under the card for a CardTooltip hanging below a control at
     // its bottom edge (the Control Center's footer switches). The input
     // region is the card alone (mask below), so the strip is click-through.
-    implicitHeight: card.y + host._maxContentHeight + 8 + 44
+    // Never past the monitor's bottom edge: a surface that doesn't fit gets
+    // slid back up over the bar by the positioner.
+    implicitHeight: Math.min(host.bar.screen.height - host.bar.height, card.y + host._maxContentHeight + 8 + 44)
     color: "transparent"
     // Applied a tick after activeContent changes, not bound to it: mapping
     // the window can synchronously change hover state, which feeds back into
@@ -160,7 +162,11 @@ PopupWindow {
             if (!ai) return 0
             void (ai.x + ai.width + (ai.parent ? ai.parent.x + ai.parent.width : 0))
             const center = ai.mapToItem(null, ai.width / 2, 0).x
-            return Math.max(8, Math.min(host.width - card.targetWidth - 8, center - card.targetWidth / 2))
+            // Whole pixels: the clock's text width makes this fractional (390.57
+            // seen), and a layer in the card -- the hub's notification list
+            // while it fades -- then samples its texture between pixels, which
+            // visibly blurs its text.
+            return Math.round(Math.max(8, Math.min(host.width - card.targetWidth - 8, center - card.targetWidth / 2)))
         }
 
         x: card.targetX

@@ -29,7 +29,6 @@
 #   - preload (kylegospo/preload COPR), adaptive readahead daemon that keeps
 #     frequently used apps cached — SKIP_PRELOAD=1 skips it; a failed
 #     install only warns
-#   - sichos-gamepad (mdukhota/test1 COPR), native controller overlay daemon
 #   - the kitty config (~/.config/kitty)
 #   - qt6ct with a dark color scheme, so Qt6 apps (Telegram) pick up dark
 #     window chrome/dialogs via QT_QPA_PLATFORMTHEME=qt6ct (set in env.lua)
@@ -1180,23 +1179,26 @@ else
     echo "    installed to /usr/local/bin/wlctl"
 fi
 
-echo "==> sichos-gamepad (native controller overlay daemon)"
+# sichos-gamepad (native controller overlay daemon) is disabled for now —
+# its autostart line in hypr/autostart.lua is commented out too. Restore both
+# together:
+# echo "==> sichos-gamepad (native controller overlay daemon)"
+# if ! rpm -q sichos-gamepad >/dev/null 2>&1; then
+#     sudo dnf copr enable -y mdukhota/test1
+#     sudo dnf install -y sichos-gamepad
+# else
+#     echo "    already installed"
+# fi
 
-if ! rpm -q sichos-gamepad >/dev/null 2>&1; then
-    sudo dnf copr enable -y mdukhota/test1
-    sudo dnf install -y sichos-gamepad
-else
-    echo "    already installed"
-fi
+echo "==> Controller kernel driver (xpad)"
 
 # Xbox/Xinput-style pad support (xpad) is split out of Fedora's base kernel
 # package into kernel-modules-extra (CONFIG_JOYSTICK_XPAD=m, confirmed in
 # /boot/config-$(uname -r) — it's built, just not shipped in kernel-modules).
 # Without it a controller like the Xbox 360 pad enumerates fine on USB
 # (visible in lsusb) but never gets a /proc/bus/input/devices entry, so
-# sichos-gamepad has no real gamepad event node to read — its own virtual
-# uinput device still shows up, making the daemon look "running" while doing
-# nothing. Installed per-running-kernel (not the bare package name) since
+# games (and sichos-gamepad, when enabled) have no real gamepad event node to
+# read. Installed per-running-kernel (not the bare package name) since
 # dnf would otherwise happily pull whatever kernel-modules-extra version is
 # newest in the repo, which can mismatch the kernel actually booted.
 if ! modinfo xpad >/dev/null 2>&1; then

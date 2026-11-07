@@ -61,8 +61,9 @@ MorphContent {
         return n < 10 ? "0" + n : "" + n
     }
 
-    // hyprsunset.conf declares exactly two profiles, day (identity) then
-    // night (temperature) — pull their "time = H:MM" values in file order.
+    // hyprsunset.conf holds exactly two (commented-out, see its header)
+    // profiles, day (identity) then night (temperature) — pull their
+    // "time = H:MM" values in file order.
     function loadTimes() {
         const re = /time\s*=\s*(\d{1,2}):(\d{2})/g
         const matches = []
@@ -82,8 +83,8 @@ MorphContent {
         popup.scheduleSaved()
     }
 
-    // Times apply by themselves a moment after the last step (a save
-    // restarts hyprsunset) -- there used to be a "Save schedule" button.
+    // Times apply by themselves a moment after the last step -- there used
+    // to be a "Save schedule" button.
     Timer {
         id: saveTimer
         interval: 700

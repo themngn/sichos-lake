@@ -2,7 +2,7 @@ import QtQuick
 
 // Previous / play / next on a cover, shown only while the cover is hovered --
 // so moving a card's fader never brings them up, and a paused source stays a
-// clean card (the record tucked away says it's paused). Fills the cover; has
+// clean card (the record, half tucked and still, says it's paused). Fills the cover; has
 // nothing for a source without a player (a game, a call).
 Item {
     id: cc

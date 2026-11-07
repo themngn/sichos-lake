@@ -313,7 +313,9 @@ PanelWindow {
         weather: weatherPill
         barWindow: bar
         updater: controlCenter.updater
-        maxHeight: bar.screen.height - Theme.barHeight - 24
+        // The card's 4px gap under the bar (MorphPopup), and the same above
+        // the monitor's bottom edge.
+        maxHeight: bar.screen.height - Theme.barHeight - 8
     }
     // The Control Center, rendered into the hub's Controls column so its
     // pages swap inside the hub's fixed frame. No bar icon of its own
@@ -327,6 +329,7 @@ PanelWindow {
         popupHost: hub.controlsSlot
         popupOverlay: barMorph.overlay
         phoneHost: hub.phoneSlot
+        maxCardHeight: hub.maxHeight
     }
 
     Row {

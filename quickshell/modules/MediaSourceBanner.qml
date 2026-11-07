@@ -3,8 +3,8 @@ import Quickshell.Widgets
 
 // The lead source, when it has a cover: a big banner with the title over the
 // art, the playbar under it, then the time and a fader at the same x and width
-// as the cards' below. Wide art fills it; a 1:1 cover gets a large sleeve and
-// record.
+// as the cards' below. Wide art fills the whole banner, those controls on top
+// of it; a 1:1 cover gets a large sleeve and record above them.
 ClippingRectangle {
     id: banner
     required property var source
@@ -28,29 +28,30 @@ ClippingRectangle {
         }
     }
 
+    Image {
+        anchors.fill: parent
+        visible: banner.source.hasArt && !banner.source.square
+        source: visible ? banner.source.art : ""
+        fillMode: Image.PreserveAspectCrop
+        asynchronous: false
+        sourceSize.height: 406
+    }
+
     Item {
         id: art
         width: parent.width
         height: banner.artHeight
 
-        Image {
-            anchors.fill: parent
-            visible: banner.source.hasArt && !banner.source.square
-            source: visible ? banner.source.art : ""
-            fillMode: Image.PreserveAspectCrop
-            asynchronous: false
-            sourceSize.height: 332
-        }
         MediaRecord {
             visible: banner.source.square
             // While playing, centered in the space right of the sleeve (as
-            // wide as the art is tall); fully behind it on pause.
+            // wide as the art is tall); half way behind it on pause.
             x: Math.round((parent.width + parent.height - width) / 2)
             y: 8
             width: 150
             height: 150
             labelSize: 54
-            tuck: parent.height - x - width
+            tuck: (parent.height - x - width) / 2
             art: visible ? banner.source.art : ""
             playing: banner.source.isPlaying
         }
@@ -65,19 +66,22 @@ ClippingRectangle {
         }
         // The tint behind the text, only as tall as the text plus a short fade
         // and only as wide as it needs: on a 1:1 cover the text stays on the
-        // sleeve, so the record beside it keeps its full colour.
+        // sleeve, so the record beside it keeps its full colour. Over wide art
+        // it runs on under the fader, light enough for the art to show through.
         Rectangle {
             id: scrim
-            readonly property int fadeHeight: 26
+            readonly property int fadeHeight: banner.source.square ? 26 : 48
+            readonly property int below: banner.source.square ? 0 : banner.height - banner.artHeight
             readonly property color edge: banner.source.square ? banner.source.tint : banner.source.tintDeep
             anchors.left: parent.left
             anchors.bottom: parent.bottom
+            anchors.bottomMargin: -below
             width: banner.source.square ? parent.height : parent.width
-            height: textBlock.height + textBlock.anchors.bottomMargin + fadeHeight
+            height: textBlock.height + textBlock.anchors.bottomMargin + fadeHeight + below
             gradient: Gradient {
                 GradientStop { position: 0; color: Qt.rgba(banner.source.tint.r, banner.source.tint.g, banner.source.tint.b, 0) }
-                GradientStop { position: scrim.height > 0 ? scrim.fadeHeight / scrim.height : 0; color: Qt.rgba(banner.source.tint.r, banner.source.tint.g, banner.source.tint.b, 0.85) }
-                GradientStop { position: 1; color: Qt.rgba(scrim.edge.r, scrim.edge.g, scrim.edge.b, banner.source.square ? 1 : 0.92) }
+                GradientStop { position: scrim.height > 0 ? scrim.fadeHeight / scrim.height : 0; color: Qt.rgba(banner.source.tint.r, banner.source.tint.g, banner.source.tint.b, banner.source.square ? 0.85 : 0.55) }
+                GradientStop { position: 1; color: Qt.rgba(scrim.edge.r, scrim.edge.g, scrim.edge.b, banner.source.square ? 1 : 0.75) }
             }
         }
         Column {
@@ -111,14 +115,28 @@ ClippingRectangle {
             }
         }
         MediaCoverControls {
+            id: coverControls
             anchors.fill: parent
             source: banner.source
         }
     }
-
-    // The playbar.
+    // The controls' wash stops at the playbar so the fader doesn't bring them
+    // up; on art that runs on below it, carry the wash down too or it shows as
+    // an edge across the cover.
     Rectangle {
         y: banner.artHeight
+        width: parent.width
+        height: parent.height - y
+        visible: banner.source.hasArt && !banner.source.square
+        color: Qt.rgba(0, 0, 0, 0.42)
+        opacity: coverControls.show ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 160 } }
+    }
+
+    // The playbar: under the art, or on wide art along the bottom edge, where
+    // it doesn't rule the fader off from the cover as a separate strip.
+    Rectangle {
+        y: banner.source.square ? banner.artHeight : banner.height - height
         width: parent.width
         height: 3
         color: Qt.rgba(1, 1, 1, banner.source.hasLength ? 0.14 : 0.06)
@@ -140,23 +158,23 @@ ClippingRectangle {
             enabled: banner.source.canSeek
             cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
             preventStealing: true
-            function seek(mx) { banner.source.player.position = banner.source.player.length * Math.max(0, Math.min(1, mx / width)) }
+            function seek(mx) { banner.source.seekTo(mx / width) }
             onPressed: (mouse) => seek(mouse.x)
             onPositionChanged: (mouse) => { if (pressed) seek(mouse.x) }
         }
     }
 
     Item {
-        y: banner.artHeight + 3
+        y: banner.artHeight + (banner.source.square ? 3 : 0)
         width: parent.width
-        height: parent.height - y
+        height: banner.height - banner.artHeight - 3
         Text {
             x: 10
             width: banner.coverWidth - 10
             anchors.verticalCenter: parent.verticalCenter
             visible: banner.source.hasLength
             text: banner.visible && banner.source.hasLength
-                ? banner.fmt(banner.source.player.position) + " / " + banner.fmt(banner.source.player.length) : ""
+                ? banner.fmt(banner.source.position) + " / " + banner.fmt(banner.source.length) : ""
             elide: Text.ElideRight
             color: Theme.textMuted
             font.family: Theme.uiFontFamily

@@ -185,8 +185,8 @@ Given that, xdg-desktop-portal(-hyprland/-gtk), hyprpolkitagent, hyprsunset, and
 off plain-background-process launches onto their packaged `systemd --user` units (portals are
 `Type=dbus`, activate on demand; the other three are `systemctl --user enable`d — done by `install.sh`,
 right after the Hyprland config step) — see `autostart.lua`'s opening comment for the full rationale,
-and `Bar.qml`'s `onScheduleSaved`/`onSettingsSaved` handlers (`SunsetToggle`/`IdleToggle`), which now
-`systemctl --user restart` those two instead of the old manual `pkill; relaunch` dance. This only
+and `IdleToggle`'s settings save, which now `systemctl --user restart`s hypridle instead of the old manual
+`pkill; relaunch` dance (hyprsunset needs no restart: the shell runs its schedule). This only
 actually starts anything under the uwsm-managed session — the units gate on
 `ConditionEnvironment=WAYLAND_DISPLAY` in systemd's user-manager environment, and uwsm is specifically
 what exports that; under the plain `hyprland.desktop` entry these stay inactive and nothing autostarts
@@ -247,7 +247,7 @@ own files.
   `qs-update`). The Phone, System, Updates and Version tiles are gone (version = the footer chip:
   hash + first `SichosVersion.flags`, click = `openDetails()`). Bar.qml passes QuickSettings `hub.controlsSlot` as its popupHost, so its main
   page and every page above render in that column and cross-fade there; the card is sized to the
-  tallest of them and never morphs between pages. The hub is open whenever any QuickSettings page
+  tallest of them (and whatever the media list needs) and never morphs between pages. The hub is open whenever any QuickSettings page
   is (`quicksettings`/`qs-*`); the clock (which also shows the weather icon + temperature -- the
   separate Weather pill is hidden, kept as the data source) and SUPER+N open it. QuickSettings is no
   longer a Bar Widgets entry: Bar.qml instantiates it hidden (no bar icon) just to feed the hub.
@@ -278,7 +278,7 @@ own files.
   tile 2+ wide shows the band, "Wi-Fi 5 GHz", from `NetInfo`, so the SSID keeps the status line).
   `~/Documents/sichos/control-center-tiles.html` is a sheet of every tile at every size, rendered
   offscreen from the deployed config by `~/Documents/sichos/tiles-gen/gen.sh` (deploy first) --
-  regenerate it after every Control Center change. The media list ("Now playing", fixed height so a source starting or stopping never resizes the hub; more scroll) is everything making sound, one `MediaSourceSlot` per source: MPRIS players, then apps with a live stream and no player. `MediaSource` joins the two (`AudioInfo.appForPlayer`: the desktop entry's Name against `application.name`, else a stream's `media.name` starting with the title; they share no other key), with one fader per source over all of an app's streams. The lead with a cover is a `MediaSourceBanner`, the rest `MediaSourceCard`s, the fader at the same x on both. A wide cover fills the slot; a 1:1 one is a sleeve with a `MediaRecord` that spins while playing and slides behind it on pause; no cover is the app's icon, which slides aside for the buttons. Transport (`MediaCoverControls`) sits on the cover, only while it's hovered. A Steam game is named from its process's `SteamAppId` (`scripts/steam-game.py`, by PID or, for a stream through pipewire-pulse, via its client; `scripts/icon-file.py` gives ColorQuantizer a file for a theme icon). SUPER+N toggles it on the
+  regenerate it after every Control Center change. The media list ("Now playing"; room for a banner and two cards at least, past that it grows the hub up to the monitor's bottom edge, then scrolls; it doesn't shrink while the hub is open, `panel._fitMediaList`) is everything making sound, one `MediaSourceSlot` per source: MPRIS players, then apps with a live stream and no player. `MediaSource` joins the two (`AudioInfo.appForPlayer`: the desktop entry's Name against `application.name`, else a stream's `media.name` starting with the title; they share no other key), with one fader per source over all of an app's streams. The lead with a cover is a `MediaSourceBanner`, the rest `MediaSourceCard`s, the fader at the same x on both. A wide cover fills the slot (on the banner the whole card, playbar and fader over it); a 1:1 one is a sleeve with a `MediaRecord` that spins while playing and on pause stops and slides half way behind it; no cover is the app's icon, which slides aside for the buttons. Transport (`MediaCoverControls`) sits on the cover, only while it's hovered. A Steam game is named from its process's `SteamAppId` (`scripts/steam-game.py`, by PID or, for a stream through pipewire-pulse, via its client; `scripts/icon-file.py` gives ColorQuantizer a file for a theme icon). SUPER+N toggles it on the
   focused monitor (`quickshell ipc call controlcenter toggle`). The toggle-row popups (HDR, Night Light,
   Stay Awake, Game Focus) and System Update are also its pages (`qs-hdr` etc.) — its own instances with
   `backPopupId` set. `SystemStats` (CPU/RAM/temp) only polls while its main page is open; `VpnStatus` (Proton VPN) while
@@ -300,8 +300,8 @@ own files.
   silently drops `dns+tls://` over D-Bus) in `dns.json`, HDR in `hdr-monitors.json` (re-applied after every Hyprland `configreloaded`, which
   resets monitor rules); everything else is kept by its own owner (NetworkManager, WirePlumber,
   power-profiles-daemon, systemd-backlight, `hyprsunset.conf`/`hypridle.conf`, `monitors.lua`). A new
-  setting needs the same. Night Light never re-sends hyprsunset's own schedule switch (that showed as a
-  double toggle) -- `ShellState._syncSunset` pushes only when hyprsunset's actual temperature disagrees. A new tile = an id in its `allIds`
+  setting needs the same. Night Light's schedule is run by `ShellState._checkScheduleBoundary`, not hyprsunset: `hyprsunset.conf`'s profiles are
+  commented out (the shell still reads and writes their times), because hyprsunset fires any profile it loads, Follow schedule off or not. A new tile = an id in its `allIds`
   plus a case in QuickSettings' `tileInfo()`/`tileToggle()`, per-size content in `tileView()` (and its glyph measured into HeaderIcon). **Bar hover popups don't own windows**: the toggle
   row's, the hub, the right-side widgets with hover popups (AI usage, Bluetooth,
   System Update, Display) and custom widgets that opt in (alert-widget) all render a `MorphContent`
@@ -540,7 +540,9 @@ straight to `visible`, the grab can silently fail to take and the menu never clo
 hover-leave close as a fallback. Open animation is `SurfaceAppear { target: <card>; shown:
 <window>.visible }` inside the card; closing is deliberately instant.
 
-### Gamepad Overlay Daemon (`sichos-gamepad`)
+### Gamepad Overlay Daemon (`sichos-gamepad`) — disabled for now
+
+**Currently disabled**: its `hypr/autostart.lua` line and `install.sh` install step are commented out (re-enable both together); the launcher still writes its state file, harmlessly.
 
 A lightweight native C daemon (packaged via `mdukhota/test1` COPR as `sichos-gamepad`, < 2 MB RAM) that runs in the background via `hypr/autostart.lua`:
 - **Guide / Home button (`BTN_MODE` or Select+Start / L3+R3)**: Toggles the Quickshell launcher overlay (`quickshell ipc call launcher toggleFull`).

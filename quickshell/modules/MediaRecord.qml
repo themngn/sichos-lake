@@ -2,13 +2,14 @@ import QtQuick
 import Quickshell.Widgets
 
 // The record beside a 1:1 cover: black grooves with the cover as its label.
-// It spins while playing; on pause it slows down and slides `tuck` px behind
-// the sleeve, which the parent draws on top of it, and comes back out on play.
+// It spins while playing; on pause it slows down and slides `tuck` px back,
+// half way behind the sleeve, which the parent draws on top of it, so a paused
+// record still shows. It comes back out on play.
 Item {
     id: rec
     property string art: ""
     property bool playing: false
-    property real tuck: -46
+    property real tuck: -23
     property real labelSize: 24
     width: 64
     height: 64
