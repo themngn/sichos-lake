@@ -252,7 +252,13 @@ own files.
   cards; it replaced the bell + drawer) with the phone card at its bottom (sichlink: wallpaper
   preview, lock/battery, Mirror/Files/Unlock-or-Display; it opens the Phone page *in that column* --
   QuickSettings' `phoneHost` = `hub.phoneSlot`, its main page staying up beside it), Today (month
-  grid + weather from the bar's hidden `Weather` pill; no calendar event source exists yet) and
+  grid with Google Calendar dots, the selected day's agenda -- one section per day, time on the left, at least
+  three events, topped up from the following days, fixed height, scrolls; ⟳ refreshes -- and weather from the bar's hidden `Weather` pill; events come from the
+  `GoogleCalendar` singleton, not the per-screen hub, so reminders fire once: `scripts/gcal.py`, read-only
+  Calendar API with the user's own Desktop OAuth client, client + refresh token in the keyring
+  (`secret-tool … sichos gcal-client`/`gcal-token`), sign-in = `gcal.py auth` in kitty from the agenda's
+  "Connect" row, cache `~/.cache/sichos/gcal.json`; reminders are Google's popup reminders via
+  notify-send, fired keys in `~/.local/state/sichos/gcal-notified.json` so a hot-reload doesn't repeat them) and
   Controls; under the first two a system strip (`SystemStats` CPU/RAM/GPU/network with
   `MiniGraph.qml` sparklines -> btop, and System Update's state via `QuickSettings.updater` ->
   `qs-update`). The Phone, System, Updates and Version tiles are gone (version = the footer chip:

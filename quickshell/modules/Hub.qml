@@ -24,8 +24,10 @@ import Quickshell.Widgets
 // in Bar Widgets: then this card has no Controls column and does its own
 // click-outside close.
 //
-// Calendar events: none yet -- SichOS has no calendar source (no
-// evolution-data-server/khal here); the grid is ready for event dots.
+// Calendar events come from Google Calendar (GoogleCalendar singleton,
+// scripts/gcal.py): a dot under each day with events, and under the grid
+// the selected day's agenda (today unless a day is clicked; with fewer than
+// three events, the following days' fill it up to three).
 MorphContent {
     id: hub
 
@@ -334,7 +336,9 @@ MorphContent {
                 width: parent.width
                 spacing: Theme.sectionSpacing + 4
 
-                MonthCalendar { width: parent.width; open: hub.open }
+                MonthCalendar { id: monthCal; width: parent.width; open: hub.open }
+
+                AgendaSection { width: parent.width; day: monthCal.selectedKey; today: monthCal.today }
 
                 Rectangle { width: parent.width; height: 1; color: Theme.separator }
 
@@ -988,27 +992,35 @@ MorphContent {
 
         property date today: new Date()
         property date viewDate: new Date()
-        // Bound to the hub's `open`: back to the current month on every open.
+        // The agenda's day (GoogleCalendar.dayKey); clicking a day picks it.
+        property string selectedKey: GoogleCalendar.dayKey(new Date())
+        // Bound to the hub's `open`: back to the current month (and today) on
+        // every open, and fresh events if the last fetch is a while ago.
         property bool open: false
         onOpenChanged: {
             if (!cal.open) return
             cal.today = new Date()
             cal.viewDate = new Date()
+            cal.selectedKey = GoogleCalendar.dayKey(cal.today)
+            GoogleCalendar.refreshIfStale()
         }
         function shift(delta) {
             cal.viewDate = new Date(cal.viewDate.getFullYear(), cal.viewDate.getMonth() + delta, 1)
         }
         readonly property bool isCurrentMonth: cal.viewDate.getFullYear() === cal.today.getFullYear()
             && cal.viewDate.getMonth() === cal.today.getMonth()
-        // 42 cells: {day, inMonth, weekend, isToday}
+        // 42 cells: {day, key, inMonth, weekend, isToday, events}
         readonly property var cells: {
             const y = cal.viewDate.getFullYear(), m = cal.viewDate.getMonth()
             const lead = (new Date(y, m, 1).getDay() + 6) % 7
             const out = []
             for (let i = 0; i < 42; i++) {
                 const d = new Date(y, m, 1 - lead + i)
+                const key = GoogleCalendar.dayKey(d)
                 out.push({
                     day: d.getDate(),
+                    key: key,
+                    events: GoogleCalendar.eventsOn(key),
                     inMonth: d.getMonth() === m,
                     weekend: i % 7 >= 5,
                     isToday: d.getFullYear() === cal.today.getFullYear() && d.getMonth() === cal.today.getMonth()
@@ -1037,7 +1049,11 @@ MorphContent {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: cal.isCurrentMonth ? Qt.ArrowCursor : Qt.PointingHandCursor
-                        onClicked: { cal.today = new Date(); cal.viewDate = new Date() }
+                        onClicked: {
+                            cal.today = new Date()
+                            cal.viewDate = new Date()
+                            cal.selectedKey = GoogleCalendar.dayKey(cal.today)
+                        }
                     }
                 }
                 Text {
@@ -1107,13 +1123,35 @@ MorphContent {
                     required property var modelData
                     width: parent.cellWidth
                     height: 32
+                    readonly property bool selected: dayCell.modelData.key === cal.selectedKey
                     Rectangle {
                         anchors.centerIn: parent
                         width: 34
                         height: 28
                         radius: Theme.controlRadius
                         color: dayCell.modelData.isToday ? Theme.accent
+                            : dayCell.selected ? Theme.selectedFill
                             : dayArea.containsMouse ? Theme.controlFill : "transparent"
+                    }
+                    // Up to three dots, one per event, in the event's colour
+                    // (on today's accent cell, plain text colour).
+                    Row {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: 4
+                        spacing: 2
+                        Repeater {
+                            model: dayCell.modelData.events.slice(0, 3)
+                            delegate: Rectangle {
+                                required property var modelData
+                                width: 4
+                                height: 4
+                                radius: 2
+                                color: dayCell.modelData.isToday ? Theme.text
+                                    : (modelData.color || Theme.accent)
+                                opacity: dayCell.modelData.inMonth ? 1 : 0.4
+                            }
+                        }
                     }
                     Text {
                         anchors.centerIn: parent
@@ -1129,7 +1167,261 @@ MorphContent {
                         id: dayArea
                         anchors.fill: parent
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: cal.selectedKey = dayCell.modelData.key
                     }
+                }
+            }
+        }
+    }
+
+    // The selected day's events (GoogleCalendar.agenda: at least three,
+    // topped up from the following days), one section per day -- "Today"
+    // holds only today's -- with the time on the left, Google agenda style.
+    // The area has a fixed height (three rows and two day headings) and
+    // scrolls past it, so a busier day never resizes the card; picking a day
+    // scrolls back to its top. Click = the event in Google Calendar; without
+    // a sign-in, one row that starts it (kitty, gcal.py auth).
+    component AgendaSection: Item {
+        id: ag
+        property string day: ""
+        // MonthCalendar's, re-read on every open (so "Today" is right after midnight).
+        property date today: new Date()
+        readonly property string todayKey: GoogleCalendar.dayKey(ag.today)
+        readonly property int rowHeight: 40
+        readonly property int headerHeight: 22
+        readonly property int rows: 3
+        // An empty selected day keeps its heading, with a "No events" row
+        // (event: null), above the following days'.
+        readonly property var items: {
+            const a = GoogleCalendar.agenda(ag.day, ag.rows)
+            return a.length > 0 && a[0].day !== ag.day ? [{ event: null, day: ag.day }].concat(a) : a
+        }
+        readonly property string timeFmt: TimeRegion.use24Hour ? "HH:mm" : "h:mm AP"
+        readonly property int timeWidth: TimeRegion.use24Hour ? 44 : 64
+        height: ag.rows * ag.rowHeight + 2 * ag.headerHeight
+        onDayChanged: list.positionViewAtBeginning()
+
+        function _date(key) {
+            const [y, m, d] = key.split("-").map(Number)
+            return new Date(y, m - 1, d)
+        }
+        function dayName(key) {
+            const t = ag._date(ag.todayKey), d = ag._date(key)
+            const diff = Math.round((d - t) / 86400000)
+            if (diff === 0) return "Today"
+            if (diff === 1) return "Tomorrow"
+            if (diff === -1) return "Yesterday"
+            return Qt.formatDate(d, diff > 1 && diff < 7 ? "dddd" : "ddd d MMM")
+        }
+        // [first line, second line] of the time column.
+        function timeLines(e, key) {
+            if (e.allDay) return ["All day", ""]
+            const s = new Date(e.start), en = new Date(e.end)
+            // Listed on a day after it started (a multi-day event selected mid-way).
+            if (GoogleCalendar.dayKey(s) !== key) return ["Until", Qt.formatTime(en, ag.timeFmt)]
+            return [Qt.formatTime(s, ag.timeFmt), Qt.formatTime(en, ag.timeFmt)]
+        }
+
+        // No events to show: sign-in, loading, error or an empty stretch.
+        Column {
+            visible: ag.items.length === 0
+            width: parent.width
+            SectionLabel {
+                height: ag.headerHeight
+                verticalAlignment: Text.AlignVCenter
+                bottomPadding: 0
+                text: ag.dayName(ag.day)
+            }
+            Rectangle {
+                id: connectRow
+                readonly property bool canConnect: GoogleCalendar.status === "needsAuth"
+                width: parent.width
+                height: ag.rowHeight
+                radius: Theme.controlRadius
+                color: canConnect ? (connectArea.containsMouse ? Theme.hoverFill : Theme.controlFill) : "transparent"
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    x: connectRow.canConnect ? 12 : 0
+                    text: connectRow.canConnect ? "Connect Google Calendar"
+                        : GoogleCalendar.status === "loading" ? "Loading events…"
+                        : GoogleCalendar.status === "error" ? "Calendar unavailable"
+                        : "No upcoming events"
+                    font.family: Theme.uiFontFamily
+                    font.pixelSize: Theme.fontSize - 1
+                    font.bold: connectRow.canConnect
+                    color: connectRow.canConnect ? Theme.text : Theme.textDim
+                }
+                MouseArea {
+                    id: connectArea
+                    anchors.fill: parent
+                    enabled: connectRow.canConnect
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        GoogleCalendar.connect()
+                        ShellState.activePopup = ""
+                    }
+                }
+            }
+        }
+
+        ListView {
+            id: list
+            anchors.fill: parent
+            clip: true
+            interactive: contentHeight > height
+            boundsBehavior: Flickable.StopAtBounds
+            model: ag.items
+            section.property: "day"
+            section.delegate: SectionLabel {
+                required property string section
+                width: ListView.view.width
+                height: ag.headerHeight
+                verticalAlignment: Text.AlignVCenter
+                bottomPadding: 0
+                text: ag.dayName(section)
+            }
+            delegate: Rectangle {
+                id: evRow
+                required property var modelData
+                readonly property var e: modelData.event
+                readonly property var when: evRow.e ? ag.timeLines(evRow.e, evRow.modelData.day) : ["", ""]
+                width: ListView.view.width
+                height: ag.rowHeight
+                radius: Theme.controlRadius
+                color: evArea.containsMouse && evRow.e ? Theme.controlFill : "transparent"
+
+                Text {
+                    visible: !evRow.e
+                    x: 4
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "No events"
+                    font.family: Theme.uiFontFamily
+                    font.pixelSize: Theme.fontSize - 1
+                    color: Theme.textDim
+                }
+                Column {
+                    id: timeCol
+                    visible: !!evRow.e
+                    x: 4
+                    width: ag.timeWidth
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 1
+                    Text {
+                        text: evRow.when[0]
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 2
+                        font.features: { "tnum": 1 }
+                        color: Theme.textMuted
+                    }
+                    Text {
+                        visible: text !== ""
+                        text: evRow.when[1]
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 3
+                        font.features: { "tnum": 1 }
+                        color: Theme.textDim
+                    }
+                }
+                Rectangle {
+                    id: bar
+                    anchors.left: timeCol.right
+                    anchors.leftMargin: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 3
+                    height: parent.height - 12
+                    radius: 1.5
+                    visible: !!evRow.e
+                    color: evRow.e && evRow.e.color ? evRow.e.color : Theme.accent
+                }
+                Column {
+                    visible: !!evRow.e
+                    anchors.left: bar.right
+                    anchors.leftMargin: 10
+                    anchors.right: parent.right
+                    anchors.rightMargin: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 1
+                    Text {
+                        width: parent.width
+                        text: evRow.e ? evRow.e.title : ""
+                        elide: Text.ElideRight
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 1
+                        font.weight: Font.DemiBold
+                        color: Theme.text
+                    }
+                    Text {
+                        visible: text !== ""
+                        width: parent.width
+                        text: evRow.e ? evRow.e.location : ""
+                        elide: Text.ElideRight
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 3
+                        color: Theme.textDim
+                    }
+                }
+                MouseArea {
+                    id: evArea
+                    anchors.fill: parent
+                    enabled: !!evRow.e
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        GoogleCalendar.open(evRow.e)
+                        ShellState.activePopup = ""
+                    }
+                }
+            }
+        }
+
+        // Over the first heading's right end, staying put while the list
+        // scrolls: "offline" when showing cached events, and fetch now (the
+        // singleton also polls every 5 min, and on open if the last answer
+        // is over 2 min old), spinning while gcal.py runs. Hidden before a
+        // sign-in -- the Connect row is the action then.
+        Row {
+            anchors.right: parent.right
+            height: ag.headerHeight
+            spacing: 6
+            visible: GoogleCalendar.status !== "needsAuth"
+            Text {
+                visible: GoogleCalendar.stale
+                anchors.verticalCenter: parent.verticalCenter
+                text: "offline"
+                font.family: Theme.uiFontFamily
+                font.pixelSize: Theme.fontSize - 3
+                color: Theme.textDim
+            }
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 24
+                height: 24
+                radius: Theme.controlRadius
+                color: refreshArea.containsMouse ? Theme.hoverFill : "transparent"
+                Text {
+                    anchors.centerIn: parent
+                    text: "\u{f0450}" // md-refresh
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontSize + 1
+                    color: refreshArea.containsMouse ? Theme.text : Theme.textDim
+                    RotationAnimation on rotation {
+                        running: GoogleCalendar.busy
+                        loops: Animation.Infinite
+                        from: 0
+                        to: 360
+                        duration: 900
+                        // Finish the turn instead of freezing mid-way.
+                        alwaysRunToEnd: true
+                    }
+                }
+                MouseArea {
+                    id: refreshArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: GoogleCalendar.refresh()
                 }
             }
         }
