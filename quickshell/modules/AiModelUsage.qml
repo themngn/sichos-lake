@@ -93,6 +93,8 @@ Pill {
     property var claudeFiveHourResetsAt: null
     property var claudeWeeklyPercent: null
     property var claudeWeeklyResetsAt: null
+    property var claudeFableWeeklyPercent: null
+    property var claudeFableWeeklyResetsAt: null
 
     // --- AGY State ---
     property var agyFiveHourPercent: null
@@ -165,6 +167,8 @@ Pill {
     }
     readonly property var fiveHourTimeProgress: root._timeProgress(root.activeFiveHourResetsAt, 5 * 60 * 60)
     readonly property var weeklyTimeProgress: root._timeProgress(root.activeWeeklyResetsAt, 7 * 24 * 60 * 60)
+    readonly property bool showFable: root.currentAgent === "claude" && root.claudeFableWeeklyPercent !== null && root.claudeFableWeeklyPercent !== undefined
+    readonly property var fableWeeklyTimeProgress: root._timeProgress(root.claudeFableWeeklyResetsAt, 7 * 24 * 60 * 60)
 
     // Pill Bar Content - strictly equal width across all values
     BarIcon {
@@ -457,6 +461,68 @@ Pill {
                     }
                 }
 
+                // --- Fable Weekly Section (Claude only; model-scoped weekly limit) ---
+                Column {
+                    width: popup.contentWidth
+                    spacing: 4
+                    visible: root.showFable
+
+                    Item {
+                        width: parent.width
+                        height: fableLabel.implicitHeight
+                        Text {
+                            id: fableLabel
+                            text: "Fable weekly"
+                            color: Theme.textMuted
+                            font.family: Theme.uiFontFamily
+                            font.pixelSize: Theme.fontSize - 1
+                        }
+                        Text {
+                            anchors.right: parent.right
+                            text: root.showFable ? (Math.round(root.claudeFableWeeklyPercent) >= 100 ? "100%" : Math.round(root.claudeFableWeeklyPercent) + "%") : "—"
+                            color: root._barColor(root.showFable ? root.claudeFableWeeklyPercent : null)
+                            font.family: Theme.uiFontFamily
+                            font.pixelSize: Theme.fontSize - 1
+                            font.bold: true
+                        }
+                    }
+
+                    Rectangle {
+                        width: parent.width
+                        height: Theme.trackHeight
+                        radius: Theme.trackRadius
+                        color: Theme.track
+
+                        Rectangle {
+                            width: parent.width * Math.max(0, Math.min(1, (root.claudeFableWeeklyPercent || 0) / 100))
+                            height: parent.height
+                            radius: Theme.trackRadius
+                            color: root._barColor(root.showFable ? root.claudeFableWeeklyPercent : null)
+                        }
+                    }
+
+                    Rectangle {
+                        width: parent.width
+                        height: 3
+                        radius: Theme.trackRadius
+                        color: Theme.track
+
+                        Rectangle {
+                            width: parent.width * Math.max(0, Math.min(1, (root.fableWeeklyTimeProgress || 0) / 100))
+                            height: parent.height
+                            radius: Theme.trackRadius
+                            color: Theme.textDim
+                        }
+                    }
+
+                    Text {
+                        text: "resets " + root._resetTimeText(root.claudeFableWeeklyResetsAt)
+                        color: Theme.textDim
+                        font.family: Theme.uiFontFamily
+                        font.pixelSize: Theme.fontSize - 3
+                    }
+                }
+
                 // Context footer (for AGY active task / steps)
                 Column {
                     width: popup.contentWidth
@@ -501,6 +567,8 @@ Pill {
                     root.claudeFiveHourResetsAt = data.fiveHourResetsAt
                     root.claudeWeeklyPercent = data.weeklyPercent
                     root.claudeWeeklyResetsAt = data.weeklyResetsAt
+                    root.claudeFableWeeklyPercent = data.fableWeeklyPercent ?? null
+                    root.claudeFableWeeklyResetsAt = data.fableWeeklyResetsAt ?? null
                 }
             } catch (e) { /* no cache yet -- stays blank until the process finishes */ }
         }
@@ -532,6 +600,8 @@ Pill {
                     root.claudeFiveHourResetsAt = data.fiveHourResetsAt
                     root.claudeWeeklyPercent = data.weeklyPercent
                     root.claudeWeeklyResetsAt = data.weeklyResetsAt
+                    root.claudeFableWeeklyPercent = data.fableWeeklyPercent ?? null
+                    root.claudeFableWeeklyResetsAt = data.fableWeeklyResetsAt ?? null
                 } catch (e) {
                     root.claudeFiveHourPercent = null
                 }

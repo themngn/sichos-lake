@@ -1543,23 +1543,11 @@ PanelWindow {
         function close() { launcher.close() }
     }
 
-    readonly property string stateFile: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/sichos-launcher.active"
-
-    Component.onCompleted: {
-        Quickshell.execDetached(["rm", "-f", launcher.stateFile])
-    }
-
-    Component.onDestruction: {
-        Quickshell.execDetached(["rm", "-f", launcher.stateFile])
-    }
-
     onVisibleChanged: {
         if (launcher.visible) {
             input.forceActiveFocus()
             AppIndex.refresh()
-            Quickshell.execDetached(["touch", launcher.stateFile])
         } else {
-            Quickshell.execDetached(["rm", "-f", launcher.stateFile])
             // Reset while hidden (its slide is off then, see the pane's
             // Behavior), not on the next open, which played the pane
             // sliding in front of you.

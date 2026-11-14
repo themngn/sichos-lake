@@ -1,0 +1,57 @@
+# Everything else every SichOS machine should have, beyond packages.txt's
+# plain dnf list: COPRs, Flatpak bits, services. update.sh compares this (and
+# packages.txt) against the machine -- `./update.sh status` lists what's
+# missing, `./update.sh system` installs it, and the git hooks offer to (a
+# notification with an Install button). It only ever adds: dropping a line
+# leaves the thing installed (RETIRED_PACKAGES in update.sh removes things).
+#
+# One item per line, "<kind> <args>", '#' starts a comment:
+#   copr <owner>/<project>           enabled with `dnf copr enable`
+#   dnf <package>...                 installed with dnf (same as packages.txt;
+#                                    here when it belongs with a line below)
+#   flatpak-remote <name> <url>      system-wide Flatpak remote
+#   flatpak <app-id>                 installed system-wide from flathub
+#   service <unit>...                system unit, enabled + started
+#   user-service <unit>...           systemd --user unit, enabled (it starts
+#                                    with the next uwsm session)
+#   @when <condition>                the lines after it (until the next @when
+#                                    or @always) only apply where it holds:
+#                                    `flatpak` = flatpak is installed (install.sh's
+#                                    SKIP_FLATPAK=1 leaves it off), `btrfs` = the
+#                                    root filesystem is btrfs
+#   @always                          back to unconditional lines
+#
+# Only what every machine gets belongs here. Per-machine choices
+# (sichos-setup.sh's optional apps, the browser, sshd...) and steps that are
+# more than "install X" (patched cage, RPM Fusion's release rpms, the snapper
+# config, the Flatpak keyring overrides, best-effort COPRs that install.sh
+# disables again on failure: satty, preload) stay in install.sh.
+
+# Hyprland's Lua-config build and quickshell
+copr lionheartp/Hyprland
+dnf hyprland quickshell
+
+# The patched cage for SDDM (cage/; install.sh's SDDM step installs it from
+# here -- `rpm -q cage` can't tell it from Fedora's stock one, so the package
+# itself isn't checked)
+copr mdukhota/test1
+
+# packages.txt's scrcpy (phone mirror) isn't in Fedora at all -- this COPR is
+# the only place it comes from (install.sh never enabled it, so a fresh
+# install's packages.txt step used to fail on it)
+copr zeno/scrcpy
+
+# See autostart.lua's opening comment: these run as packaged user units
+user-service hyprpolkitagent.service hyprsunset.service hypridle.service
+
+@when flatpak
+# libflatpak bindings for quickshell/scripts/system-update-check.py
+dnf python3-gobject-base
+flatpak-remote flathub https://flathub.org/repo/flathub.flatpakrepo
+# Sandboxed GTK3 apps can't see the host's themes: without this Flatpak
+# extension they fall back to light Adwaita
+flatpak org.gtk.Gtk3theme.adw-gtk3-dark
+
+@when btrfs
+dnf snapper btrfs-assistant
+service snapper-timeline.timer snapper-cleanup.timer

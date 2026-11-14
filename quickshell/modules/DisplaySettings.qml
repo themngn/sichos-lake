@@ -285,6 +285,7 @@ Pill {
             ddcListProc.running = true
             hdrCapableProc.running = true
             monitorsProc.running = true
+            TabletSettings.refresh()
             popup.selectedMonitor = root.screenName
         }
 
@@ -1196,6 +1197,30 @@ Pill {
                                     Switch {
                                         checked: HdrSettings.isSelected(row.modelData.name)
                                         onToggled: HdrSettings.toggleMonitor(row.modelData.name)
+                                    }
+                                }
+
+                                // Only while a tablet is connected -- that
+                                // doesn't depend on the picked monitor, so
+                                // switching monitors still never resizes the
+                                // page. Off = the pen spans every monitor.
+                                PageRow {
+                                    id: tabletRow
+                                    readonly property bool here: TabletSettings.output === row.modelData.name
+                                    visible: TabletSettings.tablets.length > 0
+                                    glyph: "\u{f04f7}" // nf-md-tablet
+                                    title: "Pen tablet"
+                                    subtitle: tabletRow.here ? "Draws on this display"
+                                        : TabletSettings.output === "" ? "Spans all displays"
+                                        : "On " + TabletSettings.friendly(TabletSettings.output)
+                                    active: tabletRow.here
+                                    // The rest (area, rotation, pressure) on its own page.
+                                    chevron: root.backPopupId !== ""
+                                    onMore: ShellState.activePopup = "qs-tablet"
+                                    onClicked: TabletSettings.setOutput(tabletRow.here ? "" : row.modelData.name)
+                                    Switch {
+                                        checked: tabletRow.here
+                                        onToggled: TabletSettings.setOutput(tabletRow.here ? "" : row.modelData.name)
                                     }
                                 }
                             }

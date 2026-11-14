@@ -33,8 +33,10 @@ places — the repo file (what `install.sh` ships to every future machine) and t
   from the repo only if unmodified, and carries over `install.sh`'s per-machine `--alt`/`--vm`/browser
   edits plus settings the UI stores inside deployed files (kitty's `background_opacity`,
   `hyprsunset.conf` times, `hypridle.conf` listeners). System files (SDDM, Plymouth, polkit,
-  kernel-install, firewalld, root's zsh, new `packages.txt` entries) need sudo, so a hook only says
-  so: `./update.sh system` applies them, same rules, tracked in `system-rev`, with install.sh's
+  kernel-install, firewalld, root's zsh, removing `RETIRED_PACKAGES` such as the
+  retired `sichos-gamepad` controller daemon) and packages need sudo, so a hook only says
+  so (in the session: a notification whose Install button opens kitty running `./update.sh system`,
+  once per distinct pending set, `~/.local/state/sichos/system-offered`): `./update.sh system` applies them, same rules, tracked in `system-rev`, with install.sh's
   follow-ups (initramfs rebuild, boot-entry retitle, firewalld reload). `./update.sh switch <rev>`
   deploys any commit/tag/branch without a checkout and pins it (hooks stop following HEAD), `back` /
   `latest` / `list` / `status` — see its header. Not run from `git worktree`s or mid-`git bisect` (it catches up after `bisect reset`), so working in one
@@ -49,6 +51,14 @@ places — the repo file (what `install.sh` ships to every future machine) and t
   `~/.local/state/sichos/repo`), re-read when update.sh pokes its `sichosversion` IPC target after a
   deploy and every 30s while the Control Center is open. Test changes to it with `SICHOS_SYSROOT`/`SICHOS_SUDO` and a sandbox
   `HOME` *and* `XDG_STATE_HOME` (set on this machine, so overriding `HOME` alone writes the real state).
+- **Packages are target state, not diffs**: `packages.txt` (dnf) + `sichos-packages.txt` (COPRs,
+  Flatpak remote/apps, system/user services, `@when flatpak|btrfs` sections; kinds in its header) are
+  compared against the machine (`pkg_missing` in `update.sh`: one `rpm -q --whatprovides`, the COPR
+  repo files, `flatpak list`, `systemctl is-enabled`), and `system` / `packages` install whatever's
+  missing; nothing leaves for being dropped from a list. `install.sh` installs from the same lists
+  (`update.sh packages`), so an every-machine package goes in a list, never as a new `install.sh`
+  step; per-machine choices and multi-step installs (patched cage, RPM Fusion, snapper config,
+  Flatpak overrides, best-effort satty/preload) stay in `install.sh`.
 - `install.sh` only ever copies forward — it never deletes a deployed file whose repo source was removed
   or renamed (`update.sh` does, for removals after the install). Don't treat a file's presence under
   `$HOME` as proof it's still part of the current config — check the repo first.
@@ -92,7 +102,8 @@ places — the repo file (what `install.sh` ships to every future machine) and t
   `/etc/kernel/install.d/` (GRUB boot-menu branding — see its own header comment for why this
   retitles existing BLS entries in `/boot/loader/entries` instead of renaming `/etc/os-release`).
   `firewalld/localsend.xml` → `/etc/firewalld/services/localsend.xml` (only if firewalld is active).
-  `udev/70-sichos-hotspot.rules` → `/etc/udev/rules.d/` and `NetworkManager/90-sichos-hotspot.conf` →
+  `udev/71-sichos-tablet.rules` → `/etc/udev/rules.d/` (uaccess on pen tablets' evdev nodes and `/dev/uinput`, for
+  pen-buttons.py), `udev/70-sichos-hotspot.rules` → `/etc/udev/rules.d/` and `NetworkManager/90-sichos-hotspot.conf` →
   `/etc/NetworkManager/conf.d/` (the Wi-Fi page's Hotspot's second Wi-Fi interface, `sichos-ap0`, unmanaged by NM
   until `quickshell/scripts/hotspot.py` hands it over — see that script's header).
 
@@ -295,7 +306,13 @@ own files.
   timed mute's deadline), Night Light on/off + Follow schedule, and Bluetooth on/off (BlueZ's AutoEnable
   re-powers it every boot otherwise) in `~/.config/quickshell/shell-state.json` (`ShellState`), Game Focus in
   `game-focus.json`, Lid Close (sleep / screen off when another monitor is connected; `LidSettings`, read by
-  `hypr/keybindings.lua`'s lid binds on every close) in `lid-close.json`, DNS (Default / Mullvad Base over DNS over TLS;
+  `hypr/keybindings.lua`'s lid binds on every close) in `lid-close.json`, the pen tablet (`TabletSettings`; the
+Pen tablet tile -- its tap opens `TabletPage.qml`, `qs-tablet`: display, keep proportions, area size, rotation,
+pen/mouse mode, pressure range, hide cursor, side-button bindings -- and the Display page's per-monitor row, shown while `hyprctl
+devices` lists a tablet; all Hyprland `input.tablet`/`tablettool`/`cursor` options, applied live via `hyprctl
+eval` and read by `hypr/input.lua` on every config load; the active area in mm is computed in QML from the size
+`scripts/tablet-info.py` reads out of the HID descriptor, and stored with it, since a sleeping Bluetooth tablet
+drops off the bus; button bindings are `scripts/pen-buttons.py`, run while one is set: Hyprland can't remap pen buttons, so it grabs the pen's evdev node and re-sends it through a uinput copy with the buttons swapped -- the One by Wacom's upper button is an eraser *tool switch* (BTN_TOOL_RUBBER), not a button) in `tablet.json`, DNS (Default / Mullvad Base over DNS over TLS;
   `DnsSettings` + `scripts/dns.sh`, set per connection and re-applied as networks connect -- NM's global DNS
   silently drops `dns+tls://` over D-Bus) in `dns.json`, HDR in `hdr-monitors.json` (re-applied after every Hyprland `configreloaded`, which
   resets monitor rules); everything else is kept by its own owner (NetworkManager, WirePlumber,
@@ -539,16 +556,6 @@ Bar popups are hover-driven (`ShellState.activePopup`, one open at a time). A cl
 straight to `visible`, the grab can silently fail to take and the menu never closes — plus a
 hover-leave close as a fallback. Open animation is `SurfaceAppear { target: <card>; shown:
 <window>.visible }` inside the card; closing is deliberately instant.
-
-### Gamepad Overlay Daemon (`sichos-gamepad`) — disabled for now
-
-**Currently disabled**: its `hypr/autostart.lua` line and `install.sh` install step are commented out (re-enable both together); the launcher still writes its state file, harmlessly.
-
-A lightweight native C daemon (packaged via `mdukhota/test1` COPR as `sichos-gamepad`, < 2 MB RAM) that runs in the background via `hypr/autostart.lua`:
-- **Guide / Home button (`BTN_MODE` or Select+Start / L3+R3)**: Toggles the Quickshell launcher overlay (`quickshell ipc call launcher toggleFull`).
-- **Overlay Navigation**: While the launcher is open (tracked via `$XDG_RUNTIME_DIR/sichos-launcher.active`), grabs the gamepad (`EVIOCGRAB`) and emits virtual keystrokes via `uinput` (`KEY_UP`, `KEY_DOWN`, `KEY_LEFT`, `KEY_RIGHT`, `KEY_ENTER`, `KEY_ESC`, `KEY_PAGEUP`, `KEY_PAGEDOWN`).
-- **In-Game Passthrough**: When the launcher is closed, gamepad events are released to pass through 100% untouched to games and emulators.
-- **Hotplugging**: Monitors `/dev/input` via inotify to automatically detect when controllers are plugged in or connected over Bluetooth.
 
 ### cage patch (multi-monitor SDDM login)
 

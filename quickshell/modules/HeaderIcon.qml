@@ -114,6 +114,11 @@ Item {
         0xf037d: [-1, -77, 62, 82], // mouse
         0xf030c: [-1, -58, 62, 44], // keyboard
         0xf04f7: [-1, -77, 62, 82], // tablet
+        0xf03ea: [0, -65, 60, 58],  // pen (TabletPage pressure)
+        0xf0a24: [0, -61, 60, 50],  // aspect-ratio (TabletPage area)
+        0xf01c0: [0, -81, 60, 89],  // cursor-default (TabletPage hide cursor)
+        0xf01fe: [0, -65, 60, 58],  // eraser (TabletPage button action)
+        0xf073a: [0, -66, 60, 60],  // cancel (TabletPage button off)
         0xf042a: [-1, -64, 62, 56], // printer
         0xf0100: [-1, -64, 62, 56]  // camera
     })

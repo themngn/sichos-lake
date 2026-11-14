@@ -6,9 +6,12 @@ Pill {
     id: root
 
     function deviceOfType(type) {
-        const devices = Networking.devices.values
-        for (const d of devices) if (d.type === type) return d
-        return null
+        // Skip the hotspot's sichos-ap0 (a second Wi-Fi device, see
+        // scripts/hotspot.py) and prefer a connected device: Networking lists
+        // sichos-ap0 first on this machine, so "first Wi-Fi device" read as
+        // disconnected while wlp1s0 was up.
+        const ds = Networking.devices.values.filter(d => d.type === type && d.name !== "sichos-ap0")
+        return ds.find(d => d.connected) || ds[0] || null
     }
     function connectedNetwork(device) {
         if (!device) return null

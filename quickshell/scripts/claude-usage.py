@@ -19,7 +19,11 @@ sent, no tokens spent, just a plain usage query:
 
 Emits one JSON line:
     {"fiveHourPercent": 0-100, "fiveHourResetsAt": epoch,
-     "weeklyPercent": 0-100, "weeklyResetsAt": epoch}
+     "weeklyPercent": 0-100, "weeklyResetsAt": epoch,
+     "fableWeeklyPercent": 0-100, "fableWeeklyResetsAt": epoch}
+The Fable figures come from the response's "limits" list (the
+"weekly_scoped" entry whose scope.model.display_name is "Fable"). Both are
+null when the account has no Fable-scoped limit.
 On a successful fetch this also overwrites CACHE_FILE, and a failed fetch
 (offline, expired credentials, endpoint down, rate limited, etc.) falls
 back to reading it instead of emitting nulls — mirrors weather.py's own
@@ -41,7 +45,8 @@ CREDENTIALS_PATH = os.path.expanduser("~/.claude/.credentials.json")
 USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
 CACHE_FILE = os.path.expanduser("~/.config/quickshell/claude-usage-cache.json")
 EMPTY_RESULT = {"fiveHourPercent": None, "fiveHourResetsAt": None,
-                "weeklyPercent": None, "weeklyResetsAt": None}
+                "weeklyPercent": None, "weeklyResetsAt": None,
+                "fableWeeklyPercent": None, "fableWeeklyResetsAt": None}
 
 
 def load_cache():
@@ -84,6 +89,16 @@ def to_epoch(iso_timestamp):
     return int(datetime.fromisoformat(iso_timestamp).astimezone(timezone.utc).timestamp())
 
 
+def scoped_limit(data, model_name):
+    for limit in data.get("limits") or []:
+        scope = limit.get("scope") or {}
+        model = scope.get("model") or {}
+        if (limit.get("kind") == "weekly_scoped"
+                and (model.get("display_name") or "").lower() == model_name):
+            return limit
+    return {}
+
+
 def fetch():
     req = urllib.request.Request(
         USAGE_URL,
@@ -104,11 +119,14 @@ def main():
         data = fetch()
         five_hour = data.get("five_hour") or {}
         weekly = data.get("seven_day") or {}
+        fable = scoped_limit(data, "fable")
         result = {
             "fiveHourPercent": five_hour.get("utilization"),
             "fiveHourResetsAt": to_epoch(five_hour.get("resets_at")),
             "weeklyPercent": weekly.get("utilization"),
             "weeklyResetsAt": to_epoch(weekly.get("resets_at")),
+            "fableWeeklyPercent": fable.get("percent"),
+            "fableWeeklyResetsAt": to_epoch(fable.get("resets_at")),
         }
         save_cache(result)
     except (OSError, urllib.error.URLError, urllib.error.HTTPError,

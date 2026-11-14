@@ -16,7 +16,7 @@ QtObject {
     id: root
 
     // Every tile that exists, in the order "Add tiles" lists them.
-    readonly property var allIds: ["wifi", "bluetooth", "airplane", "silence", "powerprofile", "sound", "vpn"]
+    readonly property var allIds: ["wifi", "bluetooth", "airplane", "silence", "powerprofile", "sound", "vpn", "tablet"]
     // Not tiles anymore (a saved layout that still lists them just drops
     // them): "hotspot" and "dns" moved into the Wi-Fi page (WifiMenu.qml),
     // "version" into the footer's version chip, "stats" and "update" into

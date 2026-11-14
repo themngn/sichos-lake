@@ -19,8 +19,14 @@
 #   ./update.sh system         apply system-level changes (sudo): SDDM,
 #                              Plymouth, polkit, kernel-install, firewalld,
 #                              the hotspot's udev rule and NetworkManager
-#                              drop-in, root's zsh files, new packages.txt
-#                              entries
+#                              drop-in, root's zsh files; installs whatever
+#                              packages.txt / sichos-packages.txt lists that
+#                              the machine lacks (packages, COPRs, Flatpak
+#                              remote/apps, services); removes RETIRED_PACKAGES
+#   ./update.sh packages [--check] [--worktree]
+#                              just the packages part of `system` (install.sh
+#                              runs it); --check only lists what's missing,
+#                              --worktree reads the uncommitted lists
 #   ./update.sh try [--force] [paths...]
 #                              deploy the repo's UNCOMMITTED changes to user
 #                              config files now, to see them live (new files,
@@ -211,7 +217,7 @@ sys_dest_for() {
 sys_conditional() { [[ "$1" == zsh/* || "$1" == firewalld/* ]]; }
 # Whether `system` has anything to do for this repo path
 sys_relevant() {
-    [ -n "$(sys_dest_for "$1")" ] || [ "$1" = packages.txt ] || [[ "$1" == cage/* ]]
+    [ -n "$(sys_dest_for "$1")" ] || [[ "$1" == cage/* ]]
 }
 
 # repo paths `system` would act on between $1 and $2, one per line
@@ -563,10 +569,21 @@ apply() {
     if [ -n "$QS_RESULT" ] && [ "$QS_RESULT" != ok ]; then
         WARN+=("$QS_RESULT"); PROBLEMS+=("$QS_RESULT")
     fi
-    # Only when this run brought them in, so pending ones don't nag on every commit
-    if [ "$n_sys" -gt 0 ]; then
-        WARN+=("$n_sys system-level file(s) changed: run ./update.sh system (asks for sudo)")
-        PROBLEMS+=("system files changed: run ./update.sh system")
+    # A retired package's daemon is stopped right away; `system` removes it
+    local r pending
+    for r in $(retired_installed); do pkill -x -u "$(id -u)" -- "$r" 2>/dev/null; done
+    # Everything `system` would do now (pending system files, missing
+    # packages/COPRs/Flatpaks/services, retired packages): said on every run
+    # in the terminal, offered as a notification with an Install button only
+    # when it changes (offer_system)
+    if [ ${#ERRORS[@]} -eq 0 ]; then
+        pending="$(sys_pending "$TO")"
+        if [ -n "$pending" ]; then
+            WARN+=("system update pending, ./update.sh system (asks for sudo): $(paste -sd';' <<< "$pending" | sed 's/;/; /g')")
+            offer_system "$pending"
+        else
+            rm -f "$OFFERED"
+        fi
     fi
 
     [ "$FROM" != "$TO" ] && report "sichos config $(date '+%F %T'): $(short "$FROM") -> $(short "$TO")${label:+ ($label)}" | tee -a "$LOG"
@@ -914,25 +931,198 @@ sys_remove_file() {
     fi
 }
 
+# Packages SichOS used to install that are gone for good (not just dropped
+# from packages.txt, which leaves them installed): `./update.sh system`
+# removes them from machines that still have them. sichos-gamepad = the old
+# controller overlay daemon (Guide button -> launcher), retired 2026-11-14.
+RETIRED_PACKAGES=(sichos-gamepad)
+retired_installed() {
+    local p
+    for p in "${RETIRED_PACKAGES[@]}"; do rpm -q "$p" >/dev/null 2>&1 && echo "$p"; done
+    return 0
+}
+
+sys_retired() {
+    local -a pk=()
+    mapfile -t pk < <(retired_installed)
+    [ ${#pk[@]} -eq 0 ] && return 0
+    if [ -n "$SYSROOT" ]; then NOTES+=("would remove retired packages: ${pk[*]}"); return 0; fi
+    # Each is also a daemon of the same name: stop a running copy first
+    local p
+    for p in "${pk[@]}"; do pkill -x -u "$(id -u)" -- "$p" 2>/dev/null; done
+    if as_root dnf remove -y "${pk[@]}"; then CHANGED+=("removed retired packages: ${pk[*]}")
+    else ERRORS+=("dnf remove ${pk[*]} failed"); fi
+}
+
 # packages.txt entries (first word of each non-comment line) at $1
+# ------------------------------------------------- packages (target state)
+#
+# packages.txt + sichos-packages.txt describe what every machine should have
+# (see the latter's header). Unlike the config files, which are diffed
+# between commits, these are compared against the machine itself: whatever
+# is missing gets installed, whether it's new in the list, failed last
+# time or was removed by hand. Nothing is ever removed for leaving a list.
+PKG_LIST=sichos-packages.txt
+
+# $1 a commit, or "worktree" for the checkout's uncommitted files
+pkg_file() {
+    if [ "$1" = worktree ]; then cat "$HERE/$2" 2>/dev/null; else git show "$1:$2" 2>/dev/null; fi
+}
+pkg_cond() {
+    case "$1" in
+        flatpak) command -v flatpak >/dev/null ;;
+        btrfs) [ "$(findmnt -no FSTYPE / 2>/dev/null)" = btrfs ] ;;
+        *) echo "update.sh: $PKG_LIST: unknown condition '@when $1'" >&2; return 1 ;;
+    esac
+}
+# Every item that applies to this machine, one "<kind> <arg>" per line
+# (flatpak-remote: "<kind> <name> <url>"), in install order: COPRs before
+# dnf, the Flatpak remote before apps.
+pkg_items() {
+    local src="$1" kind args a cond=1
+    {
+        pkg_file "$src" packages.txt | grep -v '^\s*#' | grep -v '^\s*$' | awk '{ print "dnf " $1 }'
+        pkg_file "$src" "$PKG_LIST" | sed 's/#.*//' | while read -r kind args; do
+            case "$kind" in
+                "") ;;
+                @always) cond=1 ;;
+                @when) if pkg_cond "$args"; then cond=1; else cond=0; fi ;;
+                *)
+                    [ "$cond" -eq 1 ] || continue
+                    case "$kind" in
+                        flatpak-remote) echo "$kind $args" ;;
+                        copr|dnf|flatpak|service|user-service) for a in $args; do echo "$kind $a"; done ;;
+                        *) echo "update.sh: $PKG_LIST: unknown kind '$kind'" >&2 ;;
+                    esac ;;
+            esac
+        done
+    } | awk '!seen[$0]++ {
+            split("copr dnf flatpak-remote flatpak service user-service", k, " ")
+            for (i in k) if (k[i] == $1) print i "\t" NR "\t" $0 }' \
+      | sort -n -k1,1 -k2,2 | cut -f3-
+}
+
+copr_repo_file() { echo "$SYSROOT/etc/yum.repos.d/_copr:copr.fedorainfracloud.org:${1%%/*}:${1#*/}.repo"; }
+
+# The items from pkg_items $1 that this machine lacks, same format. A user
+# unit is only checked when a systemd --user manager is reachable (not from
+# a bare TTY/su), so an unanswerable check never counts as missing.
+pkg_missing() {
+    local -a dnf=() items=()
+    local kind arg rest f state remotes="" apps="" user_ok=0
+    mapfile -t items < <(pkg_items "$1")
+    for f in "${items[@]}"; do [[ "$f" == "dnf "* ]] && dnf+=("${f#dnf }"); done
+    command -v flatpak >/dev/null && {
+        remotes="$(flatpak remotes --system --columns=name 2>/dev/null)"
+        apps="$(flatpak list --system --columns=application 2>/dev/null)"
+    }
+    systemctl --user show-environment >/dev/null 2>&1 && user_ok=1
+    # One rpm call for the lot; "no package provides X" = missing (also
+    # right for names that are a Provides, not a package name). LC_ALL=C:
+    # rpm translates that line (uk_UA: "жоден з пакунків не надає X"), and a
+    # message the sed doesn't match would read as installed
+    [ ${#dnf[@]} -gt 0 ] && LC_ALL=C rpm -q --whatprovides "${dnf[@]}" 2>/dev/null | sed -n 's/^no package provides \(.*\)$/dnf \1/p'
+    for f in "${items[@]}"; do
+        read -r kind arg rest <<< "$f"
+        case "$kind" in
+            copr) f="$(copr_repo_file "$arg")"; [ -f "$f" ] && grep -q '^enabled=1' "$f" || echo "copr $arg" ;;
+            flatpak-remote) grep -qx "$arg" <<< "$remotes" || echo "$kind $arg $rest" ;;
+            flatpak) grep -qx "$arg" <<< "$apps" || echo "flatpak $arg" ;;
+            service|user-service)
+                if [ "$kind" = service ]; then state="$(systemctl is-enabled "$arg" 2>/dev/null)"
+                else [ "$user_ok" -eq 1 ] || continue; state="$(systemctl --user is-enabled "$arg" 2>/dev/null)"; fi
+                case "$state" in enabled|enabled-runtime|static|alias|indirect|generated|linked) ;; *) echo "$kind $arg" ;; esac ;;
+        esac
+    done
+}
+
 packages_at() {
     git show "$1:packages.txt" 2>/dev/null | grep -v '^\s*#' | grep -v '^\s*$' | awk '{ print $1 }' | sort -u
 }
 
 sys_packages() {
-    local -a new=() gone=()
-    mapfile -t new < <(comm -13 <(packages_at "$FROM") <(packages_at "$TO"))
+    local -a miss=() coprs=() dnf=() remotes=() fl=() svc=() usvc=() gone=()
+    local kind arg rest
     mapfile -t gone < <(comm -23 <(packages_at "$FROM") <(packages_at "$TO"))
     [ ${#gone[@]} -gt 0 ] && NOTES+=("dropped from packages.txt, left installed: ${gone[*]}")
-    [ ${#new[@]} -eq 0 ] && return 0
+    mapfile -t miss < <(pkg_missing "$TO")
+    [ ${#miss[@]} -eq 0 ] && return 0
     if [ -n "$SYSROOT" ]; then
-        NOTES+=("would install: ${new[*]}"); return 0
+        NOTES+=("would install: $(printf '%s, ' "${miss[@]}" | sed 's/, $//')"); return 0
     fi
-    if as_root dnf install -y "${new[@]}"; then
-        CHANGED+=("installed packages: ${new[*]}")
-    else
-        ERRORS+=("dnf install ${new[*]} failed")
+    for arg in "${miss[@]}"; do
+        read -r kind arg rest <<< "$arg"
+        case "$kind" in
+            copr) coprs+=("$arg") ;;
+            dnf) dnf+=("$arg") ;;
+            flatpak-remote) remotes+=("$arg $rest") ;;
+            flatpak) fl+=("$arg") ;;
+            service) svc+=("$arg") ;;
+            user-service) usvc+=("$arg") ;;
+        esac
+    done
+    # In order, each step only once the one it depends on worked (a COPR
+    # before its packages, the remote before its apps)
+    for arg in "${coprs[@]}"; do
+        if as_root dnf copr enable -y "$arg"; then CHANGED+=("enabled COPR $arg"); else ERRORS+=("dnf copr enable $arg failed"); fi
+    done
+    if [ ${#dnf[@]} -gt 0 ]; then
+        if as_root dnf install -y "${dnf[@]}"; then CHANGED+=("installed packages: ${dnf[*]}"); else ERRORS+=("dnf install ${dnf[*]} failed"); fi
     fi
+    for arg in "${remotes[@]}"; do
+        read -r kind rest <<< "$arg"
+        if as_root flatpak remote-add --system --if-not-exists "$kind" "$rest"; then CHANGED+=("added Flatpak remote $kind"); else ERRORS+=("flatpak remote-add $kind failed"); fi
+    done
+    if [ ${#fl[@]} -gt 0 ]; then
+        if as_root flatpak install --system -y --noninteractive flathub "${fl[@]}"; then CHANGED+=("installed Flatpaks: ${fl[*]}"); else ERRORS+=("flatpak install ${fl[*]} failed"); fi
+    fi
+    if [ ${#svc[@]} -gt 0 ]; then
+        if as_root systemctl enable --now "${svc[@]}"; then CHANGED+=("enabled ${svc[*]}"); else ERRORS+=("systemctl enable ${svc[*]} failed"); fi
+    fi
+    # User units: no root, and only start with the next uwsm session (their
+    # ConditionEnvironment=WAYLAND_DISPLAY, see autostart.lua)
+    if [ ${#usvc[@]} -gt 0 ]; then
+        if systemctl --user enable "${usvc[@]}"; then CHANGED+=("enabled user units ${usvc[*]}"); else ERRORS+=("systemctl --user enable ${usvc[*]} failed"); fi
+    fi
+}
+
+# What `system` would do for deployed commit $1, one human-readable line
+# per kind; empty = nothing
+sys_pending() {
+    local sys f n miss
+    if sys="$(read_stamp "$SYS_STAMP")"; then
+        f="$(sys_changes "$sys" "$1")"
+        n="$(grep -c . <<< "$f")"
+        [ "$n" -gt 0 ] && echo "$n system file(s) changed: $(paste -sd' ' <<< "$f")"
+    fi
+    miss="$(pkg_missing "$1" | awk '{ print $1 " " $2 }' | paste -sd',' | sed 's/,/, /g')"
+    [ -n "$miss" ] && echo "missing: $miss"
+    f="$(retired_installed | paste -sd' ')"
+    [ -n "$f" ] && echo "retired, to remove: $f"
+    return 0
+}
+
+# A desktop notification with an Install button that opens a terminal
+# running `update.sh system` (sudo wants a terminal; dnf's progress shows
+# there too). Once per distinct pending set ($OFFERED), not per commit, and
+# only from inside the graphical session -- over SSH the terminal line is it.
+OFFERED="$STATE/system-offered"
+offer_system() {
+    [ "$(cat "$OFFERED" 2>/dev/null)" = "$1" ] && return 0
+    [ "$REAL_HOME" -eq 1 ] && [ -n "${WAYLAND_DISPLAY:-}" ] && command -v notify-send >/dev/null && command -v kitty >/dev/null || return 0
+    printf '%s\n' "$1" > "$OFFERED"
+    # "default" too: the toast shows only named actions as buttons, and a
+    # click on the toast body or its hub entry runs "default" -- so the
+    # install is still one click away after the toast itself is gone.
+    # notify-send -A blocks until the notification is answered: fully
+    # detached (own session, no inherited fds -- fd 9 is update.lock, which
+    # would block every later run, and the hook's stdout would keep git
+    # waiting)
+    setsid bash -c '
+        a="$(notify-send -a "SichOS update" -i system-software-install -A install=Install -A default=Install \
+            "SichOS: system update pending" "$2")"
+        { [ "$a" = install ] || [ "$a" = default ]; } && exec kitty --hold --title "SichOS system update" "$1" system
+    ' _ "$HERE/update.sh" "$1" </dev/null >/dev/null 2>&1 9>&- &
 }
 
 # The follow-ups install.sh does after copying each group
@@ -965,8 +1155,10 @@ sys_followups() {
         else ERRORS+=("nmcli general reload conf failed"); fi
     fi
     if [ -n "${SYS_ACTIONS[udev]:-}" ]; then
-        if [ "$real" -eq 0 ]; then NOTES+=("would reload udev rules and re-run them for the Wi-Fi cards")
-        elif as_root udevadm control --reload-rules && as_root udevadm trigger --action=add --subsystem-match=net --property-match=DEVTYPE=wlan; then
+        if [ "$real" -eq 0 ]; then NOTES+=("would reload udev rules and re-run them for the Wi-Fi cards, pen tablets and /dev/uinput")
+        elif as_root udevadm control --reload-rules && as_root udevadm trigger --action=add --subsystem-match=net --property-match=DEVTYPE=wlan \
+            && as_root udevadm trigger --action=change --subsystem-match=input --property-match=ID_INPUT_TABLET=1 \
+            && as_root udevadm trigger --action=change --name-match=uinput; then
             CHANGED+=("udev rules reloaded")
         else ERRORS+=("reloading udev rules failed"); fi
     fi
@@ -989,10 +1181,11 @@ cmd_system() {
     FROM="$(read_stamp "$SYS_STAMP")"; rc=$?
     [ $rc -eq 1 ] && die "no system version recorded yet. If the system files match a commit (e.g. right after install.sh): ./update.sh system mark [rev]"
     [ $rc -ne 0 ] && die "the recorded system version isn't in this repo: ./update.sh system mark <the rev it really is>"
-    if [ -z "$(sys_changes "$FROM" "$TO")" ]; then
+    if [ -z "$(sys_changes "$FROM" "$TO")" ] && [ -z "$(retired_installed)" ] && [ -z "$(pkg_missing "$TO")" ]; then
         # Nothing system-level between the two: just move the version along
         [ "$FROM" = "$TO" ] || write_stamp "$SYS_STAMP" "$TO"
-        echo "system files are up to date ($(short "$TO"))"; return 0
+        rm -f "$OFFERED"
+        echo "system is up to date ($(short "$TO")): system files, packages, services"; return 0
     fi
     if [ -n "$SUDO" ]; then "$SUDO" -v || die "needs sudo"; fi
     WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
@@ -1002,16 +1195,43 @@ cmd_system() {
     done < <(git diff --no-renames --name-status -z "$FROM" "$TO")
     for rel in "${added[@]}"; do sys_deploy_file "$rel"; done
     for rel in "${deleted[@]}"; do sys_remove_file "$rel"; done
-    printf '%s\n' "${added[@]}" "${deleted[@]}" | grep -qx packages.txt && sys_packages
+    sys_packages
+    sys_retired
     printf '%s\n' "${added[@]}" "${deleted[@]}" | grep -q '^cage/' \
         && NOTES+=("cage/ changed: the patched cage comes from the mdukhota/test1 COPR -- rebuild it there")
     sys_followups
 
     if [ ${#ERRORS[@]} -eq 0 ]; then
         write_stamp "$SYS_STAMP" "$TO" && poke_shell || ERRORS+=("couldn't record the system version")
+        rm -f "$OFFERED"
     fi
     [ ${#ERRORS[@]} -gt 0 ] && NOTES+=("system version left at $(short "$FROM"); re-run ./update.sh system to retry")
     report "sichos system $(date '+%F %T'): $(short "$FROM") -> $(short "$TO")" | tee -a "$LOG"
+    [ ${#ERRORS[@]} -eq 0 ]
+}
+
+# Installs whatever packages.txt / sichos-packages.txt list that this
+# machine lacks -- `system` without the system files. Works before anything
+# is deployed (install.sh runs it; then it reads HEAD), otherwise reads the
+# deployed commit. --check only lists what's missing; --worktree reads the
+# checkout's uncommitted lists instead (to try an edit to them).
+cmd_packages() {
+    local check=0 src="" a
+    for a in "$@"; do
+        case "$a" in --check) check=1 ;; --worktree) src=worktree ;; *) die "packages: unknown option $a" ;; esac
+    done
+    [ -n "$src" ] || src="$(deployed_rev 2>/dev/null)" || src="$(resolve HEAD)" || die "no HEAD"
+    if [ "$check" -eq 1 ]; then
+        a="$(pkg_missing "$src")"
+        if [ -n "$a" ]; then echo "$a"; return 1; fi
+        echo "nothing missing"; return 0
+    fi
+    lock
+    if [ -z "$(pkg_missing "$src")" ]; then echo "packages: nothing missing"; return 0; fi
+    if [ -n "$SUDO" ]; then "$SUDO" -v || die "needs sudo"; fi
+    FROM="$src" TO="$src"
+    sys_packages
+    report "sichos packages $(date '+%F %T')" | tee -a "$LOG"
     [ ${#ERRORS[@]} -eq 0 ]
 }
 
@@ -1047,7 +1267,10 @@ cmd_info() {
     fi
     [ -f "$fh" ] && fetched="$(stat -c %Y "$fh")"
     [ -d "$CONFLICTS" ] && n_conf="$(find "$CONFLICTS" -type f | wc -l)"
+    # Everything `system` would do: changed system files, missing list
+    # items, retired packages (the same things `status` lists)
     [ -n "$sys" ] && [ -n "$dep" ] && sys_pending="$(sys_changes "$sys" "$dep" | wc -l)"
+    [ -n "$dep" ] && sys_pending=$(( ${sys_pending:-0} + $(pkg_missing "$dep" | wc -l) + $(retired_installed | wc -l) ))
     { [ "$(git config core.hooksPath)" = githooks ] && [ "$(git config --bool sichos.autodeploy)" != false ]; } || hooks=0
     [ -n "$dep" ] && deployed_at="$(awk -v r="$dep" '$2 == r { t = $1 } END { print t }' "$HISTORY" 2>/dev/null)"
     [ -n "$dep" ] && tag="$(git describe --tags --exact-match "$dep" 2>/dev/null)"
@@ -1105,6 +1328,16 @@ cmd_status() {
     else
         echo "system files: no version recorded (./update.sh system mark <rev> once they match a commit)"
     fi
+    if [ -n "$dep" ]; then
+        f="$(pkg_missing "$dep")"
+        if [ -n "$f" ]; then
+            echo "missing from packages.txt / $PKG_LIST:"
+            sed 's/^/  /' <<< "$f"
+            echo "  -> ./update.sh system"
+        fi
+        f="$(retired_installed)"
+        [ -n "$f" ] && echo "retired, still installed: $(paste -sd' ' <<< "$f") -> ./update.sh system"
+    fi
 
     load_live
     if [ ${#LIVE_SHA[@]} -gt 0 ]; then
@@ -1158,6 +1391,7 @@ case "${1:-latest}" in
     list) cmd_list "${2:-}" ;;
     status) cmd_status ;;
     system) cmd_system "${2:-}" "${3:-}" ;;
+    packages) shift; cmd_packages "$@" ;;
     install) cmd_install ;;
     info) cmd_info "${2:-}" ;;
     try) shift; cmd_try "$@" ;;

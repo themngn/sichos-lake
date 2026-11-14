@@ -192,7 +192,7 @@ Pill {
     property bool grabbing: false
     readonly property bool typing: ShellState.keySink !== null && ShellState.keySinkScreen === root.screenName
     readonly property var pageIds: ["quicksettings", "qs-audio", "qs-wifi", "qs-bluetooth", "qs-display",
-        "qs-update", "qs-hdr", "qs-sunset", "qs-idle", "qs-gamefocus", "qs-phone", "qs-vpn", "qs-hotspot"]
+        "qs-update", "qs-hdr", "qs-sunset", "qs-idle", "qs-gamefocus", "qs-phone", "qs-vpn", "qs-hotspot", "qs-tablet"]
     onAnyOpenChanged: {
         root.grabbing = false
         if (root.anyOpen) grabTimer.restart()
@@ -479,6 +479,14 @@ Pill {
                 extraSub: "", detail: "With another monitor",
                 sub: LidSettings.sleep ? "Sleep" : "Screen off, keep working",
                 active: LidSettings.sleep, more: "" }
+            // Pen tablet (TabletSettings.qml): the tap opens its page --
+            // there's no one obvious thing to switch.
+            case "tablet": return {
+                glyph: "\u{f04f7}", label: "Pen tablet", short: "Tablet",
+                sub: !TabletSettings.connected ? "Not connected" : TabletSettings.friendly(TabletSettings.output),
+                detail: [TabletSettings.relative ? "Mouse mode" : "Pen mode",
+                    TabletSettings.rotation ? TabletSettings.rotation + "°" : ""].filter(t => t).join(" · "),
+                active: TabletSettings.connected, more: "qs-tablet", opens: true }
             }
             return { glyph: "", label: id, sub: "", active: false, more: "" }
         }
@@ -518,6 +526,7 @@ Pill {
             case "vpn": VpnStatus.toggle(); break
             // Network's own <-> the last Mullvad resolver used.
             case "lid": LidSettings.setSleep(!LidSettings.sleep); break
+            case "tablet": root.openPopup("qs-tablet"); break
             }
         }
 
@@ -2243,6 +2252,15 @@ Pill {
         shown: ShellState.activePopup === "qs-vpn" && ShellState.activePopupScreen === root.screenName
         contentWidth: root.cardWidth
         screenName: root.screenName
+        onBack: root.openPopup(root.popupId)
+    }
+
+    // --- Pen tablet page ---
+    readonly property Item _tabletContent: TabletPage {
+        parent: root.popupHost
+        anchorItem: root
+        shown: ShellState.activePopup === "qs-tablet" && ShellState.activePopupScreen === root.screenName
+        contentWidth: root.cardWidth
         onBack: root.openPopup(root.popupId)
     }
 

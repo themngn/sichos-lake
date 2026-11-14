@@ -15,8 +15,12 @@ QtObject {
     readonly property int historyLength: 40
 
     function _deviceOfType(type) {
-        for (const d of Networking.devices.values) if (d.type === type) return d
-        return null
+        // Skip the hotspot's sichos-ap0 (a second Wi-Fi device, see
+        // scripts/hotspot.py) and prefer a connected device: Networking lists
+        // sichos-ap0 first on this machine, so "first Wi-Fi device" read as
+        // disconnected while wlp1s0 was up.
+        const ds = Networking.devices.values.filter(d => d.type === type && d.name !== "sichos-ap0")
+        return ds.find(d => d.connected) || ds[0] || null
     }
     readonly property var _wifi: _deviceOfType(DeviceType.Wifi)
     readonly property var _wired: _deviceOfType(DeviceType.Wired)

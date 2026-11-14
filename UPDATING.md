@@ -47,8 +47,11 @@ commit them (or deploy them by hand, see below).
 - **`monitors.lua` is per-machine** and never replaced once it exists.
 - **Files removed from the repo** are removed from `~/.config` too — but only if you never edited them.
 - **System files** (SDDM, Plymouth, polkit, kernel-install, firewalld, the hotspot's udev rule and
-  NetworkManager drop-in, root's zsh, new `packages.txt` entries) need `sudo`, which a hook can't ask for. The hook only tells you (and shows a notification);
-  apply them with `./update.sh system` — see below.
+  NetworkManager drop-in, root's zsh) and **packages** need `sudo`, which a hook can't ask for. The
+  hook says what's pending in the terminal on every update, and inside the desktop session shows a
+  notification with an **Install** button, which opens a terminal running `./update.sh system` (it
+  asks for your password there). The notification comes once per change in what's pending, not on
+  every commit. Over SSH there's only the terminal line — run `./update.sh system` yourself.
 - Each file is replaced atomically, so a hot reload never sees a half-written file. If a file can't be
   written, the deployed version stays where it was and the next run retries.
 
@@ -156,12 +159,25 @@ hand is kept and its new version parked. It also runs what `install.sh` would ru
 - firewalld service → `firewall-cmd --reload`
 - hotspot udev rule / NetworkManager drop-in → reloads udev and NetworkManager's configuration, so the
   hotspot's own Wi-Fi interface appears without a reboot
-- new `packages.txt` entries → `dnf install` (packages dropped from the list are left installed)
+- **anything [`packages.txt`](packages.txt) or [`sichos-packages.txt`](sichos-packages.txt) lists that
+  the machine doesn't have** → enables the COPR, `dnf install`s the package, adds the Flatpak remote
+  or app, enables the service. That's checked against the machine itself, not against what changed in
+  the repo: a package that failed to install last time, or that got removed by hand, comes back too.
+  Things dropped from the lists are left installed. `./update.sh status` lists what's missing,
+  `./update.sh packages` installs just that part, `./update.sh packages --check --worktree` checks an
+  uncommitted edit to the lists.
+- retired packages (`RETIRED_PACKAGES` in `update.sh`, e.g. the old `sichos-gamepad` controller daemon) → `dnf remove` if still installed; until then every update warns and stops the daemon
 - SDDM theme/config → takes effect at the next login (or `sudo systemctl restart sddm`)
 - `cage/` (the patched SDDM compositor) → comes from the `mdukhota/test1` COPR; rebuild it there
 
-Run it from your own terminal — it prompts for your `sudo` password. If nothing system-level changed it
-just says so, without asking for sudo.
+Run it from your own terminal — it prompts for your `sudo` password. If nothing system-level changed and
+nothing is missing it just says so, without asking for sudo.
+
+**Adding a package every SichOS machine should have:** add it to `packages.txt` (plain dnf packages)
+or `sichos-packages.txt` (COPRs, Flatpaks, services, things that only apply with Flatpak or on
+btrfs — its header lists the line kinds), and commit. Every machine gets offered it on its next
+update, and new machines get it from `install.sh`, which installs from the same lists. Per-machine
+choices (the optional apps in `sichos-setup.sh`) stay in `install.sh`.
 
 ## The Version tile
 

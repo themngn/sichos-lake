@@ -30,9 +30,10 @@ MorphContent {
     // sizes itself from implicitHeight, so this doesn't feed back into it.
     height: parent ? Math.max(implicitHeight, parent.height) : implicitHeight
 
+    // Same pick as NetworkIndicator.deviceOfType: not the hotspot's sichos-ap0.
     readonly property var device: {
-        for (const d of Networking.devices.values) if (d.type === DeviceType.Wifi) return d
-        return null
+        const ds = Networking.devices.values.filter(d => d.type === DeviceType.Wifi && d.name !== "sichos-ap0")
+        return ds.find(d => d.connected) || ds[0] || null
     }
     readonly property bool wifiOn: Networking.wifiEnabled
 

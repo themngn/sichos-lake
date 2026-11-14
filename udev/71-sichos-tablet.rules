@@ -1,0 +1,11 @@
+# Pen tablet button bindings (quickshell/scripts/pen-buttons.py, set on the
+# Control Center's Pen tablet page) read the tablet's evdev node and send the
+# remapped events back through a uinput copy of it. Both are root-only by
+# default (/dev/input/event* is root:input, /dev/uinput root:root), so
+# logind's uaccess hands them to the seat's user instead, as it does for
+# webcams and game controllers. ID_INPUT_TABLET is set by input_id in
+# 60-input-id.rules; uaccess must be tagged before 73-seat-late.rules.
+# OpenTabletDriver's own rules tag uinput the same way, but only while that
+# package is installed.
+KERNEL=="event*", SUBSYSTEM=="input", ENV{ID_INPUT_TABLET}=="1", TAG+="uaccess"
+KERNEL=="uinput", SUBSYSTEM=="misc", OPTIONS+="static_node=uinput", TAG+="uaccess"

@@ -110,6 +110,8 @@ gvfs-smb                  # SMB backend for Nautilus's "Connect to Server" — w
 gvfs-mtp                  # lets Nautilus mount Android phones over USB
 python3-dbus              # quickshell/scripts/bt-agent.py: BlueZ pairing agent for the
 python3-gobject           # bar's Bluetooth menu (nothing else registers one here)
+python3-evdev             # quickshell/scripts/pen-buttons.py: pen tablet button bindings
+                          # (grabs the pen, re-sends it through uinput; udev/71-sichos-tablet.rules)
 scrcpy                    # phone mirror (quickshell/scripts/phone-mirror.sh, SUPER+X);
                           # pulls in android-tools (adb)
 gvfs-gphoto2              # lets Nautilus mount PTP digital cameras over USB

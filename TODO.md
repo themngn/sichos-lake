@@ -51,5 +51,5 @@ The Phone tile/page's Phone Link parts (`Sichlink.qml`, `PhonePage.qml`) and `ph
 need the `sichlink` daemon from the separate `~/Work/sichlink` repo. Today it's built and installed by
 hand into `~/.local/bin` with a hand-installed `systemd --user` unit, and the phone app is sideloaded.
 Without it everything degrades cleanly (the tile reads "Phone Link not installed", the mirror falls
-back to plain adb), but a fresh install doesn't get it. Real fix: an RPM in the SichOS COPR (like `sichos-gamepad`),
+back to plain adb), but a fresh install doesn't get it. Real fix: an RPM in the SichOS COPR (like the patched `cage`),
 an `install.sh` step enabling the unit, then drop the `~/.local/bin` lookups.

@@ -249,7 +249,8 @@ echo "==> Hotspot: a second Wi-Fi interface, so the hotspot can share Wi-Fi"
 # dnsmasq (packages.txt) does the hotspot's DHCP/DNS.
 sudo mkdir -p /etc/NetworkManager/conf.d /etc/udev/rules.d
 for pair in "NetworkManager/90-sichos-hotspot.conf:/etc/NetworkManager/conf.d/90-sichos-hotspot.conf" \
-            "udev/70-sichos-hotspot.rules:/etc/udev/rules.d/70-sichos-hotspot.rules"; do
+            "udev/70-sichos-hotspot.rules:/etc/udev/rules.d/70-sichos-hotspot.rules" \
+            "udev/71-sichos-tablet.rules:/etc/udev/rules.d/71-sichos-tablet.rules"; do
     src="$HERE/${pair%%:*}" dest="${pair#*:}"
     if ! cmp -s "$src" "$dest" 2>/dev/null; then
         [ -f "$dest" ] && sudo cp "$dest" "$dest.bak" && echo "    backed up existing $dest to $dest.bak"
@@ -262,6 +263,10 @@ done
 sudo nmcli general reload conf
 sudo udevadm control --reload-rules
 sudo udevadm trigger --action=add --subsystem-match=net --property-match=DEVTYPE=wlan
+# 71-sichos-tablet.rules: a pen tablet already plugged in, and /dev/uinput,
+# get their uaccess ACL now rather than on the next replug/boot.
+sudo udevadm trigger --action=change --subsystem-match=input --property-match=ID_INPUT_TABLET=1
+sudo udevadm trigger --action=change --name-match=uinput
 echo "    reloaded NetworkManager's configuration and the udev rules"
 
 echo "==> Bluetooth: fix HID controllers that pair then instantly disconnect"
@@ -375,50 +380,32 @@ else
     echo "    rpmfusion-nonfree already enabled"
 fi
 
-echo "==> Flatpak + Flathub"
+echo "==> Flatpak"
+
+if [ "${SKIP_FLATPAK:-0}" = "1" ]; then
+    echo "    skipped"
+elif ! rpm -q flatpak >/dev/null 2>&1; then
+    echo "    installing flatpak"
+    sudo dnf install -y flatpak
+else
+    echo "    flatpak already installed"
+fi
+
+echo "==> packages, COPRs, Flatpak remote, services (update.sh packages)"
+
+# packages.txt + sichos-packages.txt: Hyprland/quickshell from their COPR,
+# the base packages, the flathub remote and adw-gtk3-dark theme (where
+# flatpak is installed, hence after the step above), snapper on btrfs, the
+# user units. The same lists the git hooks check on every update afterwards,
+# so a line added there later reaches this machine too -- add new
+# "every machine gets this" packages there, not as a step here.
+"$HERE/update.sh" packages
+
+echo "==> Flatpak apps"
 
 if [ "${SKIP_FLATPAK:-0}" = "1" ]; then
     echo "    skipped"
 else
-    if ! rpm -q flatpak >/dev/null 2>&1; then
-        echo "    installing flatpak"
-        sudo dnf install -y flatpak
-    else
-        echo "    flatpak already installed"
-    fi
-    # python3-gobject-base: lets the System Update bar widget's checker
-    # script (quickshell/scripts/system-update-check.py) call libflatpak's
-    # own list_installed_refs_for_update() -- the same call `flatpak
-    # update`/GNOME Software use internally -- instead of `flatpak remote-ls
-    # --updates`, which was confirmed live to report false positives (see
-    # that script's own comment). No Gtk pulled in, just glib/girepository
-    # bindings.
-    if ! rpm -q python3-gobject-base >/dev/null 2>&1; then
-        echo "    installing python3-gobject-base"
-        sudo dnf install -y python3-gobject-base
-    else
-        echo "    python3-gobject-base already installed"
-    fi
-    if flatpak remote-list 2>/dev/null | grep -q '^flathub'; then
-        echo "    flathub remote already added"
-    else
-        sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-        echo "    added flathub remote"
-    fi
-
-    # Sandboxed GTK3 apps can't see the host's /usr/share/themes, so the
-    # gtk-theme autostart.lua sets (adw-gtk3-dark) silently falls back to
-    # light Adwaita inside them unless the same theme is installed as a
-    # Flatpak extension -- which they then pick up by that name on their own.
-    # libadwaita/GTK4 apps don't need this (they follow color-scheme via the
-    # Settings portal).
-    if flatpak info org.gtk.Gtk3theme.adw-gtk3-dark >/dev/null 2>&1; then
-        echo "    adw-gtk3-dark Flatpak theme already installed"
-    else
-        echo "    installing adw-gtk3-dark Flatpak theme"
-        flatpak install -y --noninteractive flathub org.gtk.Gtk3theme.adw-gtk3-dark
-    fi
-
     for app in ${FLATHUB_APPS:-}; do
         if flatpak info "$app" >/dev/null 2>&1; then
             echo "    $app already installed"
@@ -568,37 +555,6 @@ EOF
     fi
 fi
 
-echo "==> Hyprland + quickshell packages"
-
-if ! rpm -q hyprland >/dev/null 2>&1 || ! rpm -q quickshell >/dev/null 2>&1; then
-    echo "    enabling COPR lionheartp/Hyprland"
-    sudo dnf copr enable -y lionheartp/Hyprland
-fi
-if ! rpm -q hyprland >/dev/null 2>&1; then
-    echo "    installing hyprland"
-    sudo dnf install -y hyprland
-else
-    echo "    hyprland already installed"
-fi
-if ! rpm -q quickshell >/dev/null 2>&1; then
-    echo "    installing quickshell"
-    sudo dnf install -y quickshell
-else
-    echo "    quickshell already installed"
-fi
-
-echo "==> base packages (packages.txt)"
-
-# packages.txt is a plain list with '#'-prefixed comment lines and blocks;
-# anything still commented out (qt6ct, etc.) is deliberately skipped here.
-# dnf no-ops on anything already installed.
-mapfile -t BASE_PKGS < <(grep -v '^\s*#' "$HERE/packages.txt" | grep -v '^\s*$' | awk '{print $1}')
-if [ "${#BASE_PKGS[@]}" -gt 0 ]; then
-    sudo dnf install -y "${BASE_PKGS[@]}"
-else
-    echo "    nothing to install"
-fi
-
 echo "==> Default apps (images, text) + user dirs"
 
 # Set explicitly rather than left to whichever installed app's .desktop
@@ -673,12 +629,7 @@ echo "==> Btrfs snapshots (snapper + btrfs-assistant)"
 if [ "$(findmnt -no FSTYPE /)" != "btrfs" ]; then
     echo "    root filesystem isn't btrfs, skipped"
 else
-    if ! rpm -q snapper >/dev/null 2>&1; then
-        sudo dnf install -y snapper
-    fi
-    if ! rpm -q btrfs-assistant >/dev/null 2>&1; then
-        sudo dnf install -y btrfs-assistant
-    fi
+    # snapper/btrfs-assistant and the timers: sichos-packages.txt
     if ! sudo snapper list-configs | grep -q '^root '; then
         sudo snapper -c root create-config /
         echo "    created snapper 'root' config"
@@ -689,7 +640,6 @@ else
         sudo snapper -c root create --description "install.sh: initial snapshot"
         echo "    took initial snapshot"
     fi
-    sudo systemctl enable --now snapper-timeline.timer snapper-cleanup.timer >/dev/null 2>&1 || true
     echo "    installed, root snapshots scheduled"
 fi
 
@@ -834,10 +784,13 @@ for _ in $(seq 1 20); do
     [ -S "$RUNTIME_DIR/bus" ] && break
     sleep 0.5
 done
-if XDG_RUNTIME_DIR="$RUNTIME_DIR" systemctl --user enable hyprpolkitagent.service hyprsunset.service hypridle.service >/dev/null; then
-    echo "    enabled hyprpolkitagent/hyprsunset/hypridle systemd --user services"
+# The units themselves are sichos-packages.txt's user-service lines; the
+# packages step above skipped them if there was no user manager yet.
+if XDG_RUNTIME_DIR="$RUNTIME_DIR" systemctl --user show-environment >/dev/null 2>&1; then
+    XDG_RUNTIME_DIR="$RUNTIME_DIR" "$HERE/update.sh" packages \
+        || echo "    couldn't enable them (see above) -- harmless: the git hooks offer it again on the next update"
 else
-    echo "    couldn't reach a systemd --user bus to enable hyprpolkitagent/hyprsunset/hypridle (see error above) -- harmless, log into Hyprland once and re-run ./install.sh to pick this up"
+    echo "    couldn't reach a systemd --user bus to enable hyprpolkitagent/hyprsunset/hypridle -- harmless: the git hooks offer to enable them once you're logged into Hyprland"
 fi
 
 echo "==> Firefox"
@@ -1179,17 +1132,6 @@ else
     echo "    installed to /usr/local/bin/wlctl"
 fi
 
-# sichos-gamepad (native controller overlay daemon) is disabled for now —
-# its autostart line in hypr/autostart.lua is commented out too. Restore both
-# together:
-# echo "==> sichos-gamepad (native controller overlay daemon)"
-# if ! rpm -q sichos-gamepad >/dev/null 2>&1; then
-#     sudo dnf copr enable -y mdukhota/test1
-#     sudo dnf install -y sichos-gamepad
-# else
-#     echo "    already installed"
-# fi
-
 echo "==> Controller kernel driver (xpad)"
 
 # Xbox/Xinput-style pad support (xpad) is split out of Fedora's base kernel
@@ -1197,9 +1139,9 @@ echo "==> Controller kernel driver (xpad)"
 # /boot/config-$(uname -r) — it's built, just not shipped in kernel-modules).
 # Without it a controller like the Xbox 360 pad enumerates fine on USB
 # (visible in lsusb) but never gets a /proc/bus/input/devices entry, so
-# games (and sichos-gamepad, when enabled) have no real gamepad event node to
-# read. Installed per-running-kernel (not the bare package name) since
-# dnf would otherwise happily pull whatever kernel-modules-extra version is
+# games have no real gamepad event node to read. Installed
+# per-running-kernel (not the bare package name) since dnf would otherwise
+# happily pull whatever kernel-modules-extra version is
 # newest in the repo, which can mismatch the kernel actually booted.
 if ! modinfo xpad >/dev/null 2>&1; then
     sudo dnf install -y "kernel-modules-extra-$(uname -r)"

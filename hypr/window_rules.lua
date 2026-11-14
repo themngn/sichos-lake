@@ -216,3 +216,21 @@ hl.window_rule({
     no_shadow = true,
     no_anim   = true,
 })
+
+
+-- Zotero's citation picker (Word plugin -> "Add/Edit Citation"), floated and
+-- centered so it doesn't tile and reflow the document beside it. Not a
+-- window_rule: when Zotero runs from Windows through WinApps, the RemoteApp
+-- window maps with an empty title and only gets "Citation Dialog" a moment
+-- later (initialTitle "" in `hyprctl clients`), and a float rule is only
+-- checked at map time -- the rule never fired, checked live. Matched on the
+-- title alone because every RemoteApp window takes the class of whichever app
+-- opened the RDP session last ("Zotero" or "Microsoft Word" alike).
+hl.on("window.title", function(w)
+    if not w or w.floating or w.title ~= "Citation Dialog" then return end
+    local target = "address:" .. w.address
+    hl.dispatch(hl.dsp.window.float({ action = "enable", window = target }))
+    -- 1280x720 (a 720p screen): it opens as a 1280x42 search strip otherwise.
+    hl.dispatch(hl.dsp.window.resize({ window = target, x = 1280, y = 720 }))
+    hl.dispatch(hl.dsp.window.center({ window = target }))
+end)
